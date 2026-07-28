@@ -139,6 +139,36 @@ def test_cutout_encoder_picks_format_from_suffix(tmp_path):
     assert Image.open(io.BytesIO(png)).format == "PNG"
 
 
+def test_cutouts_are_encoded_losslessly_by_default():
+    """Cut-outs are what the app shows everywhere; the codec must not get a
+    say in how the user's garments look."""
+    assert images.CUTOUT_WEBP_LOSSLESS is True
+
+
+def test_lossless_cutout_round_trips_every_visible_pixel(tmp_path):
+    """Lossless means lossless — decode what we encoded and compare pixels.
+
+    Only *visible* pixels are compared: WebP zeroes the colour channels under
+    fully transparent pixels, which by definition cannot change what is shown
+    and is why a naive bit-for-bit comparison would fail here.
+    """
+    rng = np.random.default_rng(1)
+    rgb = rng.integers(0, 255, size=(200, 200, 3), dtype=np.uint8)
+    alpha = np.full((200, 200, 1), 255, dtype=np.uint8)
+    alpha[:50] = 0                      # a transparent band
+    alpha[50:80] = 128                  # and a semi-transparent one
+    src = Image.fromarray(np.concatenate([rgb, alpha], axis=2), "RGBA")
+
+    payload = images._encode_cutout(src, tmp_path / "x.webp")
+    decoded = Image.open(io.BytesIO(payload)).convert("RGBA")
+
+    a, b = np.asarray(src), np.asarray(decoded)
+    assert np.array_equal(a[..., 3], b[..., 3]), "alpha channel was altered"
+    visible = a[..., 3] > 0
+    assert np.array_equal(a[..., :3][visible], b[..., :3][visible]), (
+        "a visible pixel changed colour")
+
+
 def test_webp_cutout_is_smaller_than_png(tmp_path):
     """The whole point of the format switch — verify it on a realistic,
     photo-like cut-out rather than a flat colour that compresses to nothing."""

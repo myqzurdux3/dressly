@@ -9,11 +9,13 @@ mounts it shadows: the paths are already public and are guessable only if you
 know the filename. Adding auth here without adding it there would be theatre.
 """
 import logging
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from PIL import Image
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import IMAGES_DIR, OUTFITS_DIR, THUMBS_DIR
 
@@ -23,6 +25,9 @@ log = logging.getLogger(__name__)
 # A fixed ladder, so a caller cannot make us generate (and cache) an unbounded
 # number of variants of every photo.
 ALLOWED_WIDTHS = (160, 240, 400, 800)
+
+# Grid thumbnails are the most-looked-at images in the app.
+THUMB_WEBP_QUALITY = int(os.environ.get("CLOTHESAPP_THUMB_QUALITY", "90"))
 
 # Sources we are willing to resize, keyed by the URL prefix they are served on.
 _ROOTS = {"images": IMAGES_DIR, "generated": OUTFITS_DIR}
@@ -48,9 +53,27 @@ def _safe_source(root_key: str, rel_path: str) -> Path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
     if src != root and root not in src.parents:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
-    if not src.is_file():
+    resolved = resolve_legacy_extension(src)
+    if resolved is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
-    return src
+    return resolved
+
+
+def resolve_legacy_extension(path: Path) -> Path | None:
+    """Find the current file for a request naming an old extension.
+
+    Cut-outs used to be PNG and are WebP now. A client that cached the old URL
+    (or an old JSON payload) keeps asking for `foo_cutout.png` after the file
+    became `foo_cutout.webp`, and every image 404s at once. Rather than make the
+    user clear their cache, serve whatever sibling actually exists.
+    """
+    if path.is_file():
+        return path
+    for ext in (".webp", ".png", ".jpg", ".jpeg"):
+        candidate = path.with_suffix(ext)
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _thumb_path(root_key: str, rel_path: str, width: int) -> Path:
@@ -67,7 +90,10 @@ def _render(src: Path, dst: Path, width: int) -> None:
             height = max(1, round(im.height * width / im.width))
             im = im.resize((width, height), Image.LANCZOS)
         tmp = dst.with_name(dst.name + ".tmp")
-        im.save(tmp, format="WEBP", quality=82, method=4)
+        # Thumbnails are what fills the wardrobe grid, so they are worth
+        # encoding properly: at these sizes the file is a few tens of KB either
+        # way, and quality 82 was visibly soft on garment texture.
+        im.save(tmp, format="WEBP", quality=THUMB_WEBP_QUALITY, method=6)
         tmp.replace(dst)
 
 
@@ -121,12 +147,33 @@ def thumb_url_for(file_path: str, width: int = 400) -> str:
 
 
 class CachedStaticFiles:
-    """Mixin adding immutable cache headers to a StaticFiles mount.
+    """Mixin for the /images and /generated mounts.
 
-    The app's URLs already carry ?v=<mtime>, so the bytes behind any given URL
-    are immutable — without this the client revalidated every image on every
-    screen open.
+    Two jobs:
+
+    * tag responses as immutable — the URLs already carry ?v=<mtime>, so their
+      bytes never change, and without this the client revalidated every image on
+      every screen open;
+    * transparently serve a renamed file. Cut-outs moved from PNG to WebP, and
+      any client still holding an old URL would otherwise 404 on every single
+      image at once until it cleared its cache.
     """
+
+    async def get_response(self, path: str, scope):  # pragma: no cover - I/O
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            # Starlette raises rather than returning a 404 response, so the
+            # retry has to happen here. It raises its OWN HTTPException class,
+            # which fastapi.HTTPException subclasses — catching the subclass
+            # would silently never match.
+            if e.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+            alt = resolve_legacy_extension(Path(self.directory) / path)
+            if alt is None:
+                raise
+            return await super().get_response(
+                alt.relative_to(Path(self.directory)).as_posix(), scope)
 
     def file_response(self, *args, **kwargs) -> Response:  # pragma: no cover
         resp = super().file_response(*args, **kwargs)

@@ -32,3 +32,9 @@ clothesapp/android/*.iml
 # --- os / editor ---------------------------------------------------------
 .DS_Store
 *.swp
+
+# --- backups + audit artefacts (hundreds of MB / regenerated on demand) ----
+clothes-app-backup-*/
+*-backup-*/
+mutation_report.json
+never_killed.json
