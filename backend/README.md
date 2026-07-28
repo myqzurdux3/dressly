@@ -28,7 +28,8 @@ security-relevant variables are set properly:
 | `BFL_API_KEY` | unset → dry-run placeholders | optional |
 | `CLOTHESAPP_GEN_RATE_LIMIT` | `30` / hour / user | optional (0 disables) |
 | `CLOTHESAPP_ENHANCE_RATE_LIMIT` | `40` / hour / user | optional (0 disables) |
-| `CLOTHESAPP_ORIGINAL_MAX_PX` | `2000` | optional |
+| `CLOTHESAPP_ORIGINAL_MAX_PX` | `4000` | optional |
+| `CLOTHESAPP_CUTOUT_LOSSLESS` | `1` | optional (0 = lossy WebP) |
 
 ```bash
 cp .env.example .env
@@ -98,17 +99,19 @@ images      = <front.jpg> <back.jpg> [<extra.jpg> ...]
 - Background removal runs in a worker thread (`run_in_threadpool`) and outside
   any transaction, so an upload neither blocks the event loop nor holds the
   SQLite write lock while ONNX inference runs.
-- Files live under `backend/data/images/<cloth_id>/`. Both the original (JPEG,
-  ≤2000 px, EXIF baked in) and the cutout (`*_cutout.webp`, transparent) are
-  kept so a future "search the internet for a better image" step can replace the
-  cutout without losing data.
+- Files live under `backend/data/images/<cloth_id>/`. Both the original (JPEG
+  quality 95, EXIF baked in, resolution preserved up to 4000 px) and the cutout
+  (`*_cutout.webp`, transparent, LOSSLESS) are kept so a future "search the
+  internet for a better image" step can replace the cutout without losing data.
 - Image bytes are content-addressed under `backend/data/blobs/` and hard-linked
   into place, so the same photo on two clothes is stored once.
   `images.gc_orphan_blobs()` reclaims unreferenced blobs.
 - `/thumb/{root}/{width}/{path}` serves cached, resized copies for the grids.
   `backend/data/thumbs/` is a derived cache and safe to delete at any time.
-- `scripts/recompress_images.py` re-encodes images predating the above. It is a
-  dry run unless given `--apply`.
+- `scripts/recompress_images.py` re-encodes images predating the above, and
+  `scripts/reencode_from_backup.py` rebuilds them from an untouched backup when
+  the settings change (re-encoding an already-lossy file cannot recover detail).
+  Both are dry runs unless given `--apply`.
 
 ## Storage layout
 
