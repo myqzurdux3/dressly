@@ -9,9 +9,15 @@ import '../config/api_config.dart';
 /// Thin wrapper around package:http that injects the bearer token, handles
 /// JSON encode/decode, and turns non-2xx responses into typed exceptions.
 class ApiClient {
-  ApiClient({required this.token});
+  /// [httpClient] exists so tests can substitute `MockClient`. Production code
+  /// leaves it null and gets a fresh client per request, exactly as the
+  /// top-level `http.get`/`http.post` helpers did before.
+  ApiClient({required this.token, http.Client? httpClient})
+      : _client = httpClient;
 
   String? token;
+
+  final http.Client? _client;
 
   /// All requests share a generous timeout. Regenerating an outfit (POST
   /// /outfits/{id}/regenerate) can take 25-60s end-to-end (bfl poll + image
@@ -26,33 +32,30 @@ class ApiClient {
     };
   }
 
-  Future<dynamic> get(String path) async {
-    final resp = await http
-        .get(Uri.parse(apiUrl(path)), headers: _headers(json: false))
-        .timeout(_timeout);
-    return _decode(resp);
+  /// Run [send] against a client, disposing a per-request one when the caller
+  /// did not inject their own.
+  Future<dynamic> _send(Future<http.Response> Function(http.Client) send) async {
+    final client = _client ?? http.Client();
+    try {
+      return _decode(await send(client).timeout(_timeout));
+    } finally {
+      if (_client == null) client.close();
+    }
   }
 
-  Future<dynamic> post(String path, Map<String, dynamic> body) async {
-    final resp = await http
-        .post(Uri.parse(apiUrl(path)), headers: _headers(), body: jsonEncode(body))
-        .timeout(_timeout);
-    return _decode(resp);
-  }
+  Future<dynamic> get(String path) => _send((c) =>
+      c.get(Uri.parse(apiUrl(path)), headers: _headers(json: false)));
 
-  Future<dynamic> delete(String path) async {
-    final resp = await http
-        .delete(Uri.parse(apiUrl(path)), headers: _headers(json: false))
-        .timeout(_timeout);
-    return _decode(resp);
-  }
+  Future<dynamic> post(String path, Map<String, dynamic> body) =>
+      _send((c) => c.post(Uri.parse(apiUrl(path)),
+          headers: _headers(), body: jsonEncode(body)));
 
-  Future<dynamic> patch(String path, Map<String, dynamic> body) async {
-    final resp = await http
-        .patch(Uri.parse(apiUrl(path)), headers: _headers(), body: jsonEncode(body))
-        .timeout(_timeout);
-    return _decode(resp);
-  }
+  Future<dynamic> delete(String path) => _send((c) =>
+      c.delete(Uri.parse(apiUrl(path)), headers: _headers(json: false)));
+
+  Future<dynamic> patch(String path, Map<String, dynamic> body) =>
+      _send((c) => c.patch(Uri.parse(apiUrl(path)),
+          headers: _headers(), body: jsonEncode(body)));
 
   /// Multipart upload. File list is mapped to the `images` field; the first
   /// two are sent in order (front, back) per the backend contract.
@@ -67,9 +70,7 @@ class ApiClient {
     for (final f in files) {
       req.files.add(await http.MultipartFile.fromPath('images', f.path));
     }
-    final streamed = await req.send().timeout(_timeout);
-    final resp = await http.Response.fromStream(streamed);
-    return _decode(resp);
+    return _sendMultipart(req);
   }
 
   /// Multipart PUT — used by the edit-cloth form. Mirrors [postMultipart]
@@ -85,9 +86,7 @@ class ApiClient {
     for (final f in files) {
       req.files.add(await http.MultipartFile.fromPath('images', f.path));
     }
-    final streamed = await req.send().timeout(_timeout);
-    final resp = await http.Response.fromStream(streamed);
-    return _decode(resp);
+    return _sendMultipart(req);
   }
 
   /// Generic multipart request (POST or PUT) with named file fields — used by
@@ -105,9 +104,7 @@ class ApiClient {
     for (final e in files.entries) {
       req.files.add(await http.MultipartFile.fromPath(e.key, e.value.path));
     }
-    final streamed = await req.send().timeout(_timeout);
-    final resp = await http.Response.fromStream(streamed);
-    return _decode(resp);
+    return _sendMultipart(req);
   }
 
   /// Multipart request whose single file comes from in-memory bytes (not a
@@ -125,9 +122,19 @@ class ApiClient {
     req.fields.addAll(fields);
     req.files.add(http.MultipartFile.fromBytes(fileField, bytes,
         filename: filename));
-    final streamed = await req.send().timeout(_timeout);
-    final resp = await http.Response.fromStream(streamed);
-    return _decode(resp);
+    return _sendMultipart(req);
+  }
+
+  /// Multipart requests bypass [_send] because they stream rather than return a
+  /// Response directly, but must use the same injected client and timeout.
+  Future<dynamic> _sendMultipart(http.MultipartRequest req) async {
+    final client = _client ?? http.Client();
+    try {
+      final streamed = await client.send(req).timeout(_timeout);
+      return _decode(await http.Response.fromStream(streamed));
+    } finally {
+      if (_client == null) client.close();
+    }
   }
 
   dynamic _decode(http.Response resp) {

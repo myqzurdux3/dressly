@@ -40,85 +40,63 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     _wornToday = widget.outfit.wornToday;
   }
 
+  /// Run [action] with the dialog disabled, reporting any failure under
+  /// [errorKey]. Returns null when the action was skipped (already busy) or
+  /// threw.
+  ///
+  /// Every action here repeated this guard/try/finally by hand. Centralising it
+  /// is not just tidiness: one forgotten `finally` leaves `_busy` stuck true and
+  /// the whole dialog permanently unusable.
+  Future<T?> _run<T>(String errorKey, Future<T> Function() action) async {
+    if (_busy) return null;
+    setState(() => _busy = true);
+    try {
+      return await action();
+    } catch (e) {
+      _toastKey(errorKey, e);
+      return null;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// [_run] for the common case: the action yields the updated outfit, which
+  /// becomes this dialog's state and is handed to the parent screen.
+  Future<Outfit?> _runUpdating(
+      String errorKey, Future<Outfit> Function() action) async {
+    final updated = await _run(errorKey, action);
+    if (updated == null || !mounted) return null;
+    setState(() {
+      _outfit = updated;
+      _wornToday = updated.wornToday;
+    });
+    widget.onChanged(updated);
+    return updated;
+  }
+
   /// Re-run a FAILED generation at the same level (the backend still cascades
   /// up on failure). The outfit's clothes/model/prompt are untouched.
-  Future<void> _retryGeneration() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context)
-          .regenerate(_outfit.id, tier: _outfit.modelTier);
-      if (!mounted) return;
-      setState(() {
-        _outfit = updated;
-        _wornToday = updated.wornToday;
-      });
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.retryFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  Future<void> _retryGeneration() =>
+      _runUpdating('result.retryFailed', () => outfitsServiceOf(context)
+          .regenerate(_outfit.id, tier: _outfit.modelTier));
 
-  Future<void> _regenerate() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context).regenerate(_outfit.id);
-      setState(() => _outfit = updated);
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.regenerateFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  Future<void> _regenerate() => _runUpdating('result.regenerateFailed',
+      () => outfitsServiceOf(context).regenerate(_outfit.id));
 
   /// Flip "describe items to the AI" and re-render at the same tier.
-  Future<void> _toggleDescribe(bool value) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context).regenerate(
-          _outfit.id, tier: _outfit.modelTier, describeClothes: value);
-      if (!mounted) return;
-      setState(() {
-        _outfit = updated;
-        _wornToday = updated.wornToday;
-      });
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.failed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  Future<void> _toggleDescribe(bool value) =>
+      _runUpdating('result.failed', () => outfitsServiceOf(context).regenerate(
+          _outfit.id, tier: _outfit.modelTier, describeClothes: value));
 
   /// Re-render the SAME outfit at its current tier with a changed reference-image
   /// mode and/or top-render subset (the controls that used to live only on the
   /// create screen, now available after generation too).
-  Future<void> _reRenderWith({String? imageMode, List<int>? renderClothIds}) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context).regenerate(
+  Future<void> _reRenderWith({String? imageMode, List<int>? renderClothIds}) =>
+      _runUpdating('result.failed', () => outfitsServiceOf(context).regenerate(
           _outfit.id,
           tier: _outfit.modelTier,
           imageMode: imageMode,
-          renderClothIds: renderClothIds);
-      if (!mounted) return;
-      setState(() {
-        _outfit = updated;
-        _wornToday = updated.wornToday;
-      });
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.failed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+          renderClothIds: renderClothIds));
 
   Future<void> _setImageMode(String mode) async {
     if (mode == _outfit.imageMode) return;
@@ -181,50 +159,28 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       if (go == true && mounted) await _changeModel();
       return;
     }
-    setState(() => _busy = true);
-    try {
-      final back = await outfitsServiceOf(context).generateBack(_outfit.id);
-      setState(() => _outfit = back);
-      widget.onChanged(back);
-      _toastKey('result.backCreated');
-    } catch (e) {
-      _toastKey('result.backFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final back = await _runUpdating('result.backFailed',
+        () => outfitsServiceOf(context).generateBack(_outfit.id));
+    if (back != null) _toastKey('result.backCreated');
   }
 
   Future<void> _switchLinkedView() async {
-    if (_busy || _outfit.linkedId == null) return;
-    setState(() => _busy = true);
-    try {
-      // Await completion: editing clothes on one view re-renders the other, so
-      // the linked outfit may still be processing when we switch to it.
-      final linked = await outfitsServiceOf(context).getAwait(_outfit.linkedId!);
-      if (!mounted) return;
-      setState(() {
-        _outfit = linked;
-        _wornToday = linked.wornToday;
-      });
-      widget.onChanged(linked);
-    } catch (e) {
-      _toastKey('result.failed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    if (_outfit.linkedId == null) return;
+    // Await completion: editing clothes on one view re-renders the other, so
+    // the linked outfit may still be processing when we switch to it.
+    await _runUpdating('result.failed',
+        () => outfitsServiceOf(context).getAwait(_outfit.linkedId!));
   }
 
   Future<void> _markWorn() async {
-    if (_busy || _wornToday) return;
-    setState(() => _busy = true);
-    try {
+    if (_wornToday) return;
+    final ok = await _run('result.failed', () async {
       await outfitsServiceOf(context).wear(_outfit.id);
+      return true;
+    });
+    if (ok == true && mounted) {
       setState(() => _wornToday = true);
       _toastKey('result.markedWorn');
-    } catch (e) {
-      _toastKey('result.failed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -273,35 +229,21 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   }
 
   Future<void> _toggleFav() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final newVal = await outfitsServiceOf(context)
-          .toggleFavorite(_outfit.id, isFavorite: !_outfit.isFavorite);
-      setState(() => _outfit = _withFavorite(_outfit, newVal));
-      widget.onChanged(_outfit);
-      _toast(newVal ? 'Saved to favorites ✓' : 'Removed from favorites');
-    } catch (e) {
-      _toastKey('result.favoriteFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final newVal = await _run('result.favoriteFailed', () => outfitsServiceOf(
+        context).toggleFavorite(_outfit.id, isFavorite: !_outfit.isFavorite));
+    if (newVal == null || !mounted) return;
+    setState(() => _outfit = _withFavorite(_outfit, newVal));
+    widget.onChanged(_outfit);
+    _toast(newVal ? 'Saved to favorites ✓' : 'Removed from favorites');
   }
 
   Future<void> _toggleBlacklist() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final newVal = await outfitsServiceOf(context)
-          .setBlacklist(_outfit.id, blacklisted: !_outfit.isBlacklisted);
-      setState(() => _outfit = _withBlacklist(_outfit, newVal));
-      widget.onChanged(_outfit);
-      _toastKey(newVal ? 'result.bannedToast' : 'result.allowedAgain');
-    } catch (e) {
-      _toastKey('result.failed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final newVal = await _run('result.failed', () => outfitsServiceOf(context)
+        .setBlacklist(_outfit.id, blacklisted: !_outfit.isBlacklisted));
+    if (newVal == null || !mounted) return;
+    setState(() => _outfit = _withBlacklist(_outfit, newVal));
+    widget.onChanged(_outfit);
+    _toastKey(newVal ? 'result.bannedToast' : 'result.allowedAgain');
   }
 
   /// Ask for an extra instruction (pose, angle, setting…) and re-render at the
@@ -333,21 +275,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       ),
     );
     if (detail == null || detail.isEmpty || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context).regenerate(
-          _outfit.id, tier: _outfit.modelTier, addDetail: detail);
-      if (!mounted) return;
-      setState(() {
-        _outfit = updated;
-        _wornToday = updated.wornToday;
-      });
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.regenerateFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _runUpdating('result.regenerateFailed',
+        () => outfitsServiceOf(context).regenerate(
+            _outfit.id, tier: _outfit.modelTier, addDetail: detail));
   }
 
   Future<void> _addToAgenda() async {
@@ -363,14 +293,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     final day = '${picked.year.toString().padLeft(4, '0')}-'
         '${picked.month.toString().padLeft(2, '0')}-'
         '${picked.day.toString().padLeft(2, '0')}';
-    setState(() => _busy = true);
-    try {
+    final ok = await _run('result.agendaFailed', () async {
       await agendaServiceOf(context).create(day: day, outfitId: _outfit.id);
-      if (mounted) _toast('${tr(context, 'result.addedAgenda')} $day ✓');
-    } catch (e) {
-      _toastKey('result.agendaFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      return true;
+    });
+    if (ok == true && mounted) {
+      _toast('${tr(context, 'result.addedAgenda')} $day ✓');
     }
   }
 
@@ -381,18 +309,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       _toastKey('result.needOneCloth');
       return;
     }
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context)
-          .replaceClothes(_outfit.id, remaining);
-      if (!mounted) return;
-      setState(() => _outfit = updated);
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.removeFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _runUpdating('result.removeFailed', () => outfitsServiceOf(context)
+        .replaceClothes(_outfit.id, remaining));
   }
 
   Future<void> _editClothes() async {
@@ -407,17 +325,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       ),
     );
     if (picked == null || picked.isEmpty) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await svc.replaceClothes(_outfit.id, picked.toList());
-      if (!mounted) return;
-      setState(() => _outfit = updated);
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.regenerateFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _runUpdating('result.regenerateFailed',
+        () => svc.replaceClothes(_outfit.id, picked.toList()));
   }
 
   /// Swap the person the outfit is rendered on (or drop the model) and
@@ -470,24 +379,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       ),
     );
     if (choice == null || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await outfitsServiceOf(context).replaceModel(
-        _outfit.id,
-        modelId: choice.modelId,
-        randomModel: choice.random,
-      );
-      if (!mounted) return;
-      setState(() {
-        _outfit = updated;
-        _wornToday = updated.wornToday;
-      });
-      widget.onChanged(updated);
-    } catch (e) {
-      _toastKey('result.changeModelFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _runUpdating('result.changeModelFailed',
+        () => outfitsServiceOf(context).replaceModel(
+              _outfit.id,
+              modelId: choice.modelId,
+              randomModel: choice.random,
+            ));
   }
 
   Future<void> _deleteOutfit() async {
@@ -520,21 +417,18 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     }
   }
   Future<void> _report() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
+    final ok = await _run('result.reportFailed', () async {
       await outfitsServiceOf(context).report(
         _outfit.id,
         message: _outfit.status == 'failed'
             ? 'Generation failed at tier ${_outfit.modelTier}: ${_outfit.error}'
             : 'User reported poor result at tier ${_outfit.modelTier}.',
       );
+      return true;
+    });
+    if (ok == true && mounted) {
       setState(() => _reported = true);
       _toastKey('result.reportedThanks');
-    } catch (e) {
-      _toastKey('result.reportFailed', e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
