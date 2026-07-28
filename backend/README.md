@@ -31,10 +31,31 @@ security-relevant variables are set properly:
 | `CLOTHESAPP_ORIGINAL_MAX_PX` | `2000` | optional |
 
 ```bash
-export CLOTHESAPP_ENV=prod
-export CLOTHESAPP_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-export CLOTHESAPP_CORS="https://app.example.com"
+cp .env.example .env
+python -c 'import secrets; print(secrets.token_urlsafe(48))'   # paste into .env
+./run-prod.sh
 ```
+
+`run-prod.sh` differs from `run.sh` in three ways that matter: no `--reload`,
+it binds `127.0.0.1` rather than every interface, and it runs a single worker.
+The single worker is deliberate — the rate limiter counts in process memory and
+generation runs as an in-process background task, so a second worker would
+double every quota and lose track of running jobs.
+
+### Before exposing it to the internet
+
+The server speaks plain HTTP and has no TLS of its own: run it behind a
+reverse proxy that terminates HTTPS (Caddy needs three lines), or every login,
+every JWT and every photo travels in clear.
+
+Two things are still open at the time of writing:
+
+* `/images`, `/generated` and `/thumb` are unauthenticated, and roughly a
+  quarter of the stored paths are guessable (`/images/3/front_0.jpg`, with a
+  sequential cloth id). Anyone who can reach the port can enumerate the
+  wardrobe. Fine on a LAN, not fine on a public address.
+* `/auth/login` and `/auth/signup` have no rate limit, so passwords can be
+  brute-forced at whatever rate the network allows.
 
 ## Connecting from the Flutter app
 
