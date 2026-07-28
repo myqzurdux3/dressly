@@ -157,6 +157,39 @@ void main() {
     });
   });
 
+  group('Cloth.fromJson defaults', () {
+    Cloth parse(Map<String, dynamic> extra) => Cloth.fromJson({
+          'id': 1, 'user_id': 1, 'name': 'x', 'brand': '', 'cut': 'normal',
+          'category': 'tshirt', 'custom_tags': <String>[], 'colors': <dynamic>[],
+          'images': <dynamic>[], ...extra,
+        });
+
+    test('an unrated cloth scores 0, not 1', () {
+      expect(parse(const {}).score, 0);
+      expect(parse(const {'score': 4}).score, 4);
+    });
+
+    test('a never-worn cloth has no last_worn_at', () {
+      expect(parse(const {}).lastWornAt, isNull);
+      expect(parse(const {'last_worn_at': '2026-01-02'}).lastWornAt, '2026-01-02');
+    });
+
+    test('favourite and exclude default to false', () {
+      expect(parse(const {}).isFavorite, isFalse);
+      expect(parse(const {}).excludeFromAlgo, isFalse);
+    });
+  });
+
+  group('outfitSlots for single-slot categories', () {
+    test('socks, underwear and bags each occupy their own slot', () {
+      // Without this, two bags or two pairs of socks could enter one outfit.
+      for (final c in ['socks', 'underwear', 'bag']) {
+        expect(outfitCategoriesConflict(c, c), isTrue, reason: '$c vs itself');
+      }
+      expect(outfitCategoriesConflict('socks', 'bag'), isFalse);
+    });
+  });
+
   group('detectBrandInName', () {
     test('recognises a known brand as a whole word (case-insensitive)', () {
       expect(detectBrandInName('nike black hoodie'), 'Nike');
@@ -166,7 +199,20 @@ void main() {
       expect(detectBrandInName('the north face jacket'), 'The North Face');
     });
     test('does not false-match a substring inside another word', () {
-      expect(detectBrandInName('cheap grey tee'), isNull); // "gap" not matched
+      // These genuinely contain a brand as a substring — "legapants" holds
+      // "gap", "kappaish" holds "kappa". The previous example ("cheap grey
+      // tee") contained no brand at all, so it passed whether matching was
+      // whole-word or substring and proved nothing.
+      expect(detectBrandInName('legapants'), isNull);
+      expect(detectBrandInName('kappaish top'), isNull);
+      // ...while the same brands as standalone words still match.
+      expect(detectBrandInName('vintage gap'), 'Gap');
+      expect(detectBrandInName('kappa top'), 'Kappa');
+    });
+
+    test('an empty or blank name yields null', () {
+      expect(detectBrandInName(''), isNull);
+      expect(detectBrandInName('   '), isNull);
     });
     test('falls back to the user\'s own brands', () {
       expect(detectBrandInName('Acme raincoat', extra: ['Acme']), 'Acme');

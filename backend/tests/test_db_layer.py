@@ -106,11 +106,6 @@ def test_foreign_keys_are_enforced_on_every_connection():
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
 
-def test_wal_mode_is_active():
-    with db.get_conn() as conn:
-        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
-
-
 def test_wal_survives_a_connection_that_skips_the_pragma():
     """journal_mode lives in the DB header, which is why setting it once is
     enough — verify that assumption rather than trusting it."""

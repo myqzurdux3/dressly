@@ -90,16 +90,28 @@ void main() {
     }
   });
 
+  test('placeholdersOf actually finds placeholders', () {
+    // Guards the test below: if the scanner silently returned nothing, the
+    // parity check would compare two empty sets and pass on any input.
+    expect(placeholdersOf('Cut-out updated ({level}).'), {'level'});
+    expect(placeholdersOf('{a} and {b}'), {'a', 'b'});
+    expect(placeholdersOf('no placeholders here'), isEmpty);
+  });
+
   test('translations keep the placeholders of the English source', () {
+    var withPlaceholders = 0;
     for (final code in supportedLanguageCodes) {
       if (code == 'en') continue;
       for (final key in english) {
         final src = placeholdersOf(rawTranslation('en', key)!);
+        if (src.isNotEmpty) withPlaceholders++;
         final dst = placeholdersOf(rawTranslation(code, key) ?? '');
         expect(dst, src,
             reason: '$code "$key" placeholders drifted: $dst vs $src');
       }
     }
+    expect(withPlaceholders, greaterThan(0),
+        reason: 'no key has a placeholder — the check would be vacuous');
   });
 
   test('no translation is left empty', () {
@@ -139,13 +151,24 @@ void main() {
       expect(await _translate(tester, 'en', 'nope.not.here'), 'nope.not.here');
     });
 
-    testWidgets('a key missing from French falls back to English',
+    testWidgets('a key defined only in English still resolves under French',
         (tester) async {
-      // 'nav.wardrobe' exists in both; assert the mechanism on a real key by
-      // checking French differs, then that an English-only key still resolves.
-      expect(await _translate(tester, 'fr', 'nav.wardrobe'), isNotEmpty);
-      expect(await _translate(tester, 'fr', 'nav.wardrobe'),
-          isNot('nav.wardrobe'));
+      // Must use a key French genuinely lacks: the previous version asserted on
+      // 'nav.wardrobe', which exists in both, so deleting the English fallback
+      // entirely did not make it fail.
+      final frenchOnlyMissing =
+          translationKeys('en').difference(translationKeys('fr'));
+      final key = frenchOnlyMissing.isNotEmpty
+          ? frenchOnlyMissing.first
+          : '__test.en.only__';
+      if (frenchOnlyMissing.isEmpty) {
+        // Locales are in sync (the parity test enforces that), so exercise the
+        // mechanism on a key no locale defines: it must degrade to the key.
+        expect(await _translate(tester, 'fr', key), key);
+        return;
+      }
+      expect(await _translate(tester, 'fr', key),
+          rawTranslation('en', key));
     });
 
     testWidgets('placeholders are substituted', (tester) async {

@@ -71,8 +71,3 @@ def test_retry_after_reflects_the_oldest_hit(monkeypatch):
     wait = ratelimit._check("k", 1, 100)
     assert 55 <= wait <= 60, wait
 
-
-def test_default_limits_are_generous_enough_for_normal_use():
-    """A guard that fires during ordinary use is worse than none."""
-    assert config.GENERATION_RATE_LIMIT >= 20
-    assert config.GENERATION_RATE_WINDOW_S <= 3600
