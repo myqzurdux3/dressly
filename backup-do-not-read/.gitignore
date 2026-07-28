@@ -1,0 +1,5 @@
+# Everything in this directory is user data (clothes, models, generated
+# outfits, SQLite DB + WAL files). Never track, never `git clean`.
+*
+!.gitignore
+!.README.md

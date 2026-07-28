@@ -1,0 +1,357 @@
+import logging
+import sqlite3
+from contextlib import contextmanager
+
+from config import DB_PATH
+
+log = logging.getLogger(__name__)
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    email         TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    is_admin      INTEGER NOT NULL DEFAULT 0,
+    outfits_generated INTEGER NOT NULL DEFAULT 0,  -- lifetime counter, never decreases
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS clothes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    brand       TEXT NOT NULL DEFAULT '',
+    cut         TEXT NOT NULL DEFAULT '',
+    category    TEXT NOT NULL DEFAULT '',
+    custom_tags TEXT NOT NULL DEFAULT '[]',
+    score       INTEGER NOT NULL DEFAULT 0,   -- 0 = unrated, 1..5 = user rating
+    last_worn_at TEXT,                         -- NULL = never worn; else 'YYYY-MM-DD'
+    is_favorite INTEGER NOT NULL DEFAULT 0,    -- favorite clothes (≠ favorite outfits)
+    exclude_from_algo INTEGER NOT NULL DEFAULT 0, -- skip this cloth in generation algorithms
+    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cloth_wears (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL,
+    cloth_id  INTEGER NOT NULL REFERENCES clothes(id) ON DELETE CASCADE,
+    day       TEXT NOT NULL,                   -- 'YYYY-MM-DD'
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(cloth_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS cloth_images (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    cloth_id      INTEGER NOT NULL REFERENCES clothes(id) ON DELETE CASCADE,
+    role          TEXT NOT NULL,          -- 'front' | 'back' | 'extra'
+    original_path TEXT NOT NULL,
+    cutout_path   TEXT NOT NULL,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    bg_accepted   TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'accepted' | 'rejected'
+    bg_tolerance  TEXT NOT NULL DEFAULT 'medium',   -- 'low' | 'medium' | 'high' removal strength
+    enhanced_path TEXT,                    -- pending enhanced candidate (accept/reject)
+    enhance_status TEXT,                   -- NULL | 'processing' | 'ready' | 'failed'
+    enhance_method TEXT NOT NULL DEFAULT 'none',  -- applied: 'none' | 'auto' | 'ai'
+    enhance_pending_method TEXT,           -- method of the pending candidate
+    enhance_tier TEXT                      -- AI tier of the pending candidate
+);
+
+CREATE TABLE IF NOT EXISTS cloth_colors (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    cloth_id  INTEGER NOT NULL REFERENCES clothes(id) ON DELETE CASCADE,
+    color     TEXT NOT NULL,
+    dominance TEXT NOT NULL              -- 'full' | 'part' | 'little'
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,         -- who reported it
+    cloth_id   INTEGER NOT NULL,
+    image_id   INTEGER NOT NULL,
+    message    TEXT NOT NULL,
+    resolved   INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS models (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    gender     TEXT NOT NULL DEFAULT '',   -- '' unknown | 'male' | 'female'
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS model_images (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id      INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    role          TEXT NOT NULL,          -- 'front' | 'back'
+    original_path TEXT NOT NULL,
+    cutout_path   TEXT NOT NULL,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    bg_accepted   TEXT NOT NULL DEFAULT 'pending'
+);
+
+CREATE TABLE IF NOT EXISTS outfits (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    model_id           INTEGER REFERENCES models(id) ON DELETE SET NULL,
+    cloth_ids          TEXT NOT NULL DEFAULT '[]',   -- JSON array
+    prompt             TEXT NOT NULL DEFAULT '',
+    generated_path     TEXT NOT NULL DEFAULT '',
+    status             TEXT NOT NULL DEFAULT 'done',  -- 'done' | 'failed'
+    is_mock            INTEGER NOT NULL DEFAULT 0,
+    model_tier         TEXT NOT NULL DEFAULT 'flex',  -- 'flex' | 'pro' | 'max'
+    model_slug         TEXT NOT NULL DEFAULT '',
+    view               TEXT NOT NULL DEFAULT 'front', -- 'front' | 'back'
+    linked_id          INTEGER,                       -- paired opposite-view outfit
+    is_favorite        INTEGER NOT NULL DEFAULT 0,
+    describe_clothes   INTEGER NOT NULL DEFAULT 0,     -- add item names/types to the prompt
+    image_mode         TEXT NOT NULL DEFAULT 'collage', -- 'collage' | 'separate' cloth reference images
+    render_cloth_ids   TEXT NOT NULL DEFAULT '[]',      -- JSON subset actually rendered ([] = all)
+    error              TEXT NOT NULL DEFAULT '',
+    kind               TEXT NOT NULL DEFAULT 'ai',       -- 'ai' (generated) | 'manual' (non-AI builder)
+    layout             TEXT NOT NULL DEFAULT '',         -- JSON builder layout (bg + placed items); manual only
+    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS outfit_blacklist (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    combo      TEXT NOT NULL,                 -- canonical sorted cloth-id set, e.g. "3,7,12"
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, combo)
+);
+
+CREATE TABLE IF NOT EXISTS agenda (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day        TEXT NOT NULL,                 -- 'YYYY-MM-DD' the outfit is planned for
+    outfit_id  INTEGER REFERENCES outfits(id) ON DELETE SET NULL,
+    title      TEXT NOT NULL DEFAULT '',      -- optional label, e.g. "Dinner", "Work"
+    note       TEXT NOT NULL DEFAULT '',
+    worn       INTEGER NOT NULL DEFAULT 0,    -- 1 once the user confirms they wore it
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS outfit_reports (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    outfit_id  INTEGER NOT NULL REFERENCES outfits(id) ON DELETE CASCADE,
+    tier       TEXT NOT NULL,
+    slug       TEXT NOT NULL DEFAULT '',
+    message    TEXT NOT NULL,
+    resolved   INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_clothes_user ON clothes(user_id);
+CREATE INDEX IF NOT EXISTS idx_images_cloth ON cloth_images(cloth_id);
+CREATE INDEX IF NOT EXISTS idx_colors_cloth ON cloth_colors(cloth_id);
+CREATE INDEX IF NOT EXISTS idx_notifs_unresolved ON notifications(resolved);
+CREATE INDEX IF NOT EXISTS idx_models_user ON models(user_id);
+CREATE INDEX IF NOT EXISTS idx_outfits_user ON outfits(user_id);
+CREATE INDEX IF NOT EXISTS idx_outfits_fav ON outfits(user_id, is_favorite);
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER,               -- null for anonymous / pre-auth events
+    email      TEXT,
+    action     TEXT NOT NULL,         -- e.g. 'auth.login', 'cloth.create'
+    detail     TEXT NOT NULL DEFAULT '',
+    ip         TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_agenda_user_day ON agenda(user_id, day);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+"""
+
+
+# --- migrations -----------------------------------------------------------
+# Each function bumps the schema by one version, tracked in PRAGMA user_version.
+# Before this, every migration re-ran on every single startup (~40 PRAGMA
+# table_info round-trips) purely to discover there was nothing to do.
+# Append new steps to the end. Never renumber or edit a shipped one.
+MIGRATIONS = []
+
+
+def migration(fn):
+    MIGRATIONS.append(fn)
+    return fn
+
+
+def _run_migrations(conn) -> None:
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    target = len(MIGRATIONS)
+    if current >= target:
+        return
+    for version, fn in enumerate(MIGRATIONS, start=1):
+        if version <= current:
+            continue
+        log.info("applying migration v%s (%s)", version, fn.__name__)
+        fn(conn)
+        # user_version takes no bound parameters; the value is a loop counter.
+        conn.execute(f"PRAGMA user_version = {version}")
+
+
+@migration
+def _migrate(conn) -> None:
+    """Add columns/tables introduced after the initial schema, idempotently."""
+    ucols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    if "is_admin" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    if "outfits_generated" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN outfits_generated INTEGER NOT NULL DEFAULT 0")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(clothes)")}
+    if "score" not in cols:
+        conn.execute("ALTER TABLE clothes ADD COLUMN score INTEGER NOT NULL DEFAULT 0")
+    if "last_worn_at" not in cols:
+        conn.execute("ALTER TABLE clothes ADD COLUMN last_worn_at TEXT")
+    if "is_favorite" not in cols:
+        conn.execute("ALTER TABLE clothes ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+    if "exclude_from_algo" not in cols:
+        conn.execute("ALTER TABLE clothes ADD COLUMN exclude_from_algo INTEGER NOT NULL DEFAULT 0")
+    # Brands are normalised to UPPERCASE; bring any legacy lower/mixed-case rows
+    # into line so they dedupe with newly-entered ones. Idempotent.
+    conn.execute("UPDATE clothes SET brand = UPPER(brand) "
+                 "WHERE brand IS NOT NULL AND brand <> UPPER(brand)")
+    # Cloth names are normalised to lowercase. Idempotent.
+    conn.execute("UPDATE clothes SET name = LOWER(name) "
+                 "WHERE name IS NOT NULL AND name <> LOWER(name)")
+    mcols = {r[1] for r in conn.execute("PRAGMA table_info(models)")}
+    if "gender" not in mcols:
+        conn.execute("ALTER TABLE models ADD COLUMN gender TEXT NOT NULL DEFAULT ''")
+    cols_img = {r[1] for r in conn.execute("PRAGMA table_info(cloth_images)")}
+    if "bg_accepted" not in cols_img:
+        conn.execute(
+            "ALTER TABLE cloth_images ADD COLUMN bg_accepted TEXT NOT NULL DEFAULT 'pending'"
+        )
+    if "enhanced_path" not in cols_img:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhanced_path TEXT")
+    if "enhance_status" not in cols_img:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_status TEXT")
+    if "enhance_method" not in cols_img:
+        conn.execute(
+            "ALTER TABLE cloth_images ADD COLUMN enhance_method TEXT NOT NULL DEFAULT 'none'"
+        )
+    if "enhance_pending_method" not in cols_img:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_pending_method TEXT")
+    if "enhance_tier" not in cols_img:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_tier TEXT")
+    if "bg_tolerance" not in cols_img:
+        conn.execute(
+            "ALTER TABLE cloth_images ADD COLUMN bg_tolerance TEXT NOT NULL DEFAULT 'medium'"
+        )
+    ocols = {r[1] for r in conn.execute("PRAGMA table_info(outfits)")}
+    if "model_tier" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN model_tier TEXT NOT NULL DEFAULT 'flex'")
+    if "model_slug" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN model_slug TEXT NOT NULL DEFAULT ''")
+    if "view" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN view TEXT NOT NULL DEFAULT 'front'")
+    if "is_favorite" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+    if "error" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN error TEXT NOT NULL DEFAULT ''")
+    if "linked_id" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN linked_id INTEGER")
+    if "describe_clothes" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN describe_clothes INTEGER NOT NULL DEFAULT 0")
+    if "image_mode" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN image_mode TEXT NOT NULL DEFAULT 'collage'")
+    if "render_cloth_ids" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN render_cloth_ids TEXT NOT NULL DEFAULT '[]'")
+    if "kind" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN kind TEXT NOT NULL DEFAULT 'ai'")
+    if "layout" not in ocols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN layout TEXT NOT NULL DEFAULT ''")
+
+
+@migration
+def _indexes_for_hot_lookups(conn) -> None:
+    """Indexes for joins/filters that were doing full table scans.
+
+    Every one of these backs a query the app issues on a normal screen load:
+    the agenda "worn today" lookup, the model image fetch during generation,
+    the per-user wear counts on the profile, and the two report queues.
+    """
+    for stmt in (
+        "CREATE INDEX IF NOT EXISTS idx_model_images_model ON model_images(model_id)",
+        "CREATE INDEX IF NOT EXISTS idx_agenda_outfit ON agenda(outfit_id)",
+        "CREATE INDEX IF NOT EXISTS idx_cloth_wears_user ON cloth_wears(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_cloth_wears_cloth ON cloth_wears(cloth_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_reports_outfit ON outfit_reports(outfit_id)",
+        "CREATE INDEX IF NOT EXISTS idx_reports_unresolved ON outfit_reports(resolved)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_outfits_user_status ON outfits(user_id, status)",
+    ):
+        conn.execute(stmt)
+
+
+def reset_orphan_generations(conn) -> int:
+    """Fail any outfit left mid-generation by a previous process.
+
+    Generation runs as an in-process background task, so nothing survives a
+    restart: a row still marked 'processing' at startup has no worker behind it
+    and would otherwise spin in the app's poll loop forever.
+    """
+    cur = conn.execute(
+        "UPDATE outfits SET status = 'failed', "
+        "error = 'Generation was interrupted by a server restart' "
+        "WHERE status = 'processing'"
+    )
+    if cur.rowcount:
+        log.warning("marked %s interrupted generation(s) as failed", cur.rowcount)
+    return cur.rowcount
+
+
+def create_tables() -> None:
+    with get_conn() as conn:
+        conn.executescript(SCHEMA)
+        _run_migrations(conn)
+        reset_orphan_generations(conn)
+    _log_state()
+
+
+def _log_state() -> None:
+    """Print the resolved DB path + row counts at startup so it's obvious
+    where data lives and that restarts preserve it (not wipe it)."""
+    try:
+        with get_conn() as conn:
+            counts = {}
+            for t in ("users", "clothes", "cloth_images", "models", "model_images", "outfits"):
+                counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        log.info("persisted at %s", DB_PATH)
+        log.info("row counts: %s", counts)
+    except Exception as e:  # pragma: no cover
+        log.warning("state log failed: %s", e)
+
+
+# journal_mode is stored in the DB header, so it survives every connection and
+# every restart — setting it per request cost a file write for no reason. The
+# set is keyed by path because tests repoint DB_PATH at a fresh file.
+_WAL_SET: set = set()
+
+
+@contextmanager
+def get_conn():
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.row_factory = sqlite3.Row
+    # These two are per-connection state and must be re-applied every time, but
+    # they are pure memory flags — no I/O. NORMAL sync is the safe+fast pair.
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    if DB_PATH not in _WAL_SET:
+        # Durable across crashes and persisted in the header, so the uvicorn
+        # reloader's fork keeps working.
+        conn.execute("PRAGMA journal_mode = WAL")
+        _WAL_SET.add(DB_PATH)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

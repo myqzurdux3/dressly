@@ -1,0 +1,34 @@
+# --- secrets -------------------------------------------------------------
+# note.txt holds the BFL API key in plain text. The file is kept on disk on
+# purpose (dev convenience) but must never enter the history.
+note.txt
+clothesapp/note.txt
+.env
+*.env
+
+# --- user data (555 MB of photos + the SQLite DB) ------------------------
+backend/data/
+pictures/
+
+# --- python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# --- flutter / dart ------------------------------------------------------
+clothesapp/build/
+clothesapp/.dart_tool/
+clothesapp/.flutter-plugins
+clothesapp/.flutter-plugins-dependencies
+clothesapp/android/local.properties
+clothesapp/ios/Flutter/Generated.xcconfig
+clothesapp/ios/Flutter/flutter_export_environment.sh
+clothesapp/.idea/
+clothesapp/*.iml
+clothesapp/android/*.iml
+
+# --- os / editor ---------------------------------------------------------
+.DS_Store
+*.swp

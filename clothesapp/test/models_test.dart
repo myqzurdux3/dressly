@@ -1,0 +1,259 @@
+import 'package:clothesapp/models/agenda.dart';
+import 'package:clothesapp/models/cloth.dart';
+import 'package:clothesapp/models/outfit.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('Cloth.fromJson', () {
+    test('parses fields incl. last_worn_at and images', () {
+      final c = Cloth.fromJson({
+        'id': 1,
+        'user_id': 7,
+        'name': 'Tee',
+        'brand': 'Acme',
+        'cut': 'slim',
+        'category': 'tshirt',
+        'custom_tags': ['a', 'b'],
+        'score': 4,
+        'last_worn_at': '2026-01-02',
+        'colors': [
+          {'id': 1, 'color': 'Red', 'dominance': 'full'}
+        ],
+        'images': [
+          {
+            'id': 10,
+            'role': 'front',
+            'sort_order': 0,
+            'bg_accepted': 'accepted',
+            'original_url': '/images/1/front.png',
+            'cutout_url': '/images/1/front_cutout.png',
+          }
+        ],
+      });
+      expect(c.id, 1);
+      expect(c.lastWornAt, '2026-01-02');
+      expect(c.score, 4);
+      expect(c.customTags, ['a', 'b']);
+      expect(c.displayImageUrl, '/images/1/front_cutout.png');
+    });
+
+    test('rejected image falls back to original for display', () {
+      final img = ClothImage.fromJson({
+        'id': 1,
+        'role': 'front',
+        'sort_order': 0,
+        'bg_accepted': 'rejected',
+        'original_url': '/o.png',
+        'cutout_url': '/c.png',
+      });
+      expect(img.displayUrl, '/o.png');
+    });
+
+    test('parses enhancement fields with sensible defaults', () {
+      final ai = ClothImage.fromJson({
+        'id': 2,
+        'role': 'front',
+        'sort_order': 0,
+        'bg_accepted': 'accepted',
+        'original_url': '/o.png',
+        'cutout_url': '/c.png',
+        'enhanced_url': '/e.png',
+        'enhance_status': 'ready',
+        'enhance_method': 'ai',
+        'enhance_pending_method': 'ai',
+      });
+      expect(ai.enhanceMethod, 'ai');
+      expect(ai.enhanceStatus, 'ready');
+      expect(ai.enhancedUrl, '/e.png');
+
+      final plain = ClothImage.fromJson({
+        'id': 3,
+        'role': 'back',
+        'sort_order': 1,
+        'bg_accepted': 'pending',
+        'original_url': '/o.png',
+        'cutout_url': '/c.png',
+      });
+      expect(plain.enhanceMethod, 'none');
+      expect(plain.enhanceStatus, isNull);
+    });
+  });
+
+  group('Outfit', () {
+    test('parses and preserves cloth order', () {
+      final o = Outfit.fromJson({
+        'id': 5,
+        'model_id': null,
+        'model_name': null,
+        'cloth_ids': [3, 1],
+        'cloths': [
+          {'id': 3, 'name': 'Jeans', 'brand': ''},
+          {'id': 1, 'name': 'Tee', 'brand': ''},
+        ],
+        'prompt': '',
+        'generated_url': '/generated/5.png',
+        'status': 'done',
+        'is_mock': true,
+        'model_tier': 'pro',
+        'view': 'front',
+        'is_favorite': false,
+      });
+      expect(o.clothIds, [3, 1]);
+      expect(o.cloths.map((c) => c.name).toList(), ['Jeans', 'Tee']);
+      expect(o.tierLabel, 'Pro');
+    });
+
+    test('outfitImageUrl adds a cache-busting token', () {
+      final o = Outfit.fromJson({
+        'id': 5,
+        'cloth_ids': [],
+        'cloths': [],
+        'generated_url': '/generated/5.png',
+        'status': 'done',
+        'model_tier': 'flux',
+        'view': 'front',
+      });
+      final url = outfitImageUrl(o);
+      expect(url.contains('b=5-flux-front-done'), isTrue);
+    });
+
+    test('withLinkedId links the front to its back without touching the rest', () {
+      final front = Outfit.fromJson({
+        'id': 5, 'cloth_ids': [1], 'cloths': [], 'generated_url': '/g/5.png',
+        'status': 'done', 'model_tier': 'pro', 'view': 'front',
+        'is_favorite': true, 'linked_id': null,
+      });
+      final linked = front.withLinkedId(9);
+      expect(linked.linkedId, 9);
+      expect(front.linkedId, isNull); // original untouched
+      expect(linked.id, 5);
+      expect(linked.view, 'front');
+      expect(linked.isFavorite, isTrue);
+    });
+  });
+
+  group('AgendaEntry.fromJson', () {
+    test('hydrates embedded outfit', () {
+      final e = AgendaEntry.fromJson({
+        'id': 1,
+        'day': '2026-07-20',
+        'outfit_id': 5,
+        'title': 'Work',
+        'note': '',
+        'worn': true,
+        'outfit': {
+          'id': 5,
+          'cloth_ids': [],
+          'cloths': [],
+          'generated_url': '/generated/5.png',
+          'status': 'done',
+          'model_tier': 'flux',
+          'view': 'front',
+        },
+      });
+      expect(e.worn, isTrue);
+      expect(e.outfit, isNotNull);
+      expect(e.outfit!.id, 5);
+    });
+  });
+
+  group('detectBrandInName', () {
+    test('recognises a known brand as a whole word (case-insensitive)', () {
+      expect(detectBrandInName('nike black hoodie'), 'Nike');
+      expect(detectBrandInName('My Adidas joggers'), 'Adidas');
+    });
+    test('matches multi-word brands by substring', () {
+      expect(detectBrandInName('the north face jacket'), 'The North Face');
+    });
+    test('does not false-match a substring inside another word', () {
+      expect(detectBrandInName('cheap grey tee'), isNull); // "gap" not matched
+    });
+    test('falls back to the user\'s own brands', () {
+      expect(detectBrandInName('Acme raincoat', extra: ['Acme']), 'Acme');
+    });
+    test('returns null when nothing matches', () {
+      expect(detectBrandInName('plain white shirt'), isNull);
+    });
+  });
+
+  group('detectCategoryInName', () {
+    test('recognises a t-shirt however it is spelled', () {
+      expect(detectCategoryInName('black t shirt'), 'tshirt');
+      expect(detectCategoryInName('Nike T-Shirt'), 'tshirt');
+      expect(detectCategoryInName('plain tshirt'), 'tshirt');
+      expect(detectCategoryInName('white tee'), 'tshirt');
+    });
+    test('more specific types win over the generic "shirt"', () {
+      expect(detectCategoryInName('navy polo shirt'), 'polo');
+      expect(detectCategoryInName('grey tank top'), 'tank-top');
+      expect(detectCategoryInName('blue dress shirt'), 'shirt');
+      // "short"/"long sleeve" descriptors must not beat the actual "shirt".
+      expect(detectCategoryInName('short sleeve shirt'), 'shirt');
+      expect(detectCategoryInName('blue short'), 'shorts');
+    });
+    test('distinguishes sweatpants (jogging) from sweatshirt', () {
+      expect(detectCategoryInName('grey sweatpants'), 'jogging');
+      expect(detectCategoryInName('Nike joggers'), 'jogging');
+      expect(detectCategoryInName('black sweatshirt'), 'sweatshirt');
+      expect(detectCategoryInName('cosy sweat'), 'sweatshirt');
+    });
+    test('maps common synonyms and French terms to a valid category', () {
+      expect(detectCategoryInName('white sneakers'), 'shoes');
+      expect(detectCategoryInName('chaussures de sport'), 'shoes');
+      expect(detectCategoryInName('sweat à capuche'), 'hoodie');
+      expect(detectCategoryInName('sac à dos'), 'bag');
+      expect(detectCategoryInName('casquette rouge'), 'cap');
+      expect(detectCategoryInName('blue jean'), 'jeans');
+    });
+    test('every detected category is a valid dropdown option', () {
+      for (final name in ['t shirt', 'polo', 'hoodie', 'jean', 'short',
+        'pantalon', 'veste', 'sneakers', 'cap', 'bonnet', 'sac', 'socks',
+        'boxer', 'chemise']) {
+        final cat = detectCategoryInName(name);
+        expect(cat, isNotNull, reason: 'no match for "$name"');
+        expect(kCategoryOptions, contains(cat), reason: '"$name" -> $cat');
+      }
+    });
+    test('returns null when no garment type is present', () {
+      expect(detectCategoryInName('my favourite thing'), isNull);
+      expect(detectCategoryInName(''), isNull);
+    });
+  });
+
+  group('outfit layering slots', () {
+    test('base, mid and outer layers can coexist', () {
+      expect(outfitCategoriesConflict('tshirt', 'hoodie'), isFalse);
+      expect(outfitCategoriesConflict('tshirt', 'jacket'), isFalse);
+      expect(outfitCategoriesConflict('hoodie', 'jacket'), isFalse);
+    });
+    test('two of the same layer still conflict', () {
+      expect(outfitCategoriesConflict('tshirt', 'polo'), isTrue); // two base tops
+      expect(outfitCategoriesConflict('hoodie', 'sweatshirt'), isTrue); // two mids
+      expect(outfitCategoriesConflict('jacket', 'coat'), isTrue); // two outers
+    });
+    test('a dress fills the whole upper + lower body', () {
+      expect(outfitCategoriesConflict('dress', 'tshirt'), isTrue);
+      expect(outfitCategoriesConflict('dress', 'hoodie'), isTrue);
+      expect(outfitCategoriesConflict('dress', 'jeans'), isTrue);
+    });
+    test('isUpperBody flags tops/mids/outers only', () {
+      expect(isUpperBody('tshirt'), isTrue);
+      expect(isUpperBody('hoodie'), isTrue);
+      expect(isUpperBody('jacket'), isTrue);
+      expect(isUpperBody('jeans'), isFalse);
+      expect(isUpperBody('socks'), isFalse);
+    });
+  });
+
+  group('outfitCategoriesConflict (manual picker blocks same slot)', () {
+    test('two bottoms conflict (jeans vs joggers vs trousers)', () {
+      expect(outfitCategoriesConflict('jeans', 'jogging'), isTrue);
+      expect(outfitCategoriesConflict('jeans', 'trousers'), isTrue);
+      expect(outfitCategoriesConflict('jogging', 'shorts'), isTrue);
+    });
+    test('different slots do not conflict', () {
+      expect(outfitCategoriesConflict('tshirt', 'jeans'), isFalse);
+      expect(outfitCategoriesConflict('hat', 'socks'), isFalse);
+    });
+  });
+}

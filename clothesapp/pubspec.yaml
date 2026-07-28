@@ -1,0 +1,40 @@
+name: clothesapp
+description: "Some nice app to make some good outfits"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^1.2.0
+  file_picker: ^8.0.0
+  shared_preferences: ^2.2.2
+  provider: ^6.1.2
+  cached_network_image: ^3.4.1
+  image_picker: ^1.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.1
+
+# App launcher icon. Regenerate after changing the images with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon_foreground.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.jpg
