@@ -86,10 +86,32 @@ if [[ -f certs/server.crt && -f certs/server.key ]]; then
     echo "     self-signed — the app must pin its fingerprint, see"
     echo "     scripts/make_cert.py and apiCertSha256 in api_config.dart"
   fi
+elif [[ "${CLOTHESAPP_ALLOW_PLAINTEXT:-0}" == "1" ]]; then
+  echo "WARNING: no certificate — serving plain HTTP on $HOST:$PORT." >&2
+  echo "         Logins, tokens and photos travel in clear." >&2
 else
-  echo "WARNING: no certs/server.crt — serving plain HTTP on $HOST:$PORT." >&2
-  echo "         Logins, tokens and photos will travel in clear." >&2
-  echo "         Generate one with: python scripts/make_cert.py" >&2
+  # Refuse rather than quietly downgrade. Falling back to HTTP looks like it
+  # worked, then the app — which speaks HTTPS — fails with an opaque
+  # "handshake error ... wrong version number", pointing nowhere near the cause.
+  cat >&2 <<'EOF'
+No TLS certificate found (certs/server.crt + certs/server.key).
+
+Refusing to start in plain HTTP: the app connects over HTTPS, so it would fail
+with "Handshake error in client (wrong version number)" — an error that says
+nothing about the real problem, which is here.
+
+Generate one:
+
+  python scripts/make_cert.py --host <this server's public IP>
+
+then put the fingerprint it prints into apiCertSha256 in
+clothesapp/lib/config/api_config.dart and rebuild the app.
+
+To run without TLS anyway (local testing only):
+
+  CLOTHESAPP_ALLOW_PLAINTEXT=1 ./run-prod.sh
+EOF
+  exit 1
 fi
 
 exec python -m uvicorn main:app \
