@@ -210,8 +210,8 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     if (img == null || !mounted) return;
     final keepCutout = await showCropDecision(
       context,
-      cutoutUrl: img.cutoutUrl,
-      originalUrl: img.originalUrl,
+      cutoutUrl: img.cutoutPreview,
+      originalUrl: img.originalPreview,
       tolerance: img.bgTolerance,
       // Let the user try Soft/Balanced/Strong right in the crop decision.
       onChangeTolerance: (level) async {
@@ -275,7 +275,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
         }
         if (!mounted) return;
         final choice = await showEnhancePreview(context,
-            currentUrl: img.displayUrl ?? img.originalUrl,
+            currentUrl: img.displayPreviewUrl ?? img.originalPreview,
             enhancedUrl: img.enhancedUrl,
             method: mode,
             nextTier: mode == 'ai' ? img.enhanceNextTier : null);
@@ -545,9 +545,10 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
                               : _existingImages[i].role == 'back'
                                   ? tr(context, 'form.back')
                                   : '${tr(context, 'form.photo')} ${i + 1}',
-                      imageUrl: _existingImages[i].displayUrl == null
+                      // A small strip of previews, not the stored files.
+                      imageUrl: _existingImages[i].thumbnailUrl == null
                           ? null
-                          : imageUrl(_existingImages[i].displayUrl!),
+                          : imageUrl(_existingImages[i].thumbnailUrl!),
                       method: _existingImages[i].enhanceMethod,
                       bgAccepted: _existingImages[i].bgAccepted,
                       busy: _imgBusy,

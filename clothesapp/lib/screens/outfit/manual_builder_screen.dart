@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -11,6 +10,7 @@ import '../../models/cloth.dart';
 import '../../models/outfit.dart';
 import 'algo_sheet.dart';
 import 'cloth_picker_screen.dart';
+import '../../widgets/app_image.dart';
 
 /// What the builder hands back to the Outfits screen when it closes: either a
 /// saved/updated manual outfit, or a request to continue this outfit's clothes
@@ -178,13 +178,17 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   }
 
   String? _cutoutUrl(int id) {
-    final rel = _clothById[id]?.displayImageUrl;
+    // The screen-sized copy: the canvas never shows a garment larger than the
+    // phone, and the stored cut-outs are around a megabyte each.
+    final rel = _clothById[id]?.previewImageUrl;
     return (rel == null || rel.isEmpty) ? null : apiUrl(rel);
   }
 
   void _precache() {
     for (final it in _items) {
-      precacheImage(CachedNetworkImageProvider(it.url), context);
+      // appImageProvider, not a bare CachedNetworkImageProvider: the latter
+      // uses the package's own 200-file cache instead of the app's.
+      precacheImage(appImageProvider(it.url), context);
     }
   }
 
@@ -487,7 +491,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
                     borderRadius: BorderRadius.circular(6))
                 : null,
             child: Image(
-              image: CachedNetworkImageProvider(it.url),
+              image: appImageProvider(it.url),
               fit: BoxFit.contain,
               gaplessPlayback: true,
               filterQuality: FilterQuality.medium,

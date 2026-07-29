@@ -191,6 +191,11 @@ def _build_cloth(row, images, colors) -> dict:
                     im["cutout_path"] if im["bg_accepted"] != "rejected" else im["original_path"],
                     800,
                 ),
+                # The two sides of the keep-cut-out-or-original comparison, at
+                # screen size. Shown as a pair of small panels, so pulling the
+                # stored files for them cost about 2 MB per decision.
+                "original_preview_url": thumb_url_for(im["original_path"], 800),
+                "cutout_preview_url": thumb_url_for(im["cutout_path"], 800),
                 "enhanced_url": public_url_for(im["enhanced_path"])
                 if ("enhanced_path" in im.keys() and im["enhanced_path"]) else "",
                 "enhance_status": im["enhance_status"]

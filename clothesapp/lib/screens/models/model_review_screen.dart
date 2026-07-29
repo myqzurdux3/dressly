@@ -134,8 +134,8 @@ class _ModelImageCard extends StatelessWidget {
                 // Through the cache, at screen size — Image.network kept no
                 // disk copy, so this refetched on every open.
                 child: AppImage(
-                  url: imageUrl(image.displayUrl),
-                  cacheKey: 'mimg-${image.id}-${image.displayUrl}',
+                  url: imageUrl(image.displayPreviewUrl),
+                  cacheKey: 'mimg-${image.id}-${image.displayPreviewUrl}',
                   fit: BoxFit.contain,
                   memWidth: 800,
                 ),

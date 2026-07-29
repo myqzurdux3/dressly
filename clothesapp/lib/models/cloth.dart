@@ -34,6 +34,12 @@ class ClothImage {
   /// Screen-sized copy (800 px) for the detail views. A phone cannot show more,
   /// and this is ~86 KB against ~1 MB for the stored lossless image.
   final String previewUrl;
+
+  /// Screen-sized copies of each side of the keep-cut-out-or-original choice.
+  /// Shown as two small panels, so the stored files were never the right thing
+  /// to fetch for them.
+  final String originalPreviewUrl;
+  final String cutoutPreviewUrl;
   // Enhancement (opt-in): a pending candidate awaiting accept/reject.
   final String enhancedUrl; // '' when none
   final String? enhanceStatus; // null | 'processing' | 'ready' | 'failed'
@@ -52,6 +58,8 @@ class ClothImage {
     required this.cutoutUrl,
     this.thumbUrl = '',
     this.previewUrl = '',
+    this.originalPreviewUrl = '',
+    this.cutoutPreviewUrl = '',
     this.enhancedUrl = '',
     this.enhanceStatus,
     this.enhanceMethod = 'none',
@@ -70,6 +78,8 @@ class ClothImage {
         cutoutUrl: (json['cutout_url'] ?? '') as String,
         thumbUrl: (json['thumb_url'] ?? '') as String,
         previewUrl: (json['preview_url'] ?? '') as String,
+        originalPreviewUrl: (json['original_preview_url'] ?? '') as String,
+        cutoutPreviewUrl: (json['cutout_preview_url'] ?? '') as String,
         enhancedUrl: (json['enhanced_url'] ?? '') as String,
         enhanceStatus: json['enhance_status'] as String?,
         enhanceMethod: (json['enhance_method'] ?? 'none') as String,
@@ -97,6 +107,14 @@ class ClothImage {
   /// minute of blank space.
   String? get displayPreviewUrl =>
       previewUrl.isNotEmpty ? previewUrl : displayUrl;
+
+  /// Screen-sized original, falling back to the stored one.
+  String get originalPreview =>
+      originalPreviewUrl.isNotEmpty ? originalPreviewUrl : originalUrl;
+
+  /// Screen-sized cut-out, falling back to the stored one.
+  String get cutoutPreview =>
+      cutoutPreviewUrl.isNotEmpty ? cutoutPreviewUrl : cutoutUrl;
 }
 
 class Cloth {
@@ -141,6 +159,9 @@ class Cloth {
   /// Grid-sized variant of [displayImageUrl] — what the wardrobe cards should
   /// request, so scrolling does not pull a full-resolution photo per card.
   String? get thumbImageUrl => _frontImage?.thumbnailUrl;
+
+  /// Screen-sized variant, for anything larger than a card.
+  String? get previewImageUrl => _frontImage?.displayPreviewUrl;
 
   /// Copy with individual fields overridden. Lets a screen patch one card
   /// locally after a toggle instead of refetching the whole paged list.

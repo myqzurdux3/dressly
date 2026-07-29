@@ -5,12 +5,18 @@ class ModelImage {
   final String originalUrl;
   final String cutoutUrl;
 
+  /// Server-rendered screen-sized copies; empty falls back to the stored file.
+  final String thumbUrl;
+  final String previewUrl;
+
   ModelImage({
     required this.id,
     required this.role,
     required this.bgAccepted,
     required this.originalUrl,
     required this.cutoutUrl,
+    this.thumbUrl = '',
+    this.previewUrl = '',
   });
 
   /// Rejecting bg-removal falls back to the original photo, evaluated on the
@@ -20,12 +26,21 @@ class ModelImage {
     return cutoutUrl.isNotEmpty ? cutoutUrl : originalUrl;
   }
 
+  /// What a screen should render: the stored file is far larger than any phone
+  /// can show.
+  String? get displayPreviewUrl =>
+      previewUrl.isNotEmpty ? previewUrl : displayUrl;
+
+  String? get thumbnailUrl => thumbUrl.isNotEmpty ? thumbUrl : displayUrl;
+
   factory ModelImage.fromJson(Map<String, dynamic> json) => ModelImage(
         id: json['id'] as int,
         role: (json['role'] ?? 'front') as String,
         bgAccepted: (json['bg_accepted'] ?? 'pending') as String,
         originalUrl: (json['original_url'] ?? '') as String,
         cutoutUrl: (json['cutout_url'] ?? '') as String,
+        thumbUrl: (json['thumb_url'] ?? '') as String,
+        previewUrl: (json['preview_url'] ?? '') as String,
       );
 }
 
