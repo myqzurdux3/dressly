@@ -102,12 +102,21 @@ async def log_requests(request: Request, call_next):
 # `/outfits/...` and `/images/...` routers below. Generated outfit images live
 # under /generated (not /outfits) precisely so the /outfits/{id} JSON route
 # isn't shadowed.
-class _ImmutableStatic(CachedStaticFiles, StaticFiles):
-    """StaticFiles that tags responses as immutable (URLs carry ?v=<mtime>)."""
+class _ImagesStatic(CachedStaticFiles, StaticFiles):
+    """StaticFiles for /images: immutable caching + signature check."""
+
+    sign_root = "images"
 
 
-app.mount("/images", _ImmutableStatic(directory=str(IMAGES_DIR)), name="images")
-app.mount("/generated", _ImmutableStatic(directory=str(OUTFITS_DIR)), name="generated")
+class _GeneratedStatic(CachedStaticFiles, StaticFiles):
+    """Same, for the generated outfit renders."""
+
+    sign_root = "generated"
+
+
+app.mount("/images", _ImagesStatic(directory=str(IMAGES_DIR)), name="images")
+app.mount("/generated", _GeneratedStatic(directory=str(OUTFITS_DIR)),
+          name="generated")
 
 app.include_router(auth_router)
 app.include_router(autocomplete_router)

@@ -99,6 +99,16 @@ GENERATION_RATE_WINDOW_S = int(os.environ.get("CLOTHESAPP_GEN_RATE_WINDOW_S", "3
 ENHANCE_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_ENHANCE_RATE_LIMIT", "40"))
 ENHANCE_RATE_WINDOW_S = int(os.environ.get("CLOTHESAPP_ENHANCE_RATE_WINDOW_S", "3600"))
 
+# Sign-in and sign-up, counted per IP because there is no user yet. Without
+# these, a password can be guessed as fast as the network allows.
+# Two budgets: one on attempts (generous, catches scripted floods) and a
+# tighter one on *failures* (catches a word-list run without punishing someone
+# mistyping their own password).
+AUTH_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_AUTH_RATE_LIMIT", "30"))
+AUTH_RATE_WINDOW_S = int(os.environ.get("CLOTHESAPP_AUTH_RATE_WINDOW_S", "900"))
+AUTH_FAIL_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_AUTH_FAIL_LIMIT", "10"))
+AUTH_FAIL_WINDOW_S = int(os.environ.get("CLOTHESAPP_AUTH_FAIL_WINDOW_S", "900"))
+
 # --- Admin alerting -------------------------------------------------------
 # When a user reports a bad background removal or a bad/failed generation, the
 # event is always stored in the DB (notifications / outfit_reports) AND pushed

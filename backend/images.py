@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 from rembg import remove as rembg_remove
 
+import imagesign
 from config import BLOBS_DIR, IMAGES_DIR, REMBG_MODEL
 
 log = logging.getLogger(__name__)
@@ -474,10 +475,18 @@ def public_url_for(file_path: str) -> str:
     except ValueError:
         # Already relative or outside: treat as-is.
         rel = Path(p.name)
-    url = f"/images/{rel.as_posix()}"
+    rel_posix = rel.as_posix()
+    url = f"/images/{rel_posix}"
+    params = []
     try:
         # Nanosecond mtime so even a same-second rewrite changes the URL.
-        url += f"?v={p.stat().st_mtime_ns}"
+        params.append(f"v={p.stat().st_mtime_ns}")
     except OSError:
         pass  # file missing — serve the bare URL
-    return url
+    # Authorises this exact path for a limited time; empty when signing is off.
+    # The namespace prefix must match what the mount verifies, so that a grant
+    # for /images cannot be replayed against /generated.
+    signed = imagesign.sign_query(f"images/{rel_posix}")
+    if signed:
+        params.append(signed)
+    return url + ("?" + "&".join(params) if params else "")

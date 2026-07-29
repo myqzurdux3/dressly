@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import imagesign
 from config import IMAGES_DIR, OUTFITS_DIR, THUMBS_DIR
 
 router = APIRouter(tags=["images"])
@@ -98,12 +99,18 @@ def _render(src: Path, dst: Path, width: int) -> None:
 
 
 @router.get("/thumb/{root_key}/{width}/{rel_path:path}")
-def thumbnail(root_key: str, width: int, rel_path: str):
+def thumbnail(root_key: str, width: int, rel_path: str,
+              e: str | None = None, s: str | None = None):
     """Serve `rel_path` resized to `width`, generating + caching on first hit.
 
     Sync `def` on purpose: FastAPI runs it in the threadpool, so the PIL resize
     never touches the event loop.
     """
+    # Signed over the source path, so one grant covers the image and all of its
+    # thumbnail widths. 404 rather than 403: an unsigned guess must not confirm
+    # that the path exists.
+    if not imagesign.verify(f"{root_key}/{rel_path}", e, s):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
     if width not in ALLOWED_WIDTHS:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -137,12 +144,19 @@ def thumb_url_for(file_path: str, width: int = 400) -> str:
             rel = p.relative_to(root)
         except ValueError:
             continue
-        url = f"/thumb/{key}/{width}/{rel.as_posix()}"
+        rel_posix = rel.as_posix()
+        url = f"/thumb/{key}/{width}/{rel_posix}"
+        params = []
         try:
-            url += f"?v={p.stat().st_mtime_ns}"
+            params.append(f"v={p.stat().st_mtime_ns}")
         except OSError:
             pass
-        return url
+        # Signed over the SOURCE path, the same string the static mount signs,
+        # so one grant covers an image and its thumbnails.
+        signed = imagesign.sign_query(f"{key}/{rel_posix}")
+        if signed:
+            params.append(signed)
+        return url + ("?" + "&".join(params) if params else "")
     return ""
 
 
@@ -159,7 +173,18 @@ class CachedStaticFiles:
       image at once until it cleared its cache.
     """
 
+    #: URL prefix this mount is served under, used as the signing namespace.
+    sign_root: str = ""
+
     async def get_response(self, path: str, scope):  # pragma: no cover - I/O
+        if imagesign.enabled():
+            expires, signature = imagesign.parse_query(
+                scope.get("query_string", b""))
+            rel = f"{self.sign_root}/{path.lstrip('/')}"
+            if not imagesign.verify(rel, expires, signature):
+                # 404, not 403: an unsigned guess should not confirm that the
+                # path exists.
+                raise StarletteHTTPException(status_code=404)
         try:
             return await super().get_response(path, scope)
         except StarletteHTTPException as e:

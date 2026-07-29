@@ -33,30 +33,71 @@ security-relevant variables are set properly:
 
 ```bash
 cp .env.example .env
-python -c 'import secrets; print(secrets.token_urlsafe(48))'   # paste into .env
+python -c 'import secrets; print(secrets.token_urlsafe(48))'   # -> CLOTHESAPP_SECRET
+python scripts/make_cert.py --host <your-public-ip>            # prints the pin
 ./run-prod.sh
 ```
 
-`run-prod.sh` differs from `run.sh` in three ways that matter: no `--reload`,
-it binds `127.0.0.1` rather than every interface, and it runs a single worker.
-The single worker is deliberate — the rate limiter counts in process memory and
-generation runs as an in-process background task, so a second worker would
-double every quota and lose track of running jobs.
+`run-prod.sh` differs from `run.sh` in that it drops `--reload`, binds
+`0.0.0.0`, runs several workers, and serves HTTPS when `certs/` holds a
+certificate. It refuses to start without a secret.
 
-### Before exposing it to the internet
+### What the two required variables are
 
-The server speaks plain HTTP and has no TLS of its own: run it behind a
-reverse proxy that terminates HTTPS (Caddy needs three lines), or every login,
-every JWT and every photo travels in clear.
+`CLOTHESAPP_SECRET` is the key that signs login tokens — effectively the
+server's master password. Anyone who knows it can mint a token for any account.
+It is not something to invent: any random 32+ byte string works. Keep it secret
+and keep it stable (changing it signs everyone out).
 
-Two things are still open at the time of writing:
+`CLOTHESAPP_CORS` is **not** a secret and must not be a random string. It lists
+the websites allowed to call the API from a browser. It is a browser-only rule,
+so the phone app ignores it; if the app never runs in a browser, any placeholder
+does. Only `*` is refused, which is why it has to be set at all.
 
-* `/images`, `/generated` and `/thumb` are unauthenticated, and roughly a
-  quarter of the stored paths are guessable (`/images/3/front_0.jpg`, with a
-  sequential cloth id). Anyone who can reach the port can enumerate the
-  wardrobe. Fine on a LAN, not fine on a public address.
-* `/auth/login` and `/auth/signup` have no rate limit, so passwords can be
-  brute-forced at whatever rate the network allows.
+### TLS
+
+`scripts/make_cert.py` generates a self-signed certificate and prints its
+SHA-256 fingerprint. Put that fingerprint in `apiCertSha256` in
+`clothesapp/lib/config/api_config.dart`.
+
+The pin is what makes self-signed safe. A self-signed certificate is trusted by
+nothing, so a client either disables verification — worse than plain HTTP,
+because it looks encrypted while accepting anything an attacker presents — or it
+pins, accepting exactly one certificate and nothing else. Pinned, the connection
+cannot be intercepted even by someone holding a certificate from a real
+authority.
+
+Regenerating the certificate changes the pin. Update both together or the app
+stops connecting.
+
+Once a domain name is available, prefer a real certificate (Let's Encrypt behind
+Caddy or nginx) and set `apiCertSha256` back to `''`: ordinary validation then
+applies, with no pin to keep in sync and no browser warnings.
+
+### Workers
+
+`CLOTHESAPP_WORKERS` defaults to 3. Rate-limit counters and generation job
+ownership both live in SQLite, so workers stay consistent with each other — with
+in-memory counters, N workers would have allowed N times the quota, and a
+restarting worker would have failed the renders its siblings were running.
+
+Size it to RAM rather than cores: each worker loads its own rembg model
+(~200 MB).
+
+### Image URL signing
+
+`/images` and `/generated` are unauthenticated mounts, and paths like
+`/images/3/front_0.jpg` are guessable from a sequential cloth id. Outside dev
+every image URL therefore carries an expiring signature covering its path;
+requests without a valid one get a 404 (not a 403 — a 403 would confirm which
+paths exist). Signatures last `CLOTHESAPP_IMAGE_URL_TTL_S`, one week by default,
+which keeps the client's image cache useful.
+
+### Sign-in protection
+
+`/auth/login` and `/auth/signup` are limited per IP: a budget on attempts and a
+tighter one on failures, so a word-list run is cut off while someone mistyping
+their own password is not.
 
 ## Connecting from the Flutter app
 

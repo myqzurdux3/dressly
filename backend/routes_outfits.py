@@ -22,7 +22,8 @@ from bfl import (
 from config import OUTFITS_DIR
 from db import get_conn
 from routes_thumbs import thumb_url_for
-from ratelimit import generation_guard
+import imagesign
+from ratelimit import generation_guard, worker_id
 from generator import (
     ALGOS,
     combo_key,
@@ -340,15 +341,20 @@ def public_url_for_outfit(path: str) -> str:
         rel = p.relative_to(OUTFITS_DIR)
     except ValueError:
         rel = Path(p.name)
-    url = f"/generated/{rel.as_posix()}"
+    rel_posix = rel.as_posix()
+    url = f"/generated/{rel_posix}"
+    params = []
     # Append ?v=<mtime> so the URL changes whenever the file is regenerated in
     # place (same {id}.png path) — e.g. after changing the model or clothes.
     # Without this the image cache keeps serving the previous render.
     try:
-        url += f"?v={p.stat().st_mtime_ns}"
+        params.append(f"v={p.stat().st_mtime_ns}")
     except OSError:
         pass
-    return url
+    signed = imagesign.sign_query(f"generated/{rel_posix}")
+    if signed:
+        params.append(signed)
+    return url + ("?" + "&".join(params) if params else "")
 
 
 def _validate_inputs(conn, req, user_id: int) -> None:
@@ -740,6 +746,12 @@ def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
     if garment_path is None and (person_path and image_paths
             and image_paths[0] == person_path and len(image_paths) >= 2):
         garment_path = image_paths[1]
+    # Claim the row for THIS process. With several uvicorn workers, the startup
+    # sweep uses this to tell a job whose owner died from one a sibling worker
+    # is still running.
+    with get_conn() as conn:
+        conn.execute("UPDATE outfits SET worker_pid = ? WHERE id = ?",
+                     (worker_id(), outfit_id))
     try:
         image_bytes, tier_used, slug = bfl_generate_outfit(
             prompt, image_paths, start_tier=start_tier,
@@ -749,11 +761,13 @@ def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
         )
     except BflError as e:
         with get_conn() as conn:
-            conn.execute("UPDATE outfits SET status='failed', error=? WHERE id=?", (str(e), outfit_id))
+            conn.execute("UPDATE outfits SET status='failed', error=?, "
+                         "worker_pid=NULL WHERE id=?", (str(e), outfit_id))
         return
     except Exception as e:
         with get_conn() as conn:
-            conn.execute("UPDATE outfits SET status='failed', error=? WHERE id=?",
+            conn.execute("UPDATE outfits SET status='failed', error=?, "
+                         "worker_pid=NULL WHERE id=?",
                          (f"unexpected: {type(e).__name__}: {e}", outfit_id))
         return
     OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
@@ -763,7 +777,7 @@ def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
     with get_conn() as conn:
         conn.execute(
             "UPDATE outfits SET generated_path=?, status='done', is_mock=?, "
-            "model_tier=?, model_slug=?, error='' WHERE id=?",
+            "model_tier=?, model_slug=?, error='', worker_pid=NULL WHERE id=?",
             (str(out_path), is_mock, tier_used, slug, outfit_id),
         )
 
