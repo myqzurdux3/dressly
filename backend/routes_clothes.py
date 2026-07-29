@@ -184,6 +184,13 @@ def _build_cloth(row, images, colors) -> dict:
                     im["cutout_path"] if im["bg_accepted"] != "rejected" else im["original_path"],
                     400,
                 ),
+                # Detail-screen size. A phone shows this at most a screen wide,
+                # where 800 px is indistinguishable from the stored image —
+                # 86 KB against 1005 KB for the lossless original.
+                "preview_url": thumb_url_for(
+                    im["cutout_path"] if im["bg_accepted"] != "rejected" else im["original_path"],
+                    800,
+                ),
                 "enhanced_url": public_url_for(im["enhanced_path"])
                 if ("enhanced_path" in im.keys() and im["enhanced_path"]) else "",
                 "enhance_status": im["enhance_status"]

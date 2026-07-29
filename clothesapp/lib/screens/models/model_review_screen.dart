@@ -5,6 +5,7 @@ import '../../l10n/app_text.dart';
 import '../../app.dart';
 import '../../config/api_config.dart';
 import '../../models/model.dart';
+import '../../widgets/app_image.dart';
 
 /// View-only gallery of a model's pictures. Models keep their background as-is,
 /// so there is no accept/reject step — just show what the user uploaded.
@@ -130,18 +131,13 @@ class _ModelImageCard extends StatelessWidget {
               child: InteractiveViewer(
                 minScale: 1,
                 maxScale: 4,
-                child: Image.network(
-                  imageUrl(image.displayUrl),
-                  key: ValueKey(
-                      'mimg-${image.id}-${image.displayUrl}'),
+                // Through the cache, at screen size — Image.network kept no
+                // disk copy, so this refetched on every open.
+                child: AppImage(
+                  url: imageUrl(image.displayUrl),
+                  cacheKey: 'mimg-${image.id}-${image.displayUrl}',
                   fit: BoxFit.contain,
-                  loadingBuilder: (context, child, p) => p == null
-                      ? child
-                      : const SizedBox(
-                          height: 260,
-                          child: Center(child: CircularProgressIndicator())),
-                  errorBuilder: (context, _, __) =>
-                      const Icon(Icons.broken_image, color: Colors.white54),
+                  memWidth: 800,
                 ),
               ),
             ),

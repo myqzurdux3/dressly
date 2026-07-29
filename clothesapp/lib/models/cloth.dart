@@ -30,6 +30,10 @@ class ClothImage {
   /// Server-rendered, grid-sized copy of [cutoutUrl]. Empty when the backend
   /// could not produce one, in which case callers fall back to the full image.
   final String thumbUrl;
+
+  /// Screen-sized copy (800 px) for the detail views. A phone cannot show more,
+  /// and this is ~86 KB against ~1 MB for the stored lossless image.
+  final String previewUrl;
   // Enhancement (opt-in): a pending candidate awaiting accept/reject.
   final String enhancedUrl; // '' when none
   final String? enhanceStatus; // null | 'processing' | 'ready' | 'failed'
@@ -47,6 +51,7 @@ class ClothImage {
     required this.originalUrl,
     required this.cutoutUrl,
     this.thumbUrl = '',
+    this.previewUrl = '',
     this.enhancedUrl = '',
     this.enhanceStatus,
     this.enhanceMethod = 'none',
@@ -64,6 +69,7 @@ class ClothImage {
         originalUrl: (json['original_url'] ?? '') as String,
         cutoutUrl: (json['cutout_url'] ?? '') as String,
         thumbUrl: (json['thumb_url'] ?? '') as String,
+        previewUrl: (json['preview_url'] ?? '') as String,
         enhancedUrl: (json['enhanced_url'] ?? '') as String,
         enhanceStatus: json['enhance_status'] as String?,
         enhanceMethod: (json['enhance_method'] ?? 'none') as String,
@@ -84,6 +90,13 @@ class ClothImage {
   /// Small copy for grids and list rows. Falls back to [displayUrl] when the
   /// server has no thumbnail for this image, so callers never need to check.
   String? get thumbnailUrl => thumbUrl.isNotEmpty ? thumbUrl : displayUrl;
+
+  /// What a detail screen should show. Never the stored image: at 800 px the
+  /// difference is invisible on a phone and the transfer is twelve times
+  /// smaller, which on a slow link is the difference between instant and a
+  /// minute of blank space.
+  String? get displayPreviewUrl =>
+      previewUrl.isNotEmpty ? previewUrl : displayUrl;
 }
 
 class Cloth {

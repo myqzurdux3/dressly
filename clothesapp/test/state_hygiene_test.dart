@@ -83,20 +83,46 @@ void main() {
     });
 
     test('every network image goes through the configured manager', () {
-      // AppImage is the single funnel for remote images; if a screen used a
-      // bare CachedNetworkImage it would silently fall back to the 200-file
-      // default and thrash again.
+      // AppImage is the single funnel for remote images. Anything else has no
+      // disk cache at all (Image.network, NetworkImage) or silently uses the
+      // 200-file default manager (a bare CachedNetworkImage).
+      //
+      // This originally only looked for CachedNetworkImage, and so missed nine
+      // Image.network call sites — including the cloth detail screen, which
+      // re-downloaded ~1.5 MB of lossless images every time it was opened.
+      const forbidden = ['Image.network(', 'NetworkImage('];
+      // photo_edit_screen pairs a display widget with NetworkImage(...).resolve()
+      // to measure the image for its crop overlay; the two must stay the same
+      // provider, so it is exempt and deliberately re-fetches.
+      const exempt = ['app_image.dart', 'photo_edit_screen.dart'];
+
       final offenders = <String>[];
       for (final f in _dartSources()) {
-        if (f.path.endsWith('app_image.dart')) continue;
-        final src = f.readAsStringSync();
-        if (src.contains('CachedNetworkImage(')) {
-          offenders.add(f.path);
+        if (exempt.any(f.path.endsWith)) continue;
+        final lines = f.readAsLinesSync();
+        for (var i = 0; i < lines.length; i++) {
+          final line = lines[i];
+          if (line.trimLeft().startsWith('//')) continue;   // a comment about it
+          for (final needle in forbidden) {
+            if (line.contains(needle) &&
+                !line.contains('CachedNetworkImageProvider')) {
+              offenders.add('${f.path}:${i + 1}  ${line.trim()}');
+            }
+          }
         }
       }
       expect(offenders, isEmpty,
-          reason: 'these build CachedNetworkImage directly instead of using '
-              'AppImage, so they bypass the cache configuration: $offenders');
+          reason: 'these bypass the image cache — use AppImage or '
+              'appImageProvider:\n${offenders.join('\n')}');
+    });
+
+    test('detail screens ask for the preview size, not the stored image', () {
+      // The stored cut-outs are lossless and ~1 MB; the 800 px copy is ~86 KB
+      // and indistinguishable on a phone.
+      final detail =
+          File('lib/screens/cloth/cloth_detail_screen.dart').readAsStringSync();
+      expect(detail, contains('displayPreviewUrl'),
+          reason: 'the cloth detail screen should render the preview size');
     });
   });
 }

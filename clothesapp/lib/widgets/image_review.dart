@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
 import '../l10n/app_text.dart';
+import 'app_image.dart';
 
 /// Shared review UI for cloth photos: a crop-decision dialog that *shows* both
 /// versions, an enhance-choice dialog (Auto/AI), an enhanced-preview dialog,
@@ -28,10 +29,9 @@ Widget _labeledImage(BuildContext context, String label, String url,
           alignment: Alignment.center,
           child: url.isEmpty
               ? const Icon(Icons.image, color: Colors.white38)
-              : Image.network(imageUrl(url),
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.broken_image, color: Colors.white54)),
+              // Cached: these panels are rebuilt on every accept/reject and
+              // were re-fetching the full image each time.
+              : AppImage(url: imageUrl(url), fit: BoxFit.contain, memWidth: 800),
         ),
       ),
     ),
@@ -274,14 +274,9 @@ void showImageFullscreen(BuildContext context, String url) {
         minScale: 0.5,
         maxScale: 6,
         child: Center(
-          child: Image.network(
-            url,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, p) =>
-                p == null ? child : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (context, _, __) =>
-                const Icon(Icons.broken_image, size: 64, color: Colors.white54),
-          ),
+          // Fullscreen with pinch-zoom, so this one does want the stored
+          // image — but through the cache, not a bare network fetch.
+          child: AppImage(url: url, fit: BoxFit.contain),
         ),
       ),
     ),

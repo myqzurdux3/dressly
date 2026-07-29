@@ -19,6 +19,7 @@ import 'algo_preview_dialog.dart';
 import 'algo_sheet.dart';
 import 'manual_builder_screen.dart';
 import 'outfit_result_dialog.dart';
+import '../../widgets/app_image.dart';
 
 class OutfitScreen extends StatefulWidget {
   const OutfitScreen({super.key});
@@ -598,12 +599,15 @@ class _OutfitScreenState extends State<OutfitScreen> {
                   final c = _clothesById(id);
                   return InputChip(
                     label: Text(c?.name ?? '#$id'),
-                    avatar: c?.displayImageUrl == null
+                    // A ~40 px avatar: the thumbnail, through the cache. This
+                    // used to pull the full lossless cut-out (~756 KB) with no
+                    // disk copy, once per selected cloth.
+                    avatar: c?.thumbImageUrl == null
                         ? null
                         : CircleAvatar(
                             backgroundColor: Colors.blueGrey.shade900,
                             backgroundImage:
-                                NetworkImage(imageUrl(c!.displayImageUrl!)),
+                                appImageProvider(imageUrl(c!.thumbImageUrl!)),
                           ),
                     onDeleted: () =>
                         setState(() => _selectedClothIds.remove(id)),

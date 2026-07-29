@@ -83,6 +83,16 @@ int _decodeWidth(int logical, double dpr) {
   return t > 1600 ? 1600 : t;
 }
 
+/// Cached [ImageProvider] for widgets that take a provider rather than a child
+/// — CircleAvatar, DecorationImage, precacheImage.
+///
+/// A bare `NetworkImage` keeps no disk copy, so an avatar built from one
+/// re-downloads its picture on every rebuild. Pass a thumbnail URL: an avatar
+/// is a few dozen pixels and has no use for the stored image.
+ImageProvider appImageProvider(String url) =>
+    CachedNetworkImageProvider(url, cacheManager: AppImageCache.instance);
+
+
 class _Broken extends StatelessWidget {
   const _Broken();
 
