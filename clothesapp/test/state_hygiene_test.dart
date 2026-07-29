@@ -141,11 +141,19 @@ void main() {
           final line = lines[i];
           if (line.trimLeft().startsWith('//')) continue;
           // Rendering the stored file rather than a server-made copy.
+          //
+          // Matches the accessor anywhere on the line, not just after a named
+          // argument: the version that only looked for `url:` missed
+          // `AppImage.path(cloth.displayImageUrl, ...)` — a positional
+          // argument — which was loading the full wardrobe at ~756 KB a
+          // picture in the cloth picker. It also missed displayImageUrl
+          // entirely, having only listed displayUrl.
           final rendersFull = RegExp(
-                  r'(url|imageUrl|currentUrl|cutoutUrl|originalUrl):\s*'
-                  r'[^,)]*\b(displayUrl|cutoutUrl|originalUrl)\b')
+                  r'\b(displayUrl|displayImageUrl|cutoutUrl|originalUrl)\b')
               .hasMatch(line);
-          if (rendersFull && !line.contains('Preview')) {
+          // Fullscreen zoom is the one place the stored file is the point.
+          final isFullscreen = line.contains('Fullscreen');
+          if (rendersFull && !line.contains('Preview') && !isFullscreen) {
             offenders.add('${f.path}:${i + 1}  ${line.trim()}');
           }
         }

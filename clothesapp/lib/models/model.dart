@@ -64,6 +64,12 @@ class ModelEntity {
     return images.first.displayUrl;
   }
 
+  /// Grid-sized. A card or a chip has no use for the stored file.
+  String? get thumbImageUrl {
+    if (images.isEmpty) return null;
+    return images.first.thumbnailUrl;
+  }
+
   factory ModelEntity.fromJson(Map<String, dynamic> json) => ModelEntity(
         id: json['id'] as int,
         name: (json['name'] ?? '') as String,

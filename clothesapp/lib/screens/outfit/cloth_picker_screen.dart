@@ -272,13 +272,16 @@ class _PickTile extends StatelessWidget {
                 Expanded(
                   child: Container(
                     color: Colors.blueGrey.shade900,
-                    child: cloth.displayImageUrl == null
+                    child: cloth.thumbImageUrl == null
                         ? const Center(
                             child: Icon(Icons.checkroom,
                                 color: Colors.white38, size: 36))
                         : AppImage.path(
-                            cloth.displayImageUrl,
-                            cacheKey: cloth.displayImageUrl,
+                            // The grid thumbnail, ~26 KB. This used to load
+                            // the stored cut-out — a median of 756 KB — for
+                            // every cloth in the wardrobe at once.
+                            cloth.thumbImageUrl,
+                            cacheKey: cloth.thumbImageUrl,
                             fit: BoxFit.contain,
                             memWidth: 600, // match the wardrobe — 200 was too soft
                           ),

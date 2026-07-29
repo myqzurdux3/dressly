@@ -218,7 +218,8 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
         final c = await svc.redoBackground(widget.initial!.id, imageId,
             tolerance: level);
         if (mounted) setState(() => _existingImages = [...c.images]);
-        return _imgById(c.images, imageId)?.cutoutUrl;
+        // Feeds the same comparison panel as above, so the same size.
+        return _imgById(c.images, imageId)?.cutoutPreview;
       },
     );
     if (keepCutout == null || !mounted) return;
