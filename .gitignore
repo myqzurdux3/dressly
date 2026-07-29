@@ -38,3 +38,9 @@ clothes-app-backup-*/
 *-backup-*/
 mutation_report.json
 never_killed.json
+
+# --- TLS material --------------------------------------------------------
+# Private keys must never be committed. Regenerate with make_cert.py.
+backend/certs/
+*.key
+*.pem

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'app.dart';
 import 'services/auth_service.dart';
+import 'services/pinned_http.dart';
 import 'state/gen_prefs_controller.dart';
 import 'state/locale_controller.dart';
 import 'state/session.dart';
@@ -10,6 +11,9 @@ import 'state/theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Must happen before the first request: the token restore below already
+  // talks to the server, and image widgets create their own clients later.
+  installCertificatePinning();
 
   final auth = const AuthService();
   final session = Session();

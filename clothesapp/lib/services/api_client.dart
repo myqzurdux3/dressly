@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import 'pinned_http.dart';
 
 /// Thin wrapper around package:http that injects the bearer token, handles
 /// JSON encode/decode, and turns non-2xx responses into typed exceptions.
@@ -13,11 +14,16 @@ class ApiClient {
   /// leaves it null and gets a fresh client per request, exactly as the
   /// top-level `http.get`/`http.post` helpers did before.
   ApiClient({required this.token, http.Client? httpClient})
-      : _client = httpClient;
+      : _client = httpClient ?? _shared;
+
+  /// One pinned client for the whole app. Building an HttpClient per request
+  /// would redo the TLS handshake every time and, with pinning on, re-run the
+  /// certificate check for no benefit.
+  static final http.Client _shared = PinnedHttp.create();
 
   String? token;
 
-  final http.Client? _client;
+  final http.Client _client;
 
   /// All requests share a generous timeout. Regenerating an outfit (POST
   /// /outfits/{id}/regenerate) can take 25-60s end-to-end (bfl poll + image
@@ -35,12 +41,7 @@ class ApiClient {
   /// Run [send] against a client, disposing a per-request one when the caller
   /// did not inject their own.
   Future<dynamic> _send(Future<http.Response> Function(http.Client) send) async {
-    final client = _client ?? http.Client();
-    try {
-      return _decode(await send(client).timeout(_timeout));
-    } finally {
-      if (_client == null) client.close();
-    }
+    return _decode(await send(_client).timeout(_timeout));
   }
 
   Future<dynamic> get(String path) => _send((c) =>
@@ -128,13 +129,8 @@ class ApiClient {
   /// Multipart requests bypass [_send] because they stream rather than return a
   /// Response directly, but must use the same injected client and timeout.
   Future<dynamic> _sendMultipart(http.MultipartRequest req) async {
-    final client = _client ?? http.Client();
-    try {
-      final streamed = await client.send(req).timeout(_timeout);
-      return _decode(await http.Response.fromStream(streamed));
-    } finally {
-      if (_client == null) client.close();
-    }
+    final streamed = await _client.send(req).timeout(_timeout);
+    return _decode(await http.Response.fromStream(streamed));
   }
 
   dynamic _decode(http.Response resp) {

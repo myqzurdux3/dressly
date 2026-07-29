@@ -48,9 +48,13 @@ def test_limit_of_zero_disables_the_bucket(client, auth, monkeypatch):
 
 
 def test_window_slides(monkeypatch):
-    """Old hits must age out, otherwise the first burst locks a user out forever."""
-    clock = {"t": 1000.0}
-    monkeypatch.setattr(ratelimit.time, "monotonic", lambda: clock["t"])
+    """Old hits must age out, otherwise the first burst locks a user out forever.
+
+    Wall clock, not monotonic: the counters are shared between worker processes
+    and each process has its own monotonic origin.
+    """
+    clock = {"t": 1_700_000_000.0}
+    monkeypatch.setattr(ratelimit.time, "time", lambda: clock["t"])
     ratelimit.reset()
 
     assert ratelimit._check("k", 2, 60) == 0
@@ -62,8 +66,8 @@ def test_window_slides(monkeypatch):
 
 
 def test_retry_after_reflects_the_oldest_hit(monkeypatch):
-    clock = {"t": 0.0}
-    monkeypatch.setattr(ratelimit.time, "monotonic", lambda: clock["t"])
+    clock = {"t": 1_700_000_000.0}
+    monkeypatch.setattr(ratelimit.time, "time", lambda: clock["t"])
     ratelimit.reset()
 
     ratelimit._check("k", 1, 100)

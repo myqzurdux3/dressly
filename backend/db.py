@@ -1,4 +1,5 @@
 import logging
+import os
 import sqlite3
 from contextlib import contextmanager
 
@@ -289,21 +290,74 @@ def _indexes_for_hot_lookups(conn) -> None:
         conn.execute(stmt)
 
 
-def reset_orphan_generations(conn) -> int:
-    """Fail any outfit left mid-generation by a previous process.
+@migration
+def _rate_limit_table(conn) -> None:
+    """Rate-limit counters, shared by every worker.
 
-    Generation runs as an in-process background task, so nothing survives a
-    restart: a row still marked 'processing' at startup has no worker behind it
-    and would otherwise spin in the app's poll loop forever.
+    In process memory they were per-worker, so N workers meant N times the
+    quota and inconsistent answers depending on who handled the request.
     """
-    cur = conn.execute(
-        "UPDATE outfits SET status = 'failed', "
-        "error = 'Generation was interrupted by a server restart' "
-        "WHERE status = 'processing'"
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rate_hits (
+            id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL,
+            ts  REAL NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rate_hits_key ON rate_hits(key, ts)")
+
+
+@migration
+def _generation_owner(conn) -> None:
+    """Which process is rendering an outfit right now.
+
+    The startup sweep used to fail every row still marked 'processing', which
+    is correct with one worker and destructive with several: a restarting
+    worker would kill jobs its siblings were actively running.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(outfits)")}
+    if "worker_pid" not in cols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN worker_pid INTEGER")
+
+
+def _process_alive(pid) -> bool:
+    """Is that process still running on this machine?"""
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)          # signal 0 only checks for existence
+    except (OSError, ValueError, TypeError):
+        return False
+    return True
+
+
+def reset_orphan_generations(conn) -> int:
+    """Fail outfits whose rendering process is gone.
+
+    Generation runs as an in-process background task, so a row marked
+    'processing' whose owner has died will spin in the app's poll loop forever.
+
+    Only genuinely orphaned rows are touched. With several uvicorn workers, a
+    restarting worker must not fail the jobs its live siblings are still
+    running — which is exactly what an unconditional sweep used to do. Rows
+    predating this column have no owner recorded and are treated as orphans,
+    which is right: they belong to a process that no longer exists.
+    """
+    rows = conn.execute(
+        "SELECT id, worker_pid FROM outfits WHERE status = 'processing'"
+    ).fetchall()
+    orphans = [r["id"] for r in rows if not _process_alive(r["worker_pid"])]
+    if not orphans:
+        return 0
+    placeholders = ",".join("?" * len(orphans))
+    conn.execute(
+        f"UPDATE outfits SET status = 'failed', "
+        f"error = 'Generation was interrupted by a server restart' "
+        f"WHERE id IN ({placeholders})",
+        orphans,
     )
-    if cur.rowcount:
-        log.warning("marked %s interrupted generation(s) as failed", cur.rowcount)
-    return cur.rowcount
+    log.warning("marked %s interrupted generation(s) as failed", len(orphans))
+    return len(orphans)
 
 
 def create_tables() -> None:

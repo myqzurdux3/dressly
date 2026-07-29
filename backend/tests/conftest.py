@@ -28,15 +28,13 @@ bfl.DEFAULT_API_KEY = ""
 
 
 @pytest.fixture(autouse=True)
-def fresh_rate_limits():
-    """Counters are per-process and keyed by user id — and every test starts on
-    a fresh DB where the first user is id 1. Without this they would accumulate
-    across the whole session and trip the quota mid-suite."""
+def fresh_rate_limits(fresh_db):
+    """Counters now live in the DB, which fresh_db recreates per test, so this
+    mainly guards the ordering: it must run AFTER the schema exists."""
     import ratelimit
 
     ratelimit.reset()
     yield
-    ratelimit.reset()
 
 
 @pytest.fixture(autouse=True)
