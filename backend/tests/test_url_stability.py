@@ -42,11 +42,17 @@ def test_urls_are_identical_across_requests(client, auth, signing_on):
 
 
 def test_the_signature_itself_is_stable(signing_on):
-    now = time.time()
+    # Anchored to the middle of a bucket, not to the wall clock. Using
+    # time.time() meant the hour before a bucket boundary put `now` and
+    # `now + 3600` in different buckets, so this failed on any run just after
+    # midnight UTC — the assertion was right and the fixture was wrong.
+    bucket = imagesign.IMAGE_URL_BUCKET_S
+    now = (time.time() // bucket) * bucket + bucket / 2
     a = imagesign.sign_query("images/3/front_0.jpg", now)
     b = imagesign.sign_query("images/3/front_0.jpg", now + 1)
     c = imagesign.sign_query("images/3/front_0.jpg", now + 3600)
     assert a == b == c, "signature changes within the bucket"
+    assert bucket / 2 > 3600, "the anchor no longer keeps all three in one bucket"
 
 
 def test_the_expiry_still_moves_between_buckets(signing_on):

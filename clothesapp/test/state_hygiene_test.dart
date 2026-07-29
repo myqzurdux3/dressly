@@ -147,13 +147,24 @@ void main() {
           // `AppImage.path(cloth.displayImageUrl, ...)` — a positional
           // argument — which was loading the full wardrobe at ~756 KB a
           // picture in the cloth picker. It also missed displayImageUrl
-          // entirely, having only listed displayUrl.
+          // entirely, having only listed displayUrl, and later missed
+          // enhancedUrl the same way: the AI result stayed on the stored file
+          // long after every other image had moved to /thumb, at 413 KB against
+          // 75 KB, on the one screen where somebody is actively waiting.
           final rendersFull = RegExp(
-                  r'\b(displayUrl|displayImageUrl|cutoutUrl|originalUrl)\b')
+                  r'\b(displayUrl|displayImageUrl|cutoutUrl|originalUrl'
+                  r'|enhancedUrl)\b')
               .hasMatch(line);
           // Fullscreen zoom is the one place the stored file is the point.
           final isFullscreen = line.contains('Fullscreen');
-          if (rendersFull && !line.contains('Preview') && !isFullscreen) {
+          // `x.enhancedUrl.isEmpty` asks whether there IS one; it downloads
+          // nothing.
+          final onlyChecksPresence =
+              RegExp(r'\.(isEmpty|isNotEmpty)\b').hasMatch(line);
+          if (rendersFull &&
+              !line.contains('Preview') &&
+              !isFullscreen &&
+              !onlyChecksPresence) {
             offenders.add('${f.path}:${i + 1}  ${line.trim()}');
           }
         }

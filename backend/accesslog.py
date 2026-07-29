@@ -74,7 +74,8 @@ class AccessLogMiddleware:
             return
 
         start = time.perf_counter()
-        state = {"status": 0, "bytes": 0, "first_byte_ms": None}
+        state = {"status": 0, "bytes": 0, "first_byte_ms": None,
+                 "last_byte_ms": None}
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
@@ -82,12 +83,23 @@ class AccessLogMiddleware:
                 state["first_byte_ms"] = (time.perf_counter() - start) * 1000
             elif message["type"] == "http.response.body":
                 state["bytes"] += len(message.get("body", b""))
+                if not message.get("more_body", False):
+                    state["last_byte_ms"] = (time.perf_counter() - start) * 1000
             await send(message)
 
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
-            total = (time.perf_counter() - start) * 1000
+            returned = (time.perf_counter() - start) * 1000
+            # Stop at the last byte, not when the ASGI call returns. Starlette
+            # runs BackgroundTasks after the body is sent but inside that call,
+            # so timing the call made a 145 ms endpoint that kicks off a 15 s AI
+            # generation read as "2.1KB, transfer 15748ms" — a slow network,
+            # which it was not. Reported separately below instead.
+            total = state["last_byte_ms"]
+            if total is None:      # no body sent (disconnect, websocket upgrade)
+                total = returned
+            state["background_ms"] = returned - total
             self._record(scope, state, total)
 
     def _record(self, scope, state, total_ms):
@@ -107,6 +119,12 @@ class AccessLogMiddleware:
             # Worth separating: a slow handler and a slow transfer have nothing
             # to do with each other.
             line += f" (handler {ttfb:.0f}ms, transfer {total_ms - ttfb:.0f}ms)"
+        background_ms = state.get("background_ms") or 0
+        if background_ms > 50:
+            # Work that ran after the client already had its answer. It costs the
+            # server, but nobody waited for it — counting it as request time is
+            # how a 15 s AI generation looked like a 15 s download.
+            line += f" (+{background_ms:.0f}ms background, client not waiting)"
 
         if LOG_EVERYTHING:
             log.info(line)

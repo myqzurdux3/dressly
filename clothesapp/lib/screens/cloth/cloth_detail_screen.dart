@@ -732,7 +732,7 @@ class _ImageReviewCard extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: _beforeAfterTile(context,
-                tr(context, 'detail.after'), image.enhancedUrl, Colors.tealAccent),
+                tr(context, 'detail.after'), image.enhancedPreview, Colors.tealAccent),
           ),
         ]),
         const SizedBox(height: 8),

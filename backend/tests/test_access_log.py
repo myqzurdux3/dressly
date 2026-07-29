@@ -9,6 +9,7 @@ start from a false premise.
 import asyncio
 import io
 import logging
+import re
 
 import pytest
 from PIL import Image
@@ -167,3 +168,42 @@ def test_a_big_response_reports_its_size(client, auth, captured):
     client.get(r.json()["images"][0]["cutout_url"])
     line = _find(captured, "/images/")[0]
     assert "KB" in line or "MB" in line, line
+
+
+def test_background_work_is_not_counted_as_transfer(tmp_path, monkeypatch):
+    """Starlette runs BackgroundTasks after the body is sent but inside the same
+    ASGI call. Timing the call made `POST /enhance` — 145 ms of handler that
+    kicks off a 15 s AI generation — log as "2.1KB, transfer 15748ms", which
+    reads as a slow network and is nobody's wait."""
+    import time as _time
+
+    import accesslog
+
+    accesslog.configure(tmp_path)
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200,
+                    "headers": [(b"content-type", b"text/plain")]})
+        await send({"type": "http.response.body", "body": b"ok"})
+        _time.sleep(0.35)          # the background task
+
+    mw = accesslog.AccessLogMiddleware(app)
+    scope = {"type": "http", "method": "POST", "path": "/clothes/1/enhance",
+             "query_string": b"", "headers": [], "client": ("1.2.3.4", 1)}
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    sent = []
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        mw(scope, receive, lambda m: _noop(sent, m)))
+
+    line = (tmp_path / "access.log").read_text().strip().splitlines()[-1]
+    ms = int(re.search(r"\s(\d+)ms", line).group(1))
+    assert ms < 200, f"background time charged to the request: {line}"
+    assert "background, client not waiting" in line, line
+    assert "transfer" not in line, f"background work reported as transfer: {line}"
+
+
+async def _noop(sent, message):
+    sent.append(message)
