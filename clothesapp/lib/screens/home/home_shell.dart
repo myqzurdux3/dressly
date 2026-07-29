@@ -7,6 +7,7 @@ import '../outfit/favorites_screen.dart';
 import '../outfit/outfit_screen.dart';
 import '../profile/profile_screen.dart';
 import 'collection_screen.dart';
+import 'lazy_page.dart';
 
 /// Top-level shell: four swipeable pages with a bottom navigation bar
 /// (Instagram-style). Swiping left/right moves between Wardrobe, Create,
@@ -23,13 +24,19 @@ class _HomeShellState extends State<HomeShell> {
   final _controller = PageController();
   int _index = 0;
 
-  static const _pages = [
-    CollectionScreen(),
-    OutfitScreen(),
-    AgendaScreen(),
-    FavoritesScreen(),
-    ProfileScreen(),
+  // Builders, not instances: a PageView given a `children:` list builds every
+  // page at once, so opening the app fired all five screens' requests together
+  // and queued all their images behind one another.
+  static final _pages = <WidgetBuilder>[
+    (_) => const CollectionScreen(),
+    (_) => const OutfitScreen(),
+    (_) => const AgendaScreen(),
+    (_) => const FavoritesScreen(),
+    (_) => const ProfileScreen(),
   ];
+
+  /// Pages that have been shown at least once, and so stay built.
+  final Set<int> _visited = {0};
 
   @override
   void dispose() {
@@ -38,12 +45,16 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _go(int i) {
-    setState(() => _index = i);
-    _controller.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+    setState(() {
+      _index = i;
+      _visited.add(i);
+    });
+    // jumpToPage, not animateToPage: animating scrolls THROUGH every page in
+    // between and builds each one as it passes, so tapping Agenda from the
+    // wardrobe also started the outfit builder — including its unpaginated
+    // /clothes fetch — and queued its images. Swiping still builds neighbours,
+    // which is what swiping means; tapping should not.
+    _controller.jumpToPage(i);
   }
 
   @override
@@ -51,8 +62,14 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: PageView(
         controller: _controller,
-        onPageChanged: (i) => setState(() => _index = i),
-        children: _pages,
+        onPageChanged: (i) => setState(() {
+          _index = i;
+          _visited.add(i);
+        }),
+        children: [
+          for (var i = 0; i < _pages.length; i++)
+            LazyPage(isActive: _visited.contains(i), builder: _pages[i]),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
