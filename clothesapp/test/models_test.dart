@@ -4,6 +4,7 @@ import 'package:clothesapp/models/outfit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  _enhancedPreviewTests();
   group('Cloth.fromJson', () {
     test('parses fields incl. last_worn_at and images', () {
       final c = Cloth.fromJson({
@@ -300,6 +301,33 @@ void main() {
     test('different slots do not conflict', () {
       expect(outfitCategoriesConflict('tshirt', 'jeans'), isFalse);
       expect(outfitCategoriesConflict('hat', 'socks'), isFalse);
+    });
+  });
+}
+
+void _enhancedPreviewTests() {
+  group('the AI result is fetched at screen size', () {
+    test('enhanced_preview_url is used when the server sends one', () {
+      final img = ClothImage.fromJson(const {
+        'id': 1,
+        'enhanced_url': '/images/9/enhanced_1_x.jpg',
+        'enhanced_preview_url': '/thumb/images/800/9/enhanced_1_x.jpg',
+      });
+      expect(img.enhancedPreview, contains('/thumb/'));
+    });
+
+    test('falls back to the stored file on an older server', () {
+      // A backend that predates the field sends no enhanced_preview_url. Showing
+      // nothing there would be worse than showing the big one.
+      final img = ClothImage.fromJson(const {
+        'id': 1,
+        'enhanced_url': '/images/9/enhanced_1_x.jpg',
+      });
+      expect(img.enhancedPreview, '/images/9/enhanced_1_x.jpg');
+    });
+
+    test('stays empty when there is no AI result at all', () {
+      expect(ClothImage.fromJson(const {'id': 1}).enhancedPreview, '');
     });
   });
 }

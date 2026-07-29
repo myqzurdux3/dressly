@@ -42,6 +42,10 @@ class ClothImage {
   final String cutoutPreviewUrl;
   // Enhancement (opt-in): a pending candidate awaiting accept/reject.
   final String enhancedUrl; // '' when none
+  /// Screen-sized copy of [enhancedUrl]. The AI result was the last image still
+  /// fetched at full resolution — 413 KB against 75 KB — and it is the one
+  /// somebody is waiting on to decide whether to keep it.
+  final String enhancedPreviewUrl;
   final String? enhanceStatus; // null | 'processing' | 'ready' | 'failed'
   final String enhanceMethod; // 'none' | 'auto' | 'ai' (applied to this photo)
   final String? enhancePendingMethod; // method of the pending candidate
@@ -61,6 +65,7 @@ class ClothImage {
     this.originalPreviewUrl = '',
     this.cutoutPreviewUrl = '',
     this.enhancedUrl = '',
+    this.enhancedPreviewUrl = '',
     this.enhanceStatus,
     this.enhanceMethod = 'none',
     this.enhancePendingMethod,
@@ -81,6 +86,7 @@ class ClothImage {
         originalPreviewUrl: (json['original_preview_url'] ?? '') as String,
         cutoutPreviewUrl: (json['cutout_preview_url'] ?? '') as String,
         enhancedUrl: (json['enhanced_url'] ?? '') as String,
+        enhancedPreviewUrl: (json['enhanced_preview_url'] ?? '') as String,
         enhanceStatus: json['enhance_status'] as String?,
         enhanceMethod: (json['enhance_method'] ?? 'none') as String,
         enhancePendingMethod: json['enhance_pending_method'] as String?,
@@ -107,6 +113,11 @@ class ClothImage {
   /// minute of blank space.
   String? get displayPreviewUrl =>
       previewUrl.isNotEmpty ? previewUrl : displayUrl;
+
+  /// Screen-sized AI result, falling back to the stored one so an older server
+  /// (or a row written before this field existed) still shows something.
+  String get enhancedPreview =>
+      enhancedPreviewUrl.isNotEmpty ? enhancedPreviewUrl : enhancedUrl;
 
   /// Screen-sized original, falling back to the stored one.
   String get originalPreview =>

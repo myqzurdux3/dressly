@@ -214,6 +214,12 @@ def _build_cloth(row, images, colors) -> dict:
                 "cutout_preview_url": thumb_url_for(im["cutout_path"], 800),
                 "enhanced_url": public_url_for(im["enhanced_path"])
                 if ("enhanced_path" in im.keys() and im["enhanced_path"]) else "",
+                # The AI result, at screen size. It was the one image left
+                # loading at full resolution after everything else moved to
+                # /thumb: 413 KB against 75 KB, and it is the image someone is
+                # actively waiting on to decide whether to keep it.
+                "enhanced_preview_url": thumb_url_for(im["enhanced_path"], 800)
+                if ("enhanced_path" in im.keys() and im["enhanced_path"]) else "",
                 "enhance_status": im["enhance_status"]
                 if "enhance_status" in im.keys() else None,
                 "enhance_method": im["enhance_method"]

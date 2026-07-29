@@ -277,7 +277,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
         if (!mounted) return;
         final choice = await showEnhancePreview(context,
             currentUrl: img.displayPreviewUrl ?? img.originalPreview,
-            enhancedUrl: img.enhancedUrl,
+            enhancedUrl: img.enhancedPreview,
             method: mode,
             nextTier: mode == 'ai' ? img.enhanceNextTier : null);
         if (choice == 'upgrade' && img.enhanceNextTier != null) {
