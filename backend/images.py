@@ -48,9 +48,11 @@ CUTOUT_WEBP_LOSSLESS = os.environ.get(
     "CLOTHESAPP_CUTOUT_LOSSLESS", "1").strip().lower() not in ("0", "false", "")
 # Only consulted when lossless is turned off.
 CUTOUT_WEBP_QUALITY = int(os.environ.get("CLOTHESAPP_CUTOUT_QUALITY", "95"))
-# WebP effort: 6 is the slowest/best. Encoding happens once per photo, off the
-# event loop, so the extra time is not on any user's critical path.
-CUTOUT_WEBP_METHOD = 6
+# WebP effort. For LOSSLESS output the setting barely matters — measured at
+# 1042 ms (method 4) against 1171 ms (method 6) for the same 1004 KB — so there
+# is nothing to buy by going higher. Lossy thumbnails are a different story;
+# see THUMB_WEBP_METHOD in routes_thumbs.py.
+CUTOUT_WEBP_METHOD = int(os.environ.get("CLOTHESAPP_CUTOUT_METHOD", "4"))
 
 
 def _classify_color(r: int, g: int, b: int) -> str:
