@@ -60,13 +60,58 @@ class ApiClient {
 
   /// Run [send] against a client, disposing a per-request one when the caller
   /// did not inject their own.
+  /// Errors that mean "the connection went nowhere", as opposed to the server
+  /// having answered something. Only these are worth retrying.
+  static bool _isTransport(Object e) =>
+      e is TimeoutException ||
+      e is SocketException ||
+      e is http.ClientException ||
+      e is HandshakeException;
+
   Future<dynamic> _send(String path,
-      Future<http.Response> Function(http.Client) send) async {
-    return _decode(await send(_client).timeout(timeoutFor(path)));
+      Future<http.Response> Function(http.Client) send,
+      {bool retry = false}) async {
+    try {
+      return _decode(await send(_client).timeout(timeoutFor(path)));
+    } catch (e) {
+      if (!retry || !_isTransport(e)) throw _friendly(e);
+      // One retry, on a fresh connection. A kept-alive socket can be dropped by
+      // the network without either end being told, and the request sent down it
+      // then vanishes until the timeout. Reissuing takes a round trip; not
+      // reissuing shows the user a failure for something that works.
+      try {
+        return _decode(await send(_client).timeout(timeoutFor(path)));
+      } catch (e) {
+        throw _friendly(e);
+      }
+    }
+  }
+
+  /// Turn a transport failure into something worth showing.
+  ///
+  /// Dart's own message for a timeout is "TimeoutException after
+  /// 0:00:20.000000: Future not completed", which tells the user nothing about
+  /// what happened or what to do. Anything else is passed through untouched —
+  /// an ApiException already carries the server's own wording.
+  static Object _friendly(Object e) {
+    if (e is ApiException) return e;
+    if (e is TimeoutException) {
+      return ApiException(0, 'The server did not answer in time. '
+          'Check your connection and try again.');
+    }
+    if (e is SocketException || e is HandshakeException ||
+        e is http.ClientException) {
+      return ApiException(0, 'Could not reach the server. '
+          'Check your connection and try again.');
+    }
+    return e;
   }
 
   Future<dynamic> get(String path) => _send(path, (c) =>
-      c.get(Uri.parse(apiUrl(path)), headers: _headers(json: false)));
+      c.get(Uri.parse(apiUrl(path)), headers: _headers(json: false)),
+      // Safe to repeat: a GET changes nothing. POST and PATCH are not retried,
+      // since a request that did reach the server would be applied twice.
+      retry: true);
 
   Future<dynamic> post(String path, Map<String, dynamic> body) =>
       _send(path, (c) => c.post(Uri.parse(apiUrl(path)),
