@@ -22,7 +22,8 @@ const String apiBaseUrl = 'https://193.243.147.15:8000';
 /// Leave EMPTY once the server has a real certificate (Let's Encrypt behind
 /// Caddy/nginx): normal certificate validation then applies, with no pin to
 /// keep in sync.
-const String apiCertSha256 = '';
+const String apiCertSha256 =
+    '80e1dd3c37849580e2d9f76fb47ae7be85dbfa3f8754e8832e94612f5320fa9f';
 
 /// Whether the app talks TLS at all.
 bool get apiUsesTls => apiBaseUrl.startsWith('https://');
