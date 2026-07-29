@@ -11,7 +11,6 @@ Run it on the server, from the install directory:
     python scripts/doctor.py
 """
 import os
-import socket
 import sys
 from pathlib import Path
 
@@ -153,6 +152,78 @@ def check_data():
         report(OK, f"{thumbs} cached thumbnails")
 
 
+def check_speed():
+    """Time the work a screen actually waits on, on THIS machine.
+
+    A server that is merely far away and one that is running slow code look
+    identical from the app: images take seconds either way. This separates
+    them — it measures encoding here, with no network involved.
+    """
+    import time
+
+    try:
+        import routes_thumbs
+        from PIL import Image
+    except Exception as e:
+        report(WARN, f"cannot measure: {e}")
+        return
+
+    method = getattr(routes_thumbs, "THUMB_WEBP_METHOD", None)
+    if method is None:
+        report(FAIL, "this install predates the thumbnail speed fix",
+               "THUMB_WEBP_METHOD is missing, so encoding still uses WebP "
+               "method 6: about 1900 ms per thumbnail instead of 90 ms.\n"
+               "Copy the current backend over and restart.")
+    elif method > 4:
+        report(FAIL, f"THUMB_WEBP_METHOD is {method}",
+               "Above 4 costs roughly thirteen times the time for 3% less "
+               "size, while someone waits at a blank grid.")
+    else:
+        report(OK, f"thumbnail encoder effort = {method}")
+
+    # A realistic source: photo-like content with a transparent border.
+    try:
+        import numpy as np
+        rng = np.random.default_rng(0)
+        rgb = rng.integers(40, 220, size=(1600, 1600, 3), dtype=np.uint8)
+        alpha = np.zeros((1600, 1600, 1), dtype=np.uint8)
+        alpha[100:-100, 100:-100] = 255
+        img = Image.fromarray(np.concatenate([rgb, alpha], axis=2), "RGBA")
+    except Exception:
+        img = Image.new("RGBA", (1600, 1600), (120, 120, 120, 255))
+
+    src = BACKEND / "data" / ".doctor_probe.webp"
+    try:
+        img.save(src, "WEBP", lossless=True, method=4)
+        dst = BACKEND / "data" / ".doctor_probe_out.webp"
+        times = []
+        for _ in range(3):
+            t = time.perf_counter()
+            routes_thumbs._render(src, dst, 400)
+            times.append((time.perf_counter() - t) * 1000)
+        ms = min(times)
+        if ms > 900:
+            report(FAIL, f"generating one thumbnail takes {ms:.0f} ms",
+                   "Ten at once — which is what a grid does — then takes "
+                   "seconds.\nEither this machine is very slow, or the "
+                   "backend here is older than the encoder fix.")
+        elif ms > 300:
+            report(WARN, f"generating one thumbnail takes {ms:.0f} ms",
+                   "Workable, but pre-generate them: "
+                   "python scripts/warm_thumbnails.py")
+        else:
+            report(OK, f"one thumbnail generates in {ms:.0f} ms")
+    except Exception as e:
+        report(WARN, f"could not run the encoding probe: {e}")
+    finally:
+        for f in (BACKEND / "data" / ".doctor_probe.webp",
+                  BACKEND / "data" / ".doctor_probe_out.webp"):
+            try:
+                f.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def _listening_sockets(port: int):
     """Addresses this machine is actually listening on for `port`.
 
@@ -198,7 +269,6 @@ def _public_ip():
 
 
 def check_port():
-    host = os.environ.get("CLOTHESAPP_HOST", "0.0.0.0")
     port = int(os.environ.get("CLOTHESAPP_PORT", "8000"))
 
     bound = _listening_sockets(port)
@@ -246,7 +316,8 @@ def main() -> int:
 
     print(f"checking {BACKEND}\n")
     for section, fn in (("environment", check_env), ("TLS", check_tls),
-                        ("data", check_data), ("port", check_port)):
+                        ("data", check_data), ("speed", check_speed),
+                        ("port", check_port)):
         print(f"--- {section} ---")
         fn()
         print()

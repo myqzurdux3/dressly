@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from logging.handlers import RotatingFileHandler
 
@@ -76,11 +77,18 @@ def _email_from_request(request: Request) -> str:
         return "-"
 
 
+# Image requests are excluded from the normal log — there are dozens per screen
+# and they would drown out user actions. But excluding them entirely left no way
+# to tell a slow server from a slow network when images were taking seconds to
+# appear, so anything above this threshold is logged anyway.
+SLOW_IMAGE_MS = int(os.environ.get("CLOTHESAPP_SLOW_IMAGE_MS", "500"))
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # Skip static assets + health to keep the log about user actions.
     path = request.url.path
-    noisy = path.startswith(("/images", "/generated")) or path == "/health"
+    is_image = path.startswith(("/images", "/generated", "/thumb"))
+    quiet = is_image or path == "/health"
     start = time.monotonic()
     try:
         response = await call_next(request)
@@ -89,8 +97,13 @@ async def log_requests(request: Request, call_next):
         _req_log.exception("%s %s -> 500 %.0fms user=%s",
                            request.method, path, dur, _email_from_request(request))
         raise
-    if not noisy:
-        dur = (time.monotonic() - start) * 1000
+    dur = (time.monotonic() - start) * 1000
+    if is_image and dur >= SLOW_IMAGE_MS:
+        # No user lookup here: decoding the token per image would itself cost
+        # more than the thing being measured.
+        _req_log.warning("SLOW image %s -> %s %.0fms", path, response.status_code,
+                         dur)
+    elif not quiet:
         level = logging.WARNING if response.status_code >= 400 else logging.INFO
         _req_log.log(level, "%s %s -> %s %.0fms user=%s",
                      request.method, path, response.status_code, dur,
