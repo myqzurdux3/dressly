@@ -331,6 +331,22 @@ def _process_alive(pid) -> bool:
     return True
 
 
+@migration
+def _password_change_invalidates_tokens(conn) -> None:
+    """Lets a password change cut off sessions opened before it.
+
+    Tokens are self-contained: nothing on the server tracks them, so changing a
+    password would otherwise leave every existing session working — which
+    defeats the main reason anyone changes one.
+
+    Recording when tokens stop being accepted is enough: a token carries its
+    issue time, and one older than this is refused.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    if "tokens_valid_from" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN tokens_valid_from INTEGER")
+
+
 def reset_orphan_generations(conn) -> int:
     """Fail outfits whose rendering process is gone.
 
