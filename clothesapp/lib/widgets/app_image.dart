@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
+import '../services/image_cache_config.dart';
 
 /// A network image with disk+memory caching (via cached_network_image) and
 /// optional decode-size capping. Grid thumbnails pass [memWidth] so a large
@@ -54,6 +55,9 @@ class AppImage extends StatelessWidget {
     final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
     return CachedNetworkImage(
       imageUrl: url,
+      // Without this the shared 200-file default manager is used, which is
+      // smaller than a single wardrobe and evicts constantly.
+      cacheManager: AppImageCache.instance,
       cacheKey: cacheKey,
       fit: fit,
       // Decode at ~display resolution (× devicePixelRatio for crispness on

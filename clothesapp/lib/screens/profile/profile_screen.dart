@@ -27,7 +27,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _reload();
   }
 
-  void _reload() => setState(() => _future = statsServiceOf(context).me());
+  void _reload() {
+    if (!mounted) return;
+    // A block body, not `setState(() => _future = ...)`: an arrow closure
+    // RETURNS what it assigns, so that form handed setState a Future and
+    // tripped its assertion ("setState() callback argument returned a Future")
+    // whenever the screen was opened while a load was still running.
+    setState(() {
+      _future = statsServiceOf(context).me();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

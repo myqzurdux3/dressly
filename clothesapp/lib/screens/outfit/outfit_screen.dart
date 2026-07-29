@@ -576,7 +576,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
                         ),
                       ),
                     );
-                    if (picked != null) {
+                    if (picked != null && mounted) {
                       setState(() => _selectedClothIds
                         ..clear()
                         ..addAll(picked));

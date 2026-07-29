@@ -31,6 +31,16 @@ import config
 # still useful, short enough that a leaked URL is not forever.
 IMAGE_URL_TTL_S = int(os.environ.get("CLOTHESAPP_IMAGE_URL_TTL_S", "604800"))
 
+# The expiry is rounded to this grid so that repeated requests for the same file
+# produce the SAME url.
+#
+# This matters more than it looks. Image caches key on the URL, so an expiry of
+# "now + TTL" — recomputed on every listing — yielded a different signature every
+# second: the client re-downloaded the entire wardrobe each time the screen was
+# opened, and its disk cache never hit once. Rounding to a day means the URL is
+# byte-identical all day and the cache works, while the signature still expires.
+IMAGE_URL_BUCKET_S = int(os.environ.get("CLOTHESAPP_IMAGE_URL_BUCKET_S", "86400"))
+
 # Clock skew allowance between the signer and the checker (same process today,
 # but a proxy or a second host could differ).
 _SKEW_S = 60
@@ -54,6 +64,17 @@ def _signature(rel_path: str, expires: int) -> str:
     return base64.urlsafe_b64encode(digest[:16]).decode("ascii").rstrip("=")
 
 
+def expiry_for(now: float) -> int:
+    """Next expiry on the rounding grid, at least IMAGE_URL_TTL_S away.
+
+    Stable for the whole bucket, so every request in that window signs the same
+    URL and the client's image cache can actually hit.
+    """
+    bucket = max(1, IMAGE_URL_BUCKET_S)
+    buckets_ahead = -(-IMAGE_URL_TTL_S // bucket)      # ceil division
+    return (int(now // bucket) + buckets_ahead + 1) * bucket
+
+
 def sign_query(rel_path: str, now: float | None = None) -> str:
     """Query fragment (`e=...&s=...`) authorising `rel_path`, or '' when off.
 
@@ -62,7 +83,7 @@ def sign_query(rel_path: str, now: float | None = None) -> str:
     """
     if not enabled():
         return ""
-    expires = int((now if now is not None else time.time()) + IMAGE_URL_TTL_S)
+    expires = expiry_for(now if now is not None else time.time())
     return f"e={expires}&s={_signature(rel_path, expires)}"
 
 
