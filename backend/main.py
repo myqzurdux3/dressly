@@ -54,6 +54,15 @@ async def lifespan(_app: FastAPI):
     left half-done. Replaces the deprecated @app.on_event("startup")."""
     accesslog.configure(LOGS_DIR)
     create_tables()
+    # Fetch u2net.onnx now if it is missing: 176 MB downloaded inside somebody's
+    # first upload looks exactly like a hung request. Never fatal — the server is
+    # useful without background removal, and an offline box should still boot.
+    try:
+        import images
+        images.warm_model()
+    except Exception as exc:  # noqa: BLE001 - startup must not depend on this
+        logging.getLogger(__name__).warning(
+            "background-removal model unavailable: %s", exc)
     yield
 
 

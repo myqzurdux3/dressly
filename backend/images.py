@@ -2,23 +2,84 @@ import hashlib
 import logging
 import os
 import shutil
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
+
+
+def _available_cpus() -> int:
+    """CPUs this process may actually use.
+
+    `os.cpu_count()` reports the host's cores, which on a VPS is usually far
+    more than the quota allows. Believing it meant asking onnxruntime for eleven
+    threads on a box entitled to two, which thrashes — background removal got
+    slower, not faster.
+    """
+    # cgroup v2, then v1: the quota is the real entitlement.
+    try:
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            return max(1, round(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    try:
+        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
+        period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())
+        if quota > 0:
+            return max(1, round(quota / period))
+    except (OSError, ValueError):
+        pass
+    # Then the affinity mask, which respects taskset and some containers.
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return max(1, os.cpu_count() or 1)
+
+
+# Threads for the cut-out child process. Measured on one photo: 2.50 s at one
+# thread, 1.98 s at two, 1.67 s at four, 1.82 s at twelve — so more is not
+# better past a point, and the earlier default of "every core the host claims to
+# have" was both slower and, on a quota-limited VPS, the cause of
+#
+#   pthread_setaffinity_np failed for thread: ..., error code: 22
+#
+# Divided by the worker count because uploads can land on several workers at
+# once, and each would spawn its own child.
+def _default_rembg_threads() -> int:
+    workers = 1
+    try:
+        workers = max(1, int(os.environ.get("CLOTHESAPP_WORKERS", "1")))
+    except ValueError:
+        pass
+    return max(1, _available_cpus() // workers)
+
+
+REMBG_THREADS = int(os.environ.get("CLOTHESAPP_REMBG_THREADS")
+                    or _default_rembg_threads())
+
+# How many cut-outs may run at once across this worker. Each child peaks around
+# 830 MB, so this is a memory limit, not a CPU one: two garment photos are
+# processed one after the other rather than together, which costs ~2 s and is
+# what stops the kernel killing the worker.
+CUTOUT_CONCURRENCY = max(1, int(os.environ.get("CLOTHESAPP_CUTOUT_CONCURRENCY", "1")))
+# A cut-out is ~2 s. A minute means something is wrong, and hanging forever would
+# hold the upload's HTTP request open until the client gave up with no reason.
+CUTOUT_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_CUTOUT_TIMEOUT_S", "120"))
 
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
-from rembg import remove as rembg_remove
 
 import imagesign
-from config import BLOBS_DIR, IMAGES_DIR, REMBG_MODEL
+from config import BLOBS_DIR, IMAGES_DIR
 
 log = logging.getLogger(__name__)
 
-# Lazy-loaded rembg session, so we only pay the model-load cost once per process.
-_SESSION = {"session": None}
-# A single ONNX session is not guaranteed thread-safe; requests run on a thread
-# pool, so serialize inference to avoid concurrent-upload races/crashes.
-_INFER_LOCK = threading.Lock()
+# Caps concurrent cut-out children (see CUTOUT_CONCURRENCY). Held for the whole
+# child's life, so it also serialises what used to be serialised for a different
+# reason: a shared ONNX session is not thread-safe.
+_INFER_LOCK = threading.BoundedSemaphore(CUTOUT_CONCURRENCY)
 
 # --- encoding budgets -----------------------------------------------------
 # Tuned for visual transparency, not for the smallest possible file. Measured
@@ -184,41 +245,12 @@ def detect_colors(cutout_path, *, max_colors: int = 3):
     return out
 
 
-# How many threads onnxruntime may use for inference.
-#
-# Setting this at all is what stops onnxruntime trying to pin threads to
-# specific cores, which fails on a VPS where the cgroup does not allow it:
-#
-#   pthread_setaffinity_np failed for thread: ..., error code: 22
-#   Specify the number of threads explicitly so the affinity is not set.
-#
-# The value also matters on its own. Measured on one photo: 2.66 s with a
-# single thread, 2.03 s with two, 1.74 s with six — and this runs while someone
-# waits for a garment to be added.
-#
-# All cores but one: the spare keeps the server answering image requests during
-# an upload, which takes seconds. Workers each build their own session, so
-# simultaneous uploads on different workers will oversubscribe — they are rare
-# here, and the alternative is a slower upload every time to guard against it.
-REMBG_THREADS = int(os.environ.get(
-    "CLOTHESAPP_REMBG_THREADS", max(1, (os.cpu_count() or 2) - 1)))
+def warm_model() -> Path:
+    """Make sure u2net.onnx is on disk. Called at startup so the 176 MB download
+    does not happen inside somebody's first upload."""
+    import cutout
 
-
-def _get_session():
-    if _SESSION["session"] is None:
-        # rembg reads OMP_NUM_THREADS when building its SessionOptions and, if
-        # present, sets inter/intra_op_num_threads from it. That is the
-        # supported way in: it constructs the options itself and takes no
-        # override. Only set when the operator has not chosen a value.
-        os.environ.setdefault("OMP_NUM_THREADS", str(REMBG_THREADS))
-
-        # rembg.new_session handles downloading the model on first call.
-        from rembg import new_session
-
-        _SESSION["session"] = new_session(REMBG_MODEL)
-        log.info("rembg session ready (model=%s, threads=%s)",
-                 REMBG_MODEL, os.environ["OMP_NUM_THREADS"])
-    return _SESSION["session"]
+    return cutout.ensure_model()
 
 
 # --- content-addressed storage -------------------------------------------
@@ -430,25 +462,59 @@ def _encode_cutout(img: Image.Image, dst_path: Path) -> bytes:
     return buf.getvalue()
 
 
+class CutoutFailed(RuntimeError):
+    """The cut-out child did not produce an image. Carries the child's stderr,
+    because the alternative was a bare 500 and a server log saying only
+    'Child process died'."""
+
+
 def remove_background(src_path: Path, dst_path: Path,
                       tolerance: str = "medium") -> Path:
-    """Run rembg on the saved file and write a transparent cutout. The
-    ``tolerance`` level tunes how much is removed (see _apply_tolerance)."""
+    """Write a transparent cut-out of ``src_path``. The ``tolerance`` level tunes
+    how much is removed (see _apply_tolerance).
+
+    Inference runs in a child process (see cutout.py) rather than here. In-process
+    it left ~660 MB behind permanently — per worker, unrecoverable — which is
+    what killed the workers: `INFO: Child process [13583] died.` A child that
+    exits is the only thing that gives the memory back.
+    """
     if tolerance not in VALID_TOLERANCES:
         tolerance = "medium"
     dst_path = Path(dst_path)
-    with Image.open(src_path) as img:
-        img = ImageOps.exif_transpose(img) or img
-        # rembg.remove accepts a PIL image or bytes; bytes path also works.
-        # Serialize inference — the shared ONNX session isn't thread-safe.
+    # Write to a scratch file, not to dst_path: a child killed halfway would
+    # otherwise leave a truncated image where a garment's cut-out belongs, and
+    # nothing downstream re-checks it.
+    # The suffix has to survive: _encode_cutout picks its format from it, so a
+    # plain ".part" name silently produced a PNG stored under a .webp filename —
+    # decodable, because PIL sniffs content, and 56% larger.
+    tmp = dst_path.with_name(
+        f".{dst_path.stem}.{os.getpid()}.part{dst_path.suffix}")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+
+    env = dict(os.environ,
+               CLOTHESAPP_REMBG_THREADS=str(REMBG_THREADS),
+               OMP_NUM_THREADS=str(REMBG_THREADS))
+    cmd = [sys.executable, "-m", "cutout", str(src_path), str(tmp), tolerance]
+    started = time.perf_counter()
+    try:
         with _INFER_LOCK:
-            cutout = rembg_remove(img, session=_get_session())
-    cutout = _apply_tolerance(cutout.convert("RGBA"), tolerance)
-    # Tighten to the garment so it isn't a small item lost in empty space.
-    cutout = _trim_transparent(cutout)
-    # Cap the size so first load isn't a multi-MB transfer.
-    cutout = _downscale(cutout, CUTOUT_MAX_PX)
-    return link_bytes(_encode_cutout(cutout, dst_path), dst_path)
+            proc = subprocess.run(cmd, cwd=str(Path(__file__).parent), env=env,
+                                  capture_output=True, text=True,
+                                  timeout=CUTOUT_TIMEOUT_S)
+        if proc.returncode != 0 or not tmp.exists():
+            # Includes the signal case: returncode is negative when the kernel
+            # killed it, which is how an out-of-memory child reports itself.
+            raise CutoutFailed(
+                f"cutout exited {proc.returncode}: "
+                f"{(proc.stderr or '').strip()[-500:] or 'no output'}")
+        log.info("cutout done in %.2fs (threads=%s) %s",
+                 time.perf_counter() - started, REMBG_THREADS, dst_path.name)
+        return link_bytes(tmp.read_bytes(), dst_path)
+    except subprocess.TimeoutExpired:
+        raise CutoutFailed(
+            f"cutout still running after {CUTOUT_TIMEOUT_S:.0f}s") from None
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def transform_image(src_path: Path, dst_path: Path, *, rotate: int = 0,
