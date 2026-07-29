@@ -136,7 +136,7 @@ class SettingsScreen extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.favorite_outline),
             // TODO: replace with your real name/handle.
-            title: Text('Made by Alex Martin'),
+            title: Text('Made by G...'),
             subtitle: Text('© 2026'),
           ),
         ],

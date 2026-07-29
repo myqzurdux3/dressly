@@ -295,6 +295,68 @@ void main() {
       );
     });
 
+    test('accepting a cut-out is retried', () async {
+      // The reported failure: "keep the cut-out" spun for the full timeout and
+      // then errored, while retrying by hand worked. Accepting twice lands in
+      // the same state, so the app should do that retry itself.
+      var attempts = 0;
+      final api = ApiClient(
+        token: 't',
+        httpClient: MockClient((req) async {
+          attempts++;
+          if (attempts == 1) throw http.ClientException('stale socket');
+          return http.Response.bytes(utf8.encode('{"ok":true}'), 200,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
+
+      expect(await api.post('/clothes/1/images/2/accept', const {}),
+          {'ok': true});
+      expect(attempts, 2);
+    });
+
+    test('other state-setting writes are retried too', () async {
+      for (final path in [
+        '/clothes/1/images/2/reject',
+        '/clothes/1/favorite',
+        '/clothes/1/wear',
+        '/clothes/1/images/2/redo-bg',
+        '/outfits/1/blacklist',
+      ]) {
+        var attempts = 0;
+        final api = ApiClient(
+          token: 't',
+          httpClient: MockClient((req) async {
+            attempts++;
+            if (attempts == 1) throw http.ClientException('stale socket');
+            return http.Response.bytes(utf8.encode('{}'), 200,
+                headers: {'content-type': 'application/json'});
+          }),
+        );
+        await api.post(path, const {});
+        expect(attempts, 2, reason: '$path should have been retried');
+      }
+    });
+
+    test('a paid generation is NOT retried', () async {
+      // Repeating one of these bills bfl.ai a second time.
+      for (final path in [
+        '/outfits/generate',
+        '/clothes/1/images/2/enhance',
+      ]) {
+        var attempts = 0;
+        final api = ApiClient(
+          token: 't',
+          httpClient: MockClient((req) async {
+            attempts++;
+            throw http.ClientException('down');
+          }),
+        );
+        await expectLater(api.post(path, const {}), throwsA(anything));
+        expect(attempts, 1, reason: '$path must not be repeated');
+      }
+    });
+
     test('a POST is NOT retried', () async {
       // Repeating a write that did reach the server would apply it twice.
       var attempts = 0;

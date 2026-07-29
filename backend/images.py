@@ -184,12 +184,40 @@ def detect_colors(cutout_path, *, max_colors: int = 3):
     return out
 
 
+# How many threads onnxruntime may use for inference.
+#
+# Setting this at all is what stops onnxruntime trying to pin threads to
+# specific cores, which fails on a VPS where the cgroup does not allow it:
+#
+#   pthread_setaffinity_np failed for thread: ..., error code: 22
+#   Specify the number of threads explicitly so the affinity is not set.
+#
+# The value also matters on its own. Measured on one photo: 2.66 s with a
+# single thread, 2.03 s with two, 1.74 s with six — and this runs while someone
+# waits for a garment to be added.
+#
+# All cores but one: the spare keeps the server answering image requests during
+# an upload, which takes seconds. Workers each build their own session, so
+# simultaneous uploads on different workers will oversubscribe — they are rare
+# here, and the alternative is a slower upload every time to guard against it.
+REMBG_THREADS = int(os.environ.get(
+    "CLOTHESAPP_REMBG_THREADS", max(1, (os.cpu_count() or 2) - 1)))
+
+
 def _get_session():
     if _SESSION["session"] is None:
+        # rembg reads OMP_NUM_THREADS when building its SessionOptions and, if
+        # present, sets inter/intra_op_num_threads from it. That is the
+        # supported way in: it constructs the options itself and takes no
+        # override. Only set when the operator has not chosen a value.
+        os.environ.setdefault("OMP_NUM_THREADS", str(REMBG_THREADS))
+
         # rembg.new_session handles downloading the model on first call.
         from rembg import new_session
 
         _SESSION["session"] = new_session(REMBG_MODEL)
+        log.info("rembg session ready (model=%s, threads=%s)",
+                 REMBG_MODEL, os.environ["OMP_NUM_THREADS"])
     return _SESSION["session"]
 
 
