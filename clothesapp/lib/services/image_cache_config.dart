@@ -34,16 +34,15 @@ class AppImageCache {
       maxNrOfCacheObjects: maxObjects,
       // Two reasons for a custom file service.
       //
-      // The client is shared with the API calls, so every image download reuses
-      // one connection pool: measured against the deployed server, eight
-      // sequential requests cost 140 ms each over a kept-alive connection
-      // against 670 ms each when every one reconnects.
+      // It uses the image-only connection pool. Sharing one pool with the API
+      // meant a slow image occupied a connection that a JSON request then had
+      // to wait for — six images in flight and the whole app stalled.
       //
       // And it has a deadline. The cache manager runs ten downloads at a time
       // and frees a slot in a `finally` — which a request that never answers
       // never reaches, so it holds that slot forever. Ten such requests and
       // images stop loading permanently.
-      fileService: TimeoutFileService(httpClient: PinnedHttp.shared),
+      fileService: TimeoutFileService(httpClient: PinnedHttp.images),
     ),
   );
 

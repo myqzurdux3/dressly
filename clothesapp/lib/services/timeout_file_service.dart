@@ -22,13 +22,14 @@ import 'package:http/http.dart' as http;
 class TimeoutFileService extends FileService {
   TimeoutFileService({
     required http.Client httpClient,
-    this.timeout = const Duration(seconds: 20),
+    this.timeout = const Duration(seconds: 10),
   }) : _inner = HttpFileService(httpClient: httpClient);
 
   final HttpFileService _inner;
 
-  /// Generous: a large image on a slow link is normal, a minute of silence is
-  /// not. Only meant to catch connections that will never answer.
+  /// Ten seconds. Long enough for a large image on a slow link, short enough
+  /// that a dead connection is not felt for long. It was twenty, which is how
+  /// long the app appeared frozen when one stalled.
   final Duration timeout;
 
   @override
