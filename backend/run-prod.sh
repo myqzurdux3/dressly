@@ -14,12 +14,37 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
-fi
+# Load .env as DEFAULTS: a variable already exported in the shell wins.
+#
+# `source .env` would do the opposite. Since .env.example ships
+# CLOTHESAPP_SECRET= (empty, to be filled in), sourcing it silently wiped a
+# secret the operator had just exported, and the script then reported it as
+# unset — confusing, and exactly the wrong way round.
+load_env_defaults() {
+  local file="$1" line key value
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%$'\r'}"                       # tolerate CRLF
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue  # comment
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue  # blank
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"
+    key="${key#"${key%%[![:space:]]*}"}"         # trim leading space
+    key="${key%"${key##*[![:space:]]}"}"         # trim trailing space
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    value="${line#*=}"
+    # Strip one layer of surrounding quotes, if present.
+    if [[ "$value" == \"*\" || "$value" == \'*\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    # Only fill in what the environment has not already provided.
+    if [[ -z "${!key:-}" ]]; then
+      export "$key=$value"
+    fi
+  done < "$file"
+}
+
+load_env_defaults .env
 
 : "${CLOTHESAPP_ENV:=prod}"
 export CLOTHESAPP_ENV
@@ -29,10 +54,20 @@ if [[ "${CLOTHESAPP_SECRET:-}" == "" ]]; then
 CLOTHESAPP_SECRET is not set.
 
 It is the key that signs login tokens. Any random string of 32+ bytes will do —
-it just has to stay secret and stay the same (changing it logs everyone out).
+it just has to stay secret and stay the same (changing it signs everyone out).
 
   python -c 'import secrets; print(secrets.token_urlsafe(48))'
+
+Put it in .env (CLOTHESAPP_SECRET=...) or export it before running this script.
+An exported value takes precedence over .env, so a blank line in .env will not
+override one you set by hand.
 EOF
+  exit 1
+fi
+
+if (( ${#CLOTHESAPP_SECRET} < 32 )); then
+  echo "CLOTHESAPP_SECRET is only ${#CLOTHESAPP_SECRET} characters; it needs 32+." >&2
+  echo "The server would refuse to start anyway — see config.py." >&2
   exit 1
 fi
 
