@@ -32,8 +32,13 @@ import tempfile
 import time
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parent.parent
+# Normally the install this script sits in. The override exists because a
+# tar-deployed backend is root-owned, so on the server this file has to live
+# somewhere writable and point back at the deployment.
+BACKEND = Path(os.environ.get("CLOTHESAPP_BACKEND_DIR")
+               or Path(__file__).resolve().parent.parent)
 sys.path.insert(0, str(BACKEND))
+os.chdir(BACKEND)
 
 
 def _read(path, default=""):
@@ -213,7 +218,14 @@ print("\n".join(str(x) for x in [
           f" of one core")
     swapped_in = after_swap.get("pswpin", 0) - before_swap.get("pswpin", 0)
     swapped_out = after_swap.get("pswpout", 0) - before_swap.get("pswpout", 0)
-    print(f"swap during run   {swapped_in} pages in, {swapped_out} pages out")
+    # On a VPS, /proc/vmstat is usually the HOST's, not this container's, so this
+    # counts other tenants' paging too. It only means anything alongside
+    # MemAvailable — on the machine this was written for it read 14432 pages out
+    # while 7.9 GB was free, and an earlier version of this script called that
+    # "swapping" and blamed the wrong thing entirely.
+    free_mb = _meminfo().get("MemAvailable", 0)
+    print(f"swap during run   {swapped_in} pages in, {swapped_out} pages out"
+          f" (host-wide; {free_mb} MB was free here)")
     tot_d = after_cpu[0] - before_cpu[0]
     steal_d = after_cpu[1] - before_cpu[1]
     steal_pct = 100 * steal_d / tot_d if tot_d else 0
@@ -221,7 +233,7 @@ print("\n".join(str(x) for x in [
           "(hypervisor running somebody else)")
 
     print()
-    if swapped_in + swapped_out > 1000:
+    if free_mb < 900 and swapped_in + swapped_out > 1000:
         print("VERDICT: swapping. The machine does not have the ~830 MB this")
         print("  needs, so it is going to disk mid-inference. Add RAM, or add")
         print("  swap and accept it being slow. Nothing in the code fixes this.")
@@ -239,6 +251,15 @@ print("\n".join(str(x) for x in [
         print(f"VERDICT: normal ({total:.1f}s). If the app still feels slow when")
         print("  adding a garment, the time is NOT in background removal —")
         print("  look at scripts/analyze_log.py for the request timings.")
+
+    import images
+    if images.CUTOUT_WEBP_LOSSLESS and enc > 0.2 * total:
+        print(f"\nALSO: encoding is {100 * enc / total:.0f}% of the time"
+              f" ({enc:.1f}s), and it is set to lossless. On the machine this")
+        print("  was written for, quality 95 cut that to a third and the files"
+              " to a third,")
+        print("  scoring 44.7 dB median against the lossless original:")
+        print("      CLOTHESAPP_CUTOUT_LOSSLESS=0      <- in backend/.env")
     return total
 
 
