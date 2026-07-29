@@ -43,6 +43,8 @@ from routes_models import router as models_router
 from routes_notifications import router as notifications_router
 from routes_outfits import router as outfits_router
 from routes_stats import router as stats_router
+import accesslog
+from accesslog import AccessLogMiddleware
 from routes_thumbs import CachedStaticFiles
 from routes_thumbs import router as thumbs_router
 
@@ -50,6 +52,7 @@ from routes_thumbs import router as thumbs_router
 async def lifespan(_app: FastAPI):
     """Schema creation + migrations + recovery of anything a previous process
     left half-done. Replaces the deprecated @app.on_event("startup")."""
+    accesslog.configure(LOGS_DIR)
     create_tables()
     yield
 
@@ -77,18 +80,18 @@ def _email_from_request(request: Request) -> str:
         return "-"
 
 
-# Image requests are excluded from the normal log — there are dozens per screen
-# and they would drown out user actions. But excluding them entirely left no way
-# to tell a slow server from a slow network when images were taking seconds to
-# appear, so anything above this threshold is logged anyway.
-SLOW_IMAGE_MS = int(os.environ.get("CLOTHESAPP_SLOW_IMAGE_MS", "500"))
-
-
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Application actions, with the user attached.
+
+    Images are left to the access log: there are dozens per screen and they
+    would bury everything else. Note this timer stops when the handler returns,
+    which for a JSON response is the whole story and for a file response is not
+    — see accesslog.py.
+    """
     path = request.url.path
-    is_image = path.startswith(("/images", "/generated", "/thumb"))
-    quiet = is_image or path == "/health"
+    quiet = path.startswith(("/images", "/generated", "/thumb")) or \
+        path == "/health"
     start = time.monotonic()
     try:
         response = await call_next(request)
@@ -97,18 +100,17 @@ async def log_requests(request: Request, call_next):
         _req_log.exception("%s %s -> 500 %.0fms user=%s",
                            request.method, path, dur, _email_from_request(request))
         raise
-    dur = (time.monotonic() - start) * 1000
-    if is_image and dur >= SLOW_IMAGE_MS:
-        # No user lookup here: decoding the token per image would itself cost
-        # more than the thing being measured.
-        _req_log.warning("SLOW image %s -> %s %.0fms", path, response.status_code,
-                         dur)
-    elif not quiet:
+    if not quiet:
+        dur = (time.monotonic() - start) * 1000
         level = logging.WARNING if response.status_code >= 400 else logging.INFO
         _req_log.log(level, "%s %s -> %s %.0fms user=%s",
                      request.method, path, response.status_code, dur,
                      _email_from_request(request))
     return response
+
+
+# Outermost: wraps everything above so its timer covers the response body too.
+app.add_middleware(AccessLogMiddleware, app_log=_req_log)
 
 
 # Static mounts first so path-shaped routes don't get shadowed by the
