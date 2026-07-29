@@ -74,6 +74,22 @@ Once a domain name is available, prefer a real certificate (Let's Encrypt behind
 Caddy or nginx) and set `apiCertSha256` back to `''`: ordinary validation then
 applies, with no pin to keep in sync and no browser warnings.
 
+### When something is wrong
+
+```bash
+python scripts/doctor.py
+```
+
+Checks the environment, the certificate, the database paths and the thumbnail
+cache, and names what to fix. Written after a restart came back on plain HTTP
+because its certificate was missing — the app then reported `Handshake error in
+client (wrong version number)`, which describes the far side of the connection
+and says nothing about the cause.
+
+run-prod.sh now refuses to start without a certificate rather than quietly
+downgrading to HTTP. `CLOTHESAPP_ALLOW_PLAINTEXT=1` overrides that for local
+testing.
+
 ### Workers
 
 `CLOTHESAPP_WORKERS` defaults to 3. Rate-limit counters and generation job
