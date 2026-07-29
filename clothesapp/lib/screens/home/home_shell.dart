@@ -60,7 +60,26 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: PageView(
+      // A page is marked visited as soon as it starts coming into view, not
+      // when the swipe settles: otherwise the page being swiped towards stays
+      // blank for the length of the gesture.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n is ScrollUpdateNotification && _controller.hasClients) {
+            final page = _controller.page;
+            if (page != null) {
+              final approaching = {page.floor(), page.ceil()}
+                  .where((i) => i >= 0 && i < _pages.length)
+                  .where((i) => !_visited.contains(i))
+                  .toSet();
+              if (approaching.isNotEmpty) {
+                setState(() => _visited.addAll(approaching));
+              }
+            }
+          }
+          return false;
+        },
+        child: PageView(
         controller: _controller,
         onPageChanged: (i) => setState(() {
           _index = i;
@@ -70,6 +89,7 @@ class _HomeShellState extends State<HomeShell> {
           for (var i = 0; i < _pages.length; i++)
             LazyPage(isActive: _visited.contains(i), builder: _pages[i]),
         ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
