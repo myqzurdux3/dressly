@@ -71,6 +71,59 @@ void main() {
         reason: 'the page was rebuilt, so its screen reloaded');
   });
 
+  testWidgets('a visited tab survives being scrolled out of view',
+      (tester) async {
+    // The measured regression: PageView destroys an off-screen page and runs
+    // its initState again on return. The server saw five /clothes and four
+    // /models in three seconds from a single screen, each /clothes returning
+    // the whole unpaginated wardrobe.
+    final built = List.generate(3, (_) => <String>[]);
+    final controller = PageController();
+    addTearDown(controller.dispose);
+    final visited = <int>{0};
+
+    Widget shell() => MaterialApp(
+          home: PageView(
+            controller: controller,
+            children: [
+              for (var i = 0; i < 3; i++)
+                LazyPage(
+                  isActive: visited.contains(i),
+                  builder: (_) => _Counting(built[i]),
+                ),
+            ],
+          ),
+        );
+
+    await tester.pumpWidget(shell());
+    expect(built[0], hasLength(1));
+
+    // Go to the far tab, then back.
+    visited.add(2);
+    controller.jumpToPage(2);
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+    expect(built[2], hasLength(1));
+
+    controller.jumpToPage(0);
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+
+    expect(built[0], hasLength(1),
+        reason: 'returning to a tab rebuilt it, so it refetched everything');
+
+    // And once more, in case the first return was luck.
+    controller.jumpToPage(2);
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+    controller.jumpToPage(0);
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+
+    expect(built[0], hasLength(1));
+    expect(built[2], hasLength(1));
+  });
+
   testWidgets('tapping a far tab does not build the ones in between',
       (tester) async {
     // The regression: animateToPage scrolls through every intermediate page and

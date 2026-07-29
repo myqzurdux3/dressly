@@ -10,9 +10,15 @@ import 'package:flutter/material.dart';
 /// pictures on the screen actually being looked at waited behind dozens
 /// belonging to screens that were not visible.
 ///
-/// Deferring is enough to fix that; discarding is not wanted. Once a page has
-/// been shown it stays built, so going back to it is instant and does not
-/// refetch.
+/// Deferring is only half of it. A PageView also DESTROYS a page once it
+/// scrolls out of view, and rebuilds it — running initState again — on the way
+/// back. The server log showed the cost plainly: five `/clothes` and four
+/// `/models` within three seconds, all from the one screen that fetches both,
+/// each `/clothes` returning the whole unpaginated wardrobe. Half a megabyte
+/// re-downloaded for nothing.
+///
+/// So a page that has been shown is also kept alive. Returning to a tab is then
+/// instant and issues no requests at all.
 class LazyPage extends StatefulWidget {
   const LazyPage({super.key, required this.isActive, required this.builder});
 
@@ -26,8 +32,14 @@ class LazyPage extends StatefulWidget {
   State<LazyPage> createState() => _LazyPageState();
 }
 
-class _LazyPageState extends State<LazyPage> {
+class _LazyPageState extends State<LazyPage>
+    with AutomaticKeepAliveClientMixin {
   bool _seen = false;
+
+  // Only worth keeping once there is something to keep; an unvisited page has
+  // no state and should stay cheap.
+  @override
+  bool get wantKeepAlive => _seen;
 
   @override
   void initState() {
@@ -38,11 +50,15 @@ class _LazyPageState extends State<LazyPage> {
   @override
   void didUpdateWidget(LazyPage old) {
     super.didUpdateWidget(old);
-    if (widget.isActive) _seen = true;
+    if (widget.isActive && !_seen) {
+      _seen = true;
+      updateKeepAlive();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);   // required by AutomaticKeepAliveClientMixin
     if (!_seen) {
       // Nothing that loads, nothing that measures — just something to occupy
       // the slot until the page is wanted.
