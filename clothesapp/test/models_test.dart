@@ -4,6 +4,7 @@ import 'package:clothesapp/models/outfit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  _cutoutStatusTests();
   _enhancedPreviewTests();
   group('Cloth.fromJson', () {
     test('parses fields incl. last_worn_at and images', () {
@@ -328,6 +329,32 @@ void _enhancedPreviewTests() {
 
     test('stays empty when there is no AI result at all', () {
       expect(ClothImage.fromJson(const {'id': 1}).enhancedPreview, '');
+    });
+  });
+}
+
+void _cutoutStatusTests() {
+  group('a garment can exist before its cut-out does', () {
+    test('reads cutout_status from the server', () {
+      final img = ClothImage.fromJson(const {
+        'id': 1,
+        'bg_accepted': 'pending',
+        'cutout_status': 'processing',
+      });
+      expect(img.cutoutStatus, 'processing');
+    });
+
+    test('an older server, or a row from before the column, reads as ready', () {
+      // Defaulting to anything else would put a spinner on a whole wardrobe of
+      // photos that were cut out long ago.
+      final img = ClothImage.fromJson(const {'id': 1});
+      expect(img.cutoutStatus, 'ready');
+    });
+
+    test('a failed cut-out is a state of its own, not "still going"', () {
+      final img = ClothImage.fromJson(const {'id': 1, 'cutout_status': 'failed'});
+      expect(img.cutoutStatus, 'failed');
+      expect(img.cutoutStatus, isNot('processing'));
     });
   });
 }

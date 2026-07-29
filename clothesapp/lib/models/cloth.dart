@@ -23,6 +23,11 @@ class ClothImage {
   final String role; // 'front' | 'back' | 'extra'
   final int sortOrder;
   final String bgAccepted; // 'pending' | 'accepted' | 'rejected'
+  /// 'processing' while the server is still cutting this photo out, then
+  /// 'ready' or 'failed'. Uploading answers before the cut-out exists, so a
+  /// freshly added garment arrives here as 'processing' and shows its original
+  /// photo until it lands.
+  final String cutoutStatus;
   final String bgTolerance; // 'low' | 'medium' | 'high' removal strength
   final String originalUrl;
   final String cutoutUrl;
@@ -57,6 +62,7 @@ class ClothImage {
     required this.role,
     required this.sortOrder,
     required this.bgAccepted,
+    this.cutoutStatus = 'ready',
     this.bgTolerance = 'medium',
     required this.originalUrl,
     required this.cutoutUrl,
@@ -78,6 +84,7 @@ class ClothImage {
         role: (json['role'] ?? 'extra') as String,
         sortOrder: (json['sort_order'] ?? 0) as int,
         bgAccepted: (json['bg_accepted'] ?? 'pending') as String,
+        cutoutStatus: (json['cutout_status'] ?? 'ready') as String,
         bgTolerance: (json['bg_tolerance'] ?? 'medium') as String,
         originalUrl: (json['original_url'] ?? '') as String,
         cutoutUrl: (json['cutout_url'] ?? '') as String,

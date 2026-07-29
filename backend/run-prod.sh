@@ -72,7 +72,7 @@ if (( ${#CLOTHESAPP_SECRET} < 32 )); then
 fi
 
 HOST="${CLOTHESAPP_HOST:-0.0.0.0}"
-PORT="${CLOTHESAPP_PORT:-8000}"
+PORT="${CLOTHESAPP_PORT:-80}"
 # The counters and job ownership live in SQLite, so several workers stay
 # consistent with each other. Workers are cheap now (~40 MB each): background
 # removal runs in a short-lived child process, so no worker holds the 660 MB

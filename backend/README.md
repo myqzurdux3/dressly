@@ -7,7 +7,7 @@ FastAPI + SQLite + `rembg` (background removal). Auth via JWT + bcrypt.
 ```bash
 cd backend
 pip install -r requirements.txt
-./run.sh          # serves on http://0.0.0.0:8000
+./run.sh          # serves on http://0.0.0.0:80
 ```
 
 The first `POST /clothes` triggers a one-time `rembg` model download (~170 MB
@@ -146,8 +146,8 @@ image in the app 404s at once. The script is idempotent.
 
 ## Connecting from the Flutter app
 
-- Android emulator → `http://10.0.2.2:8000`
-- Physical device → `http://<this machine's LAN IP>:8000`
+- Android emulator → `http://10.0.2.2:80`
+- Physical device → `http://<this machine's LAN IP>:80`
 
 Set this in `clothesapp/lib/config/api_config.dart`.
 

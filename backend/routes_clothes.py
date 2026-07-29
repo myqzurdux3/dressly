@@ -93,17 +93,33 @@ def _parse_colors(raw: Optional[str]) -> List[dict]:
     return out
 
 
-def _process_upload(dest_dir: Path, role: str, slot, data: bytes) -> dict:
-    """Encode one uploaded photo and produce its cut-out.
+def _encode_only(dest_dir: Path, role: str, slot, data: bytes) -> dict:
+    """Encode one uploaded photo. No cut-out — that happens later, in the
+    background (see _run_cutouts).
 
     ``slot`` is the filename discriminator — the sort order for a fresh upload,
     or a longer unique token when replacing an existing image.
 
-    Blocking on purpose: re-encoding is PIL and background removal is ONNX
-    inference, both several seconds of CPU. Callers must run this in a worker
-    thread (``run_in_threadpool``) and must not hold a DB transaction across it.
+    Still blocking: PIL re-encoding of a 12-megapixel photo is a few hundred
+    milliseconds. Callers must run this in a worker thread and must not hold a
+    DB transaction across it.
     """
     original = save_original(data, dest_dir / f"{role}_{slot}")
+    return {"role": role, "sort_order": slot, "original": original,
+            # Until the cut-out exists, the original stands in for it. The app
+            # shows this, marked as still processing, instead of a blank card.
+            "cutout": original}
+
+
+def _process_upload(dest_dir: Path, role: str, slot, data: bytes) -> dict:
+    """Encode one uploaded photo and produce its cut-out, synchronously.
+
+    Kept for the paths where the caller genuinely has to wait for the result —
+    replacing a single photo, where the app shows the new cut-out immediately.
+    A fresh garment goes through _encode_only instead.
+    """
+    staged = _encode_only(dest_dir, role, slot, data)
+    original = staged["original"]
     cutout = dest_dir / f"{role}_{slot}_cutout.webp"
     try:
         remove_background(original, cutout)
@@ -112,30 +128,62 @@ def _process_upload(dest_dir: Path, role: str, slot, data: bytes) -> dict:
         # Fall back to the encoded original. It is content-addressed, so this
         # links to the same inode rather than duplicating the bytes.
         cutout = link_bytes(original.read_bytes(), cutout.with_suffix(original.suffix))
-    return {"role": role, "sort_order": slot,
-            "original": original, "cutout": cutout}
+    return {**staged, "cutout": cutout}
 
 
-def _stage_uploads(stage: Path, payloads) -> List[dict]:
+def _stage_uploads(stage: Path, payloads, *, with_cutout: bool = True) -> List[dict]:
     """Process every upload of a request into ``stage``.
 
     In parallel, because most of the work is not the part that has to be
-    serialised. Background removal takes a lock — the ONNX session is not
-    thread-safe — but the re-encoding around it, which is the larger half, does
-    not, and PIL releases the GIL while it runs. A garment is two photos, front
-    and back, and the person who pressed Add is waiting for both.
+    serialised. PIL releases the GIL while it re-encodes.
+
+    ``with_cutout=False`` does the encoding only and leaves the cut-out to a
+    background task — the fresh-garment path, where nobody should be made to
+    wait ten seconds for a picture they already chose.
     """
+    work = _process_upload if with_cutout else _encode_only
     if len(payloads) < 2:
-        return [_process_upload(stage, role, idx, data)
-                for role, idx, data in payloads]
+        return [work(stage, role, idx, data) for role, idx, data in payloads]
 
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=min(4, len(payloads))) as pool:
-        futures = [pool.submit(_process_upload, stage, role, idx, data)
+        futures = [pool.submit(work, stage, role, idx, data)
                    for role, idx, data in payloads]
         # Order matters: it decides front/back and the sort order.
         return [f.result() for f in futures]
+
+
+def _run_cutouts(image_ids: List[int]) -> None:
+    """Cut out photos that were uploaded without waiting, then mark them ready.
+
+    Runs as a BackgroundTasks job, so it starts only after the response has
+    reached the client — the point of the exercise.
+
+    Each image is committed on its own: the front photo appears cut out while
+    the back is still going, and one failure does not discard the other's work.
+    """
+    for image_id in image_ids:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT original_path FROM cloth_images WHERE id = ?", (image_id,)
+            ).fetchone()
+        if not row:
+            continue                       # deleted while we were queued
+        original = Path(row["original_path"])
+        dst = canonical_cutout_path(original)
+        try:
+            remove_background(original, dst)
+            status_, path_ = "ready", str(dst)
+        except Exception as e:
+            # The garment keeps its original photo and says so. Losing the
+            # cut-out is a degraded picture; losing the garment is losing data.
+            log.warning("background removal failed for image %s: %s", image_id, e)
+            status_, path_ = "failed", str(original)
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE cloth_images SET cutout_path = ?, cutout_status = ? "
+                "WHERE id = ?", (path_, status_, image_id))
 
 
 def _move_staged(cloth_id: int, staged: List[dict]) -> List[dict]:
@@ -143,9 +191,18 @@ def _move_staged(cloth_id: int, staged: List[dict]) -> List[dict]:
     each move is a rename — instant, unlike the encoding that produced them."""
     cdir = cloth_dir(cloth_id)
     for s in staged:
+        moved: dict[Path, Path] = {}
         for key in ("original", "cutout"):
-            dst = cdir / s[key].name
-            os.replace(s[key], dst)
+            src = s[key]
+            # An upload staged without its cut-out yet has both keys pointing at
+            # the same file, and moving it twice raises FileNotFoundError on the
+            # second go — the first rename already took the source away.
+            if src in moved:
+                s[key] = moved[src]
+                continue
+            dst = cdir / src.name
+            os.replace(src, dst)
+            moved[src] = dst
             s[key] = dst
     return staged
 
@@ -185,6 +242,11 @@ def _build_cloth(row, images, colors) -> dict:
                 "role": im["role"],
                 "sort_order": im["sort_order"],
                 "bg_accepted": im["bg_accepted"],
+                # 'processing' while the cut-out is still being made, so the app
+                # can show the garment straight away and say what is happening
+                # rather than holding the screen for it.
+                "cutout_status": (im["cutout_status"]
+                                  if "cutout_status" in im.keys() else None) or "ready",
                 "bg_tolerance": im["bg_tolerance"]
                 if "bg_tolerance" in im.keys() else "medium",
                 "original_url": public_url_for(im["original_path"]),
@@ -240,7 +302,7 @@ def _hydrate(conn, row) -> dict:
     cloth_id = row["id"]
     images = conn.execute(
         "SELECT id, role, original_path, cutout_path, sort_order, bg_accepted, bg_tolerance, "
-        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier "
+        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier, cutout_status "
         "FROM cloth_images WHERE cloth_id = ? ORDER BY sort_order, id",
         (cloth_id,),
     ).fetchall()
@@ -264,7 +326,7 @@ def _hydrate_many(conn, rows) -> list:
     imgs_by = defaultdict(list)
     for im in conn.execute(
         "SELECT cloth_id, id, role, original_path, cutout_path, sort_order, bg_accepted, bg_tolerance, "
-        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier "
+        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier, cutout_status "
         f"FROM cloth_images WHERE cloth_id IN ({placeholders}) ORDER BY sort_order, id",
         ids,
     ).fetchall():
@@ -407,6 +469,7 @@ def get_cloth(cloth_id: int, user=Depends(get_current_user)):
 
 @router.post("")
 async def create_cloth(
+    background: BackgroundTasks,
     user=Depends(get_current_user),
     name: str = Form(...),
     brand: str = Form(""),
@@ -462,7 +525,12 @@ async def create_cloth(
     # used to freeze the whole server (and hold the SQLite write lock) for it.
     stage = Path(tempfile.mkdtemp(dir=STAGING_DIR))
     try:
-        staged = await run_in_threadpool(_stage_uploads, stage, payloads)
+        # Encoding only. Background removal is ~5 s a photo on the deployment
+        # server and a garment has two, which is the fifteen seconds the whole
+        # screen used to sit frozen for. It is queued below instead.
+        staged = await run_in_threadpool(_stage_uploads, stage, payloads,
+                                         with_cutout=False)
+        pending_ids = []
         with get_conn() as conn:
             cur = conn.execute(
                 "INSERT INTO clothes (user_id, name, brand, cut, category, custom_tags) "
@@ -478,13 +546,15 @@ async def create_cloth(
             )
             cloth_id = cur.lastrowid
             for s in _move_staged(cloth_id, staged):
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO cloth_images "
-                    "(cloth_id, role, original_path, cutout_path, sort_order) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "(cloth_id, role, original_path, cutout_path, sort_order, "
+                    " cutout_status) "
+                    "VALUES (?, ?, ?, ?, ?, 'processing')",
                     (cloth_id, s["role"], str(s["original"]), str(s["cutout"]),
                      s["sort_order"]),
                 )
+                pending_ids.append(cur.lastrowid)
             for c in color_list:
                 conn.execute(
                     "INSERT INTO cloth_colors (cloth_id, color, dominance) VALUES (?, ?, ?)",
@@ -497,6 +567,9 @@ async def create_cloth(
     finally:
         shutil.rmtree(stage, ignore_errors=True)
     audit_record(user, "cloth.create", f"#{cloth_id} {name!r}")
+    # Queued after the transaction and after the response: BackgroundTasks runs
+    # once the body has been sent, so the app already has its garment.
+    background.add_task(_run_cutouts, pending_ids)
     return result
 
 

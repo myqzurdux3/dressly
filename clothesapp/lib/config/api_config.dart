@@ -1,11 +1,11 @@
 /// Backend connection configuration.
 ///
 /// `127.0.0.1` won't reach the host from a device. Use:
-///  - Linux desktop / web debug: http://127.0.0.1:8000
-///  - Android emulator:          http://10.0.2.2:8000
-///  - Physical device on the LAN: `http://<this machine's LAN IP>:8000`
-///  - Public server:              `https://<host>:8000`
-const String apiBaseUrl = 'https://ADRESSE-RETIREE:8000';
+///  - Linux desktop / web debug: http://127.0.0.1:80
+///  - Android emulator:          http://10.0.2.2:80
+///  - Physical device on the LAN: `http://<this machine's LAN IP>:80`
+///  - Public server:              `https://<host>:80`
+const String apiBaseUrl = 'https://dressly.xyz';
 
 /// SHA-256 fingerprint of the server's certificate, lower-case hex, no colons.
 ///

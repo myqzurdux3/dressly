@@ -10,13 +10,30 @@ def test_create_and_get_and_list(client, auth):
     assert [col["color"] for col in c["colors"]] == ["Red"]
     assert c["last_worn_at"] is None
 
+    # The POST answers before the cut-out exists, so its images say 'processing'
+    # and point at the original. A later GET sees the finished ones. Everything
+    # else must match exactly.
+    assert [im["cutout_status"] for im in c["images"]] == ["processing"] * 2
+
     got = client.get(f"/clothes/{c['id']}", headers=auth).json()
-    assert got == c
+    assert [im["cutout_status"] for im in got["images"]] == ["ready"] * 2
+    assert _without_cutout_state(got) == _without_cutout_state(c)
 
     lst = client.get("/clothes", headers=auth).json()
     assert [x["id"] for x in lst] == [c["id"]]
     # Batched list output must equal the single-item hydrate.
     assert lst[0] == got
+
+
+def _without_cutout_state(cloth):
+    """The cloth minus everything the background cut-out is allowed to change."""
+    volatile = ("cutout_status", "cutout_url", "thumb_url", "preview_url",
+                "cutout_preview_url")
+    return {
+        **cloth,
+        "images": [{k: v for k, v in im.items() if k not in volatile}
+                   for im in cloth["images"]],
+    }
 
 
 def test_filter_by_category(client, auth):

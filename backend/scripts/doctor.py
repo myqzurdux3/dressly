@@ -269,7 +269,7 @@ def _public_ip():
 
 
 def check_port():
-    port = int(os.environ.get("CLOTHESAPP_PORT", "8000"))
+    port = int(os.environ.get("CLOTHESAPP_PORT", "80"))
 
     bound = _listening_sockets(port)
     if not bound:

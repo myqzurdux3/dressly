@@ -552,6 +552,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
                           : imageUrl(_existingImages[i].thumbnailUrl!),
                       method: _existingImages[i].enhanceMethod,
                       bgAccepted: _existingImages[i].bgAccepted,
+                      cutoutStatus: _existingImages[i].cutoutStatus,
                       busy: _imgBusy,
                       onReplace: () =>
                           _replaceExistingImage(_existingImages[i].id),
@@ -840,6 +841,7 @@ class _EditablePhotoTile extends StatelessWidget {
     required this.imageUrl,
     required this.method,
     required this.bgAccepted,
+    this.cutoutStatus = 'ready',
     required this.busy,
     required this.onReplace,
     required this.onImprove,
@@ -850,6 +852,7 @@ class _EditablePhotoTile extends StatelessWidget {
   final String? imageUrl;
   final String method; // 'none' | 'auto' | 'ai'
   final String bgAccepted; // 'pending' | 'accepted' | 'rejected'
+  final String cutoutStatus; // 'processing' | 'ready' | 'failed'
   final bool busy;
   final VoidCallback onReplace;
   final VoidCallback onImprove;
@@ -933,7 +936,8 @@ class _EditablePhotoTile extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 3),
           child: Wrap(spacing: 4, runSpacing: 4, children: [
-            BgStatusBadge(status: bgAccepted),
+            BgStatusBadge(
+                status: bgAccepted, cutoutStatus: cutoutStatus),
             if (method != 'none') EnhanceMethodBadge(method: method),
           ]),
         ),

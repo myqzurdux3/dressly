@@ -46,11 +46,40 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
     // Future" assertion.
     final future = svc.get(widget.clothId).then((c) {
       _last = c;
+      _watchCutouts(c);
       return c;
     });
     setState(() {
       _future = future;
     });
+  }
+
+  /// True while a poll for pending cut-outs is already running, so opening the
+  /// screen twice does not start two.
+  bool _watchingCutouts = false;
+
+  /// A garment added a moment ago still has its cut-outs being made. Wait for
+  /// them and refresh once, so the badge and the picture update on their own.
+  void _watchCutouts(Cloth c) {
+    if (_watchingCutouts) return;
+    if (!c.images.any((x) => x.cutoutStatus == 'processing')) return;
+    _watchingCutouts = true;
+    final svc = clothesServiceOf(context);
+    () async {
+      try {
+        final fresh = await svc.pollCutouts(widget.clothId);
+        if (!mounted) return;
+        _last = fresh;
+        setState(() {
+          _future = Future.value(fresh);
+        });
+      } catch (_) {
+        // Nothing to tell the user: the photo on screen is the right photo, it
+        // is just not cut out yet, and any later refresh will pick it up.
+      } finally {
+        _watchingCutouts = false;
+      }
+    }();
   }
 
   Future<void> _edit() async {
@@ -547,7 +576,9 @@ class _ImageReviewCard extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.bold)),
               ),
-              BgStatusBadge(status: image.bgAccepted),
+              BgStatusBadge(
+                  status: image.bgAccepted,
+                  cutoutStatus: image.cutoutStatus),
               EnhanceMethodBadge(method: image.enhanceMethod),
             ]),
           ),
