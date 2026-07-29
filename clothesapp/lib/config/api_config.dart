@@ -5,7 +5,7 @@
 ///  - Android emulator:          http://10.0.2.2:8000
 ///  - Physical device on the LAN: `http://<this machine's LAN IP>:8000`
 ///  - Public server:              `https://<host>:8000`
-const String apiBaseUrl = 'https://193.243.147.15:8000';
+const String apiBaseUrl = 'https://ADRESSE-RETIREE:8000';
 
 /// SHA-256 fingerprint of the server's certificate, lower-case hex, no colons.
 ///
@@ -23,7 +23,7 @@ const String apiBaseUrl = 'https://193.243.147.15:8000';
 /// Caddy/nginx): normal certificate validation then applies, with no pin to
 /// keep in sync.
 const String apiCertSha256 =
-    '80e1dd3c37849580e2d9f76fb47ae7be85dbfa3f8754e8832e94612f5320fa9f';
+    '3625b16ad604ccde1e06bd8f5a337b1ff6fd471f4d7a103932a3c1f9b6fbb321';
 
 /// Whether the app talks TLS at all.
 bool get apiUsesTls => apiBaseUrl.startsWith('https://');
