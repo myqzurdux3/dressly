@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 
 import '../l10n/app_text.dart';
+import 'app_image.dart';
 
 /// Download the generated outfit image to a user-chosen file.
 /// Returns the saved path, or null if the user cancelled.
@@ -78,15 +79,7 @@ class _FullscreenOutfit extends StatelessWidget {
         minScale: 0.5,
         maxScale: 6,
         child: Center(
-          child: Image.network(
-            url,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, p) => p == null
-                ? child
-                : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (context, _, __) => const Icon(Icons.broken_image,
-                size: 64, color: Colors.white54),
-          ),
+          child: AppImage(url: url, fit: BoxFit.contain),
         ),
       ),
     );

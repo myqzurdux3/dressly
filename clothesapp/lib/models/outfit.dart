@@ -10,6 +10,10 @@ String outfitImageUrl(Outfit o) => _bust(o, o.generatedUrl);
 String outfitThumbUrl(Outfit o) =>
     o.thumbUrl.isEmpty ? outfitImageUrl(o) : _bust(o, o.thumbUrl);
 
+/// Screen-sized variant, for dialogs and viewers rather than grids.
+String outfitPreviewUrl(Outfit o) =>
+    o.previewUrl.isEmpty ? outfitImageUrl(o) : _bust(o, o.previewUrl);
+
 String _bust(Outfit o, String path) {
   final base = apiUrl(path);
   if (path.isEmpty) return base;
@@ -49,6 +53,9 @@ class Outfit {
 
   /// Server-rendered, grid-sized copy of [generatedUrl]. Empty when absent.
   final String thumbUrl;
+
+  /// Screen-sized copy (800 px) for the result dialog and viewers.
+  final String previewUrl;
   final String status; // 'done' | 'failed'
   final bool isMock;
   final String modelTier; // 'flex' | 'pro' | 'max'
@@ -81,6 +88,7 @@ class Outfit {
     required this.prompt,
     required this.generatedUrl,
     this.thumbUrl = '',
+    this.previewUrl = '',
     required this.status,
     required this.isMock,
     required this.modelTier,
@@ -115,6 +123,7 @@ class Outfit {
       prompt: (json['prompt'] ?? '') as String,
       generatedUrl: (json['generated_url'] ?? '') as String,
       thumbUrl: (json['thumb_url'] ?? '') as String,
+      previewUrl: (json['preview_url'] ?? '') as String,
       status: (json['status'] ?? 'done') as String,
       isMock: json['is_mock'] as bool? ?? false,
       modelTier: (json['model_tier'] ?? 'flex') as String,
@@ -150,6 +159,7 @@ class Outfit {
         prompt: prompt,
         generatedUrl: generatedUrl,
         thumbUrl: thumbUrl,
+        previewUrl: previewUrl,
         status: status,
         isMock: isMock,
         modelTier: modelTier,

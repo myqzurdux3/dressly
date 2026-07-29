@@ -209,6 +209,8 @@ def _build_outfit(row, cloths, model_name, worn_today=False,
         # Grid-sized copy for the history/favorites lists, which showed dozens
         # of full-resolution renders at thumbnail size.
         "thumb_url": thumb_url_for(row["generated_path"], 400),
+        # Detail/dialog size — a screen-wide view, not the full render.
+        "preview_url": thumb_url_for(row["generated_path"], 800),
         "status": row["status"],
         "is_mock": bool(row["is_mock"]),
         "model_tier": tier,

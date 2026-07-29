@@ -9,6 +9,7 @@ import '../../services/outfits_service.dart';
 import '../../widgets/outfit_viewer.dart';
 import '../cloth/cloth_detail_screen.dart';
 import 'cloth_picker_screen.dart';
+import '../../widgets/app_image.dart';
 
 class OutfitResultDialog extends StatefulWidget {
   const OutfitResultDialog({
@@ -545,22 +546,20 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               onTap: () => showOutfitFullscreen(context, outfitImageUrl(_outfit)),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  outfitImageUrl(_outfit),
-                  // Key on the full URL (which now includes ?v=<mtime>) so a
-                  // same-view regenerate — e.g. changing the model — reloads
-                  // instead of showing the previous render.
-                  key: ValueKey(outfitImageUrl(_outfit)),
-                  fit: BoxFit.contain,
+                // Screen-sized copy, through the cache. The stored render was
+                // re-fetched in full on every rebuild of this dialog, and it
+                // rebuilds on every action taken in it.
+                child: SizedBox(
                   height: 360,
-                  loadingBuilder: (context, child, p) => p == null
-                      ? child
-                      : const SizedBox(
-                          height: 360,
-                          child: Center(child: CircularProgressIndicator())),
-                  errorBuilder: (context, _, __) => const SizedBox(
-                      height: 200,
-                      child: Center(child: Icon(Icons.broken_image, size: 48))),
+                  child: AppImage(
+                    url: outfitPreviewUrl(_outfit),
+                    // Keyed on the full URL (which carries ?v=<mtime>) so a
+                    // same-view regenerate — e.g. changing the model — reloads
+                    // instead of showing the previous render.
+                    cacheKey: outfitPreviewUrl(_outfit),
+                    fit: BoxFit.contain,
+                    memWidth: 800,
+                  ),
                 ),
               ),
             ),

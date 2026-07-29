@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../config/api_config.dart';
 import '../../l10n/app_text.dart';
+import '../../widgets/app_image.dart';
 import '../../models/cloth.dart';
 import '../../services/clothes_service.dart';
 import '../../widgets/image_review.dart';
@@ -560,18 +561,16 @@ class _ImageReviewCard extends StatelessWidget {
               child: GestureDetector(
                 onTap: () =>
                     showImageFullscreen(context, imageUrl(image.displayUrl)),
-                child: Image.network(
-                  imageUrl(image.displayUrl),
-                  key: ValueKey(
-                      'img-${image.id}-${image.bgAccepted}-${image.displayUrl}'),
+                // AppImage, not Image.network: the latter has no disk cache,
+                // so this re-downloaded the full-size image on every visit.
+                // displayPreviewUrl is the 800 px copy — indistinguishable
+                // here, and ~86 KB instead of ~1 MB.
+                child: AppImage(
+                  url: imageUrl(image.displayPreviewUrl),
+                  cacheKey:
+                      'img-${image.id}-${image.bgAccepted}-${image.displayPreviewUrl}',
                   fit: BoxFit.contain,
-                  loadingBuilder: (context, child, p) {
-                    if (p == null) return child;
-                    return const SizedBox(
-                        height: 220, child: Center(child: CircularProgressIndicator()));
-                  },
-                  errorBuilder: (context, _, __) => const Icon(Icons.broken_image,
-                      size: 48, color: Colors.white54),
+                  memWidth: 800,   // AppImage draws its own broken-image icon
                 ),
               ),
             ),
@@ -691,12 +690,11 @@ class _ImageReviewCard extends StatelessWidget {
             height: 170,
             color: Colors.blueGrey.shade900,
             alignment: Alignment.center,
-            child: Image.network(
-              imageUrl(url),
-              key: ValueKey('ba-$url'),
+            child: AppImage(
+              url: imageUrl(url),
+              cacheKey: 'ba-$url',
               fit: BoxFit.contain,
-              errorBuilder: (c, _, __) =>
-                  const Icon(Icons.broken_image, color: Colors.white54),
+              memWidth: 800,
             ),
           ),
         ),

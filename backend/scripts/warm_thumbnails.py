@@ -27,9 +27,10 @@ from routes_thumbs import (  # noqa: E402
     _thumb_path,
 )
 
-# The widths the client actually asks for. Generating the whole ladder would
-# triple the work for variants nothing requests.
-DEFAULT_WIDTHS = (400,)
+# The widths the client actually asks for: 400 for the grids, 800 for the
+# detail screens. Generating the whole ladder would add work for variants
+# nothing requests.
+DEFAULT_WIDTHS = (400, 800)
 
 
 def _sources():
