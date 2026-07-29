@@ -7,6 +7,7 @@ import '../../state/gen_prefs_controller.dart';
 import '../../state/locale_controller.dart';
 import '../../state/session.dart';
 import '../../state/theme_controller.dart';
+import 'change_password_screen.dart';
 
 /// Appearance customization + account. Keeps "Sign out" here, away from the
 /// Models management (which lives on the Create screen).
@@ -105,6 +106,16 @@ class SettingsScreen extends StatelessWidget {
           const Divider(height: 40),
           _SectionLabel(tr(context, 'settings.account')),
           const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.lock_outline),
+            title: Text(tr(context, 'settings.changePassword')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+            ),
+          ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.logout, color: Colors.redAccent),

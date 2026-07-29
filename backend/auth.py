@@ -55,12 +55,30 @@ def get_current_user(
     user_id = int(payload["sub"])
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT id, email, is_admin, created_at FROM users WHERE id = ?",
+            "SELECT id, email, is_admin, created_at, tokens_valid_from "
+            "FROM users WHERE id = ?",
             (user_id,),
         ).fetchone()
     if row is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User no longer exists")
-    return dict(row)
+
+    # A token issued before the account's cut-off is refused. That is what makes
+    # changing a password end the other sessions, which is usually the whole
+    # point of changing it.
+    cutoff = row["tokens_valid_from"]
+    if cutoff:
+        issued = payload.get("iat")
+        if isinstance(issued, datetime):
+            issued = int(issued.timestamp())
+        if issued is None or int(issued) < int(cutoff):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Session ended because the password was changed",
+            )
+
+    user = dict(row)
+    user.pop("tokens_valid_from", None)
+    return user
 
 
 def is_admin(user: dict) -> bool:

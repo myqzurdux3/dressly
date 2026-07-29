@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import '../models/user.dart';
+import 'pinned_http.dart';
 
 const _kTokenKey = 'auth_token';
 
@@ -24,6 +25,29 @@ class AuthService {
   Future<void> clearToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kTokenKey);
+  }
+
+  /// Change the signed-in user's password.
+  ///
+  /// Returns a fresh token: the server ends every session opened before the
+  /// change, including the caller's own, and hands back a replacement so the
+  /// user is not signed out by their own action.
+  Future<({AppUser user, String token})> changePassword(
+    String token, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final res = await _post(
+      '/auth/password',
+      {'current_password': currentPassword, 'new_password': newPassword},
+      token: token,
+    );
+    final fresh = res['token'] as String;
+    await _saveToken(fresh);
+    return (
+      user: AppUser.fromJson(res['user'] as Map<String, dynamic>),
+      token: fresh,
+    );
   }
 
   Future<({AppUser user, String token})> signup(
@@ -54,10 +78,15 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> _post(
-      String path, Map<String, dynamic> body) async {
-    final resp = await http.post(
+      String path, Map<String, dynamic> body, {String? token}) async {
+    // The shared API client, not a bare http.post: same connection pool, same
+    // certificate pinning, same timeouts as every other call.
+    final resp = await PinnedHttp.api.post(
       Uri.parse(apiUrl(path)),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
       body: jsonEncode(body),
     );
     return _decode(resp);
