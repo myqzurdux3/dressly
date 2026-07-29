@@ -16,9 +16,9 @@ class ApiClient {
   ApiClient({required this.token, http.Client? httpClient})
       : _client = httpClient ?? _shared;
 
-  /// The app-wide client, shared with image downloads so everything reuses
-  /// one connection pool.
-  static http.Client get _shared => PinnedHttp.shared;
+  /// The API's own connection pool, separate from image downloads so a slow
+  /// image cannot delay a JSON request.
+  static http.Client get _shared => PinnedHttp.api;
 
   String? token;
 

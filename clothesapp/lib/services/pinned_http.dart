@@ -39,27 +39,35 @@ class PinnedHttp {
   static bool accepts(X509Certificate cert) =>
       isPinned && fingerprintOf(cert) == _pin;
 
-  /// One client for the whole app.
+  /// Client for API calls — short, latency-sensitive requests.
   ///
-  /// Sharing it is what makes connection reuse possible. Measured against the
-  /// deployed server: eight requests over one kept-alive connection take
-  /// 140 ms each; over eight separate connections, 670 ms each — the extra
-  /// half-second is a TCP round trip plus a TLS handshake, paid again every
-  /// time.
-  static final http.Client shared = create();
+  /// Deliberately SEPARATE from [images]. HTTP/1.1 carries one request per
+  /// connection at a time, so a shared pool lets slow image downloads occupy
+  /// every connection and leave JSON requests queued behind them. With a single
+  /// pool of six, six images in flight froze the entire app until one finished
+  /// — for a stalled image, that meant the full timeout.
+  static final http.Client api = create(maxConnections: 4);
 
-  /// Build a client. Prefer [shared] unless a separate pool is genuinely
-  /// wanted.
+  /// Client for image downloads. Its own pool, so a stalled image can delay
+  /// other images and nothing else.
+  ///
+  /// Eight matches the download queue's concurrency without serialising it.
+  static final http.Client images = create(maxConnections: 8);
+
+  /// Build a client with its own connection pool.
   ///
   /// Falls back to a plain client when there is no pin, so a Let's Encrypt
   /// deployment (or local HTTP) needs no special casing.
-  static http.Client create() {
+  static http.Client create({int maxConnections = 6}) {
     if (!isPinned || !apiUsesTls) return http.Client();
     final inner = HttpClient()
       // Keep sockets around between requests. A grid fires a dozen image
       // requests; without this each one reopens and re-handshakes.
+      // Keep sockets around between requests: measured against the deployed
+      // server, eight requests over one kept-alive connection cost 140 ms each
+      // against 670 ms each when every one reconnects.
       ..idleTimeout = const Duration(seconds: 30)
-      ..maxConnectionsPerHost = 6
+      ..maxConnectionsPerHost = maxConnections
       // Without this a TCP connect to an unreachable host waits on the OS
       // default, which is minutes.
       ..connectionTimeout = const Duration(seconds: 15);
