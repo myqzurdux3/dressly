@@ -1,6 +1,9 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+import 'pinned_http.dart';
+import 'timeout_file_service.dart';
+
 /// Disk cache for wardrobe images.
 ///
 /// `cached_network_image` otherwise uses the shared default manager, which
@@ -25,7 +28,23 @@ class AppImageCache {
   static const Duration stalePeriod = Duration(days: 60);
 
   static final CacheManager instance = CacheManager(
-    Config(key, stalePeriod: stalePeriod, maxNrOfCacheObjects: maxObjects),
+    Config(
+      key,
+      stalePeriod: stalePeriod,
+      maxNrOfCacheObjects: maxObjects,
+      // Two reasons for a custom file service.
+      //
+      // The client is shared with the API calls, so every image download reuses
+      // one connection pool: measured against the deployed server, eight
+      // sequential requests cost 140 ms each over a kept-alive connection
+      // against 670 ms each when every one reconnects.
+      //
+      // And it has a deadline. The cache manager runs ten downloads at a time
+      // and frees a slot in a `finally` — which a request that never answers
+      // never reaches, so it holds that slot forever. Ten such requests and
+      // images stop loading permanently.
+      fileService: TimeoutFileService(httpClient: PinnedHttp.shared),
+    ),
   );
 
   /// Raise the in-memory decoded-image budget too.

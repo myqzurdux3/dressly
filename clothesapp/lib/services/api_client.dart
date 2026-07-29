@@ -16,10 +16,9 @@ class ApiClient {
   ApiClient({required this.token, http.Client? httpClient})
       : _client = httpClient ?? _shared;
 
-  /// One pinned client for the whole app. Building an HttpClient per request
-  /// would redo the TLS handshake every time and, with pinning on, re-run the
-  /// certificate check for no benefit.
-  static final http.Client _shared = PinnedHttp.create();
+  /// The app-wide client, shared with image downloads so everything reuses
+  /// one connection pool.
+  static http.Client get _shared => PinnedHttp.shared;
 
   String? token;
 
@@ -31,6 +30,27 @@ class ApiClient {
   /// a clear "Request timed out" exception instead of an indefinite hang.
   static const Duration _timeout = Duration(minutes: 5);
 
+  /// Deadline for ordinary reads and writes.
+  ///
+  /// The five-minute budget above exists for image generation, but it was
+  /// applied to everything — so a stalled connection on a plain `GET /agenda`
+  /// left the screen spinning for five minutes while the server's log showed
+  /// the request it did receive completing normally. A list request that has
+  /// not answered in twenty seconds is not going to.
+  static const Duration _readTimeout = Duration(seconds: 20);
+
+  /// Endpoints that legitimately take minutes: they wait on a bfl.ai render.
+  static bool _isSlowPath(String path) =>
+      path.contains('/generate') ||
+      path.contains('/regenerate') ||
+      path.contains('/replace-') ||
+      path.contains('/enhance') ||
+      path.endsWith('/back');
+
+  /// Visible for tests: which budget a path gets.
+  static Duration timeoutFor(String path) =>
+      _isSlowPath(path) ? _timeout : _readTimeout;
+
   Map<String, String> _headers({bool json = true}) {
     return {
       if (json) 'Content-Type': 'application/json',
@@ -40,22 +60,23 @@ class ApiClient {
 
   /// Run [send] against a client, disposing a per-request one when the caller
   /// did not inject their own.
-  Future<dynamic> _send(Future<http.Response> Function(http.Client) send) async {
-    return _decode(await send(_client).timeout(_timeout));
+  Future<dynamic> _send(String path,
+      Future<http.Response> Function(http.Client) send) async {
+    return _decode(await send(_client).timeout(timeoutFor(path)));
   }
 
-  Future<dynamic> get(String path) => _send((c) =>
+  Future<dynamic> get(String path) => _send(path, (c) =>
       c.get(Uri.parse(apiUrl(path)), headers: _headers(json: false)));
 
   Future<dynamic> post(String path, Map<String, dynamic> body) =>
-      _send((c) => c.post(Uri.parse(apiUrl(path)),
+      _send(path, (c) => c.post(Uri.parse(apiUrl(path)),
           headers: _headers(), body: jsonEncode(body)));
 
-  Future<dynamic> delete(String path) => _send((c) =>
+  Future<dynamic> delete(String path) => _send(path, (c) =>
       c.delete(Uri.parse(apiUrl(path)), headers: _headers(json: false)));
 
   Future<dynamic> patch(String path, Map<String, dynamic> body) =>
-      _send((c) => c.patch(Uri.parse(apiUrl(path)),
+      _send(path, (c) => c.patch(Uri.parse(apiUrl(path)),
           headers: _headers(), body: jsonEncode(body)));
 
   /// Multipart upload. File list is mapped to the `images` field; the first
@@ -129,6 +150,7 @@ class ApiClient {
   /// Multipart requests bypass [_send] because they stream rather than return a
   /// Response directly, but must use the same injected client and timeout.
   Future<dynamic> _sendMultipart(http.MultipartRequest req) async {
+    // Uploads carry photos and may trigger a render: keep the long budget.
     final streamed = await _client.send(req).timeout(_timeout);
     return _decode(await http.Response.fromStream(streamed));
   }

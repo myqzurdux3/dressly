@@ -236,6 +236,28 @@ void main() {
     });
   });
 
+  group('timeouts', () {
+    test('a plain read does not wait minutes', () {
+      // A GET that stalls used to keep the screen spinning for the full
+      // five-minute generation budget.
+      for (final path in ['/clothes', '/agenda', '/outfits/favorites/list',
+                          '/stats/me']) {
+        expect(ApiClient.timeoutFor(path).inSeconds, lessThanOrEqualTo(30),
+            reason: '$path should not inherit the generation budget');
+      }
+    });
+
+    test('generation keeps its long budget', () {
+      // These genuinely wait on a bfl.ai render.
+      for (final path in ['/outfits/generate', '/outfits/12/regenerate',
+                          '/outfits/12/replace-model', '/outfits/12/back',
+                          '/clothes/1/images/2/enhance']) {
+        expect(ApiClient.timeoutFor(path).inMinutes, greaterThanOrEqualTo(2),
+            reason: '$path needs time to render');
+      }
+    });
+  });
+
   group('transport failures', () {
     test('a connection error propagates instead of being swallowed', () async {
       final rec = _Recorder();
