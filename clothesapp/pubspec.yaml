@@ -17,6 +17,7 @@ dependencies:
   shared_preferences: ^2.2.2
   provider: ^6.1.2
   cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.0   # explicit: we configure the image cache size
   crypto: ^3.0.3          # certificate pinning (see services/pinned_http.dart)
   image_picker: ^1.2.3
 

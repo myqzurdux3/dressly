@@ -86,10 +86,12 @@ def test_a_tampered_signature_is_refused(client, auth, signing_on):
 def test_an_expired_signature_is_refused(client, auth, signing_on, monkeypatch):
     c = create_cloth(client, auth)
     cutout, _ = _urls(c)
-    # Jump past the TTL rather than fabricate a signature.
+    # Jump past the expiry rather than fabricate a signature. The expiry is
+    # rounded up to the bucket grid (so URLs stay cacheable), which puts it up
+    # to one bucket beyond the TTL — the jump has to clear both.
     real_time = imagesign.time.time
-    monkeypatch.setattr(imagesign.time, "time",
-                        lambda: real_time() + imagesign.IMAGE_URL_TTL_S + 3600)
+    ahead = imagesign.IMAGE_URL_TTL_S + imagesign.IMAGE_URL_BUCKET_S * 2
+    monkeypatch.setattr(imagesign.time, "time", lambda: real_time() + ahead)
     assert client.get(cutout).status_code == 404
 
 
@@ -126,10 +128,19 @@ def test_signing_is_on_by_default_outside_dev(monkeypatch):
 # --- unit level -----------------------------------------------------------
 
 def test_signature_depends_on_both_path_and_expiry(signing_on):
-    q1 = imagesign.sign_query("3/front_0.jpg", now=1000)
-    q2 = imagesign.sign_query("3/front_1.jpg", now=1000)
-    q3 = imagesign.sign_query("3/front_0.jpg", now=2000)
-    assert q1 != q2 and q1 != q3
+    base = 1_700_000_000
+    q1 = imagesign.sign_query("3/front_0.jpg", now=base)
+    q2 = imagesign.sign_query("3/front_1.jpg", now=base)
+    assert q1 != q2, "two different files share a signature"
+
+    # Time only changes the signature once it crosses the rounding grid —
+    # that is deliberate, and is what lets an image cache hit at all.
+    same_bucket = imagesign.sign_query("3/front_0.jpg", now=base + 60)
+    assert q1 == same_bucket, "signature moved within a bucket; caches would miss"
+
+    next_bucket = imagesign.sign_query(
+        "3/front_0.jpg", now=base + imagesign.IMAGE_URL_BUCKET_S * 2)
+    assert q1 != next_bucket, "the expiry never advances"
 
 
 def test_verify_rejects_missing_parts(signing_on):

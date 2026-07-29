@@ -87,7 +87,7 @@ class _ClothPickerScreenState extends State<ClothPickerScreen> {
         availableTags: _tags,
       ),
     );
-    if (result != null) {
+    if (result != null && mounted) {
       setState(() => _filter = result);
       _refresh();
     }

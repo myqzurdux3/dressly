@@ -1,0 +1,102 @@
+import 'dart:io';
+
+import 'package:clothesapp/services/image_cache_config.dart';
+import 'package:flutter/painting.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// Two classes of bug that the analyzer does not catch and that only surface as
+/// a red screen at runtime, so they are checked by reading the source.
+
+List<File> _dartSources() => Directory('lib')
+    .listSync(recursive: true)
+    .whereType<File>()
+    .where((f) => f.path.endsWith('.dart'))
+    .toList();
+
+void main() {
+  group('setState hygiene', () {
+    test('no setState closure returns a Future', () {
+      // `setState(() => _future = service.call())` looks harmless, but an arrow
+      // closure RETURNS what it assigns. Flutter asserts on that and throws
+      // "setState() callback argument returned a Future", which is what the
+      // profile screen did while its stats were still loading.
+      final offenders = <String>[];
+      final pattern = RegExp(
+        r'setState\(\(\)\s*=>\s*\w+\s*=\s*[^;]*?'
+        r'(Service\w*\(|ServiceOf\(context\)|\.me\(\)|\bawait\b)',
+      );
+      for (final f in _dartSources()) {
+        final lines = f.readAsLinesSync();
+        for (var i = 0; i < lines.length; i++) {
+          if (pattern.hasMatch(lines[i])) {
+            offenders.add('${f.path}:${i + 1}  ${lines[i].trim()}');
+          }
+        }
+      }
+      expect(offenders, isEmpty,
+          reason: 'setState given a closure that returns a Future:\n'
+              '${offenders.join('\n')}\n'
+              'Use a block body: setState(() { x = ...; });');
+    });
+
+    test('no setState closure is marked async', () {
+      final offenders = <String>[];
+      for (final f in _dartSources()) {
+        final lines = f.readAsLinesSync();
+        for (var i = 0; i < lines.length; i++) {
+          if (RegExp(r'setState\(\(\)\s*async').hasMatch(lines[i])) {
+            offenders.add('${f.path}:${i + 1}');
+          }
+        }
+      }
+      expect(offenders, isEmpty,
+          reason: 'an async setState callback returns a Future: $offenders');
+    });
+  });
+
+  group('image cache', () {
+    test('holds more files than a large wardrobe produces', () {
+      // The shared default manager keeps 200 files. A ~110-cloth wardrobe
+      // already exceeds that once front and back thumbnails are counted, so it
+      // evicted entries as fast as it wrote them and every visit re-downloaded
+      // everything.
+      expect(AppImageCache.maxObjects, greaterThan(1000));
+    });
+
+    test('keeps entries long enough to be worth having', () {
+      expect(AppImageCache.stalePeriod.inDays, greaterThanOrEqualTo(30));
+    });
+
+    test('uses its own store, separate from the package default', () {
+      // Only the configuration is asserted: building the manager opens a real
+      // cache directory through path_provider, which needs a running platform.
+      expect(AppImageCache.key, isNot('libCachedImageData'));
+      expect(AppImageCache.key, isNotEmpty);
+    });
+
+    testWidgets('raises the in-memory decoded-image budget', (tester) async {
+      AppImageCache.configureMemoryCache();
+      final cache = PaintingBinding.instance.imageCache;
+      // Flutter's defaults are 100 MB / 1000 entries.
+      expect(cache.maximumSizeBytes, greaterThan(100 << 20));
+      expect(cache.maximumSize, greaterThanOrEqualTo(1000));
+    });
+
+    test('every network image goes through the configured manager', () {
+      // AppImage is the single funnel for remote images; if a screen used a
+      // bare CachedNetworkImage it would silently fall back to the 200-file
+      // default and thrash again.
+      final offenders = <String>[];
+      for (final f in _dartSources()) {
+        if (f.path.endsWith('app_image.dart')) continue;
+        final src = f.readAsStringSync();
+        if (src.contains('CachedNetworkImage(')) {
+          offenders.add(f.path);
+        }
+      }
+      expect(offenders, isEmpty,
+          reason: 'these build CachedNetworkImage directly instead of using '
+              'AppImage, so they bypass the cache configuration: $offenders');
+    });
+  });
+}

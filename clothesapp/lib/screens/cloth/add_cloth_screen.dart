@@ -487,7 +487,8 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
 
   Future<void> _replaceImage(int index) async {
     final path = await _pickFilePath();
-    if (path != null) setState(() => _newImages[index] = path);
+    if (!mounted || path == null) return;   // the picker outlives this screen
+    setState(() => _newImages[index] = path);
   }
 
   @override
