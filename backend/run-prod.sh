@@ -74,9 +74,33 @@ fi
 HOST="${CLOTHESAPP_HOST:-0.0.0.0}"
 PORT="${CLOTHESAPP_PORT:-8000}"
 # The counters and job ownership live in SQLite, so several workers stay
-# consistent with each other. Keep it modest: background image generation is
-# CPU-bound and every worker holds its own rembg model in memory (~200 MB).
+# consistent with each other. Workers are cheap now (~40 MB each): background
+# removal runs in a short-lived child process, so no worker holds the 660 MB
+# that onnxruntime never gives back. See cutout.py.
 WORKERS="${CLOTHESAPP_WORKERS:-3}"
+
+# Thread count for background removal, passed down to the cut-out child process
+# (cutout.py). Set here because only the launcher knows how many workers there
+# will be, and each worker can spawn a child of its own. Left unset, three
+# workers each grabbing every core turned a 2 s cut-out into 30 s of context
+# switching.
+#
+# Naming it at all is also what stops onnxruntime pinning threads to cores,
+# which a VPS cgroup refuses:
+#   pthread_setaffinity_np failed for thread: ..., error code: 22
+if [[ -z "${OMP_NUM_THREADS:-}" ]]; then
+  if [[ -n "${CLOTHESAPP_REMBG_THREADS:-}" ]]; then
+    OMP_NUM_THREADS="$CLOTHESAPP_REMBG_THREADS"
+  else
+    # nproc honours the cgroup quota and the CPU affinity mask; /proc/cpuinfo
+    # does not, and reports the whole host on a VPS.
+    cpus="$(nproc 2>/dev/null || echo 2)"
+    OMP_NUM_THREADS=$(( cpus / WORKERS ))
+    (( OMP_NUM_THREADS < 1 )) && OMP_NUM_THREADS=1
+  fi
+fi
+export OMP_NUM_THREADS OMP_THREAD_LIMIT="$OMP_NUM_THREADS"
+echo "Threads: $OMP_NUM_THREADS per worker for background removal ($WORKERS workers)"
 
 TLS_ARGS=()
 if [[ -f certs/server.crt && -f certs/server.key ]]; then
