@@ -90,7 +90,12 @@ void main() {
       // This originally only looked for CachedNetworkImage, and so missed nine
       // Image.network call sites — including the cloth detail screen, which
       // re-downloaded ~1.5 MB of lossless images every time it was opened.
-      const forbidden = ['Image.network(', 'NetworkImage('];
+      const forbidden = [
+        'Image.network(',
+        'NetworkImage(',
+        // Uses the package's own 200-file cache instead of the app's.
+        'CachedNetworkImageProvider(',
+      ];
       // photo_edit_screen pairs a display widget with NetworkImage(...).resolve()
       // to measure the image for its crop overlay; the two must stay the same
       // provider, so it is exempt and deliberately re-fetches.
@@ -104,8 +109,7 @@ void main() {
           final line = lines[i];
           if (line.trimLeft().startsWith('//')) continue;   // a comment about it
           for (final needle in forbidden) {
-            if (line.contains(needle) &&
-                !line.contains('CachedNetworkImageProvider')) {
+            if (line.contains(needle)) {
               offenders.add('${f.path}:${i + 1}  ${line.trim()}');
             }
           }
@@ -114,6 +118,41 @@ void main() {
       expect(offenders, isEmpty,
           reason: 'these bypass the image cache — use AppImage or '
               'appImageProvider:\n${offenders.join('\n')}');
+    });
+
+    test('no screen renders a stored full-size image', () {
+      // The stored cut-outs are lossless and around a megabyte. The access log
+      // caught six of them being fetched in one session, at up to 1.2 MB, with
+      // 98% of the time spent purely transferring bytes. Only the fullscreen
+      // zoom viewers have any use for them.
+      const exempt = [
+        'app_image.dart',
+        'photo_edit_screen.dart',   // pairs its widget with a measuring provider
+        'image_review.dart',        // fullscreen zoom
+        'outfit_viewer.dart',       // fullscreen zoom + download
+        'cloth.dart',
+        'model.dart',
+      ];
+      final offenders = <String>[];
+      for (final f in _dartSources()) {
+        if (exempt.any(f.path.endsWith)) continue;
+        final lines = f.readAsLinesSync();
+        for (var i = 0; i < lines.length; i++) {
+          final line = lines[i];
+          if (line.trimLeft().startsWith('//')) continue;
+          // Rendering the stored file rather than a server-made copy.
+          final rendersFull = RegExp(
+                  r'(url|imageUrl|currentUrl|cutoutUrl|originalUrl):\s*'
+                  r'[^,)]*\b(displayUrl|cutoutUrl|originalUrl)\b')
+              .hasMatch(line);
+          if (rendersFull && !line.contains('Preview')) {
+            offenders.add('${f.path}:${i + 1}  ${line.trim()}');
+          }
+        }
+      }
+      expect(offenders, isEmpty,
+          reason: 'these download the stored image instead of a preview:\n'
+              '${offenders.join('\n')}');
     });
 
     test('detail screens ask for the preview size, not the stored image', () {

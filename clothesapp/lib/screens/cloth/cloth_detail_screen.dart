@@ -643,9 +643,11 @@ class _ImageReviewCard extends StatelessWidget {
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: () async {
+                    // Screen-sized: these are two small side-by-side
+                    // panels, and the stored files are ~1 MB each.
                     final keepCutout = await showCropDecision(ctx,
-                        cutoutUrl: image.cutoutUrl,
-                        originalUrl: image.originalUrl);
+                        cutoutUrl: image.cutoutPreview,
+                        originalUrl: image.originalPreview);
                     if (keepCutout == true) {
                       onAccept();
                     } else if (keepCutout == false) {
@@ -724,7 +726,8 @@ class _ImageReviewCard extends StatelessWidget {
         Row(children: [
           Expanded(
             child: _beforeAfterTile(context,
-                tr(context, 'detail.before'), image.displayUrl ?? image.originalUrl, null),
+                tr(context, 'detail.before'),
+                image.displayPreviewUrl ?? image.originalPreview, null),
           ),
           const SizedBox(width: 12),
           Expanded(

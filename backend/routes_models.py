@@ -7,6 +7,7 @@ import logging
 
 from auth import get_current_user
 from db import get_conn
+from routes_thumbs import thumb_url_for
 from images import (
     IMAGES_DIR,
     canonical_cutout_path,
@@ -50,6 +51,16 @@ def _hydrate(conn, row) -> dict:
                     if im["bg_accepted"] != "rejected"
                     else im["original_path"]
                 ),
+                # Screen-sized copies. The model review screen was pulling the
+                # stored files to show them at phone width.
+                "thumb_url": thumb_url_for(
+                    im["cutout_path"]
+                    if im["bg_accepted"] != "rejected"
+                    else im["original_path"], 400),
+                "preview_url": thumb_url_for(
+                    im["cutout_path"]
+                    if im["bg_accepted"] != "rejected"
+                    else im["original_path"], 800),
             }
             for im in images
         ],
