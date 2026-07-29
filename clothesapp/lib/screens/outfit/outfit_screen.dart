@@ -484,7 +484,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
                 const SizedBox(width: 10),
                 ModelChip(
                   label: m.name,
-                  thumbUrl: m.displayImageUrl,
+                  thumbUrl: m.thumbImageUrl,
                   selected: _selectedModel?.id == m.id && !_randomModel,
                   onTap: () => setState(() {
                     _randomModel = false;

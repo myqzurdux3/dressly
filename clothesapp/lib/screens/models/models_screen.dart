@@ -160,11 +160,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
                             Expanded(
                               child: Container(
                                 color: Colors.blueGrey.shade900,
-                                child: m.displayImageUrl == null
+                                child: m.thumbImageUrl == null
                                     ? const Icon(Icons.person, size: 64, color: Colors.white38)
                                     : AppImage.path(
-                                        m.displayImageUrl,
-                                        cacheKey: m.displayImageUrl,
+                                        m.thumbImageUrl,
+                                        cacheKey: m.thumbImageUrl,
                                         fit: BoxFit.contain,
                                         memWidth: 300,
                                       ),
