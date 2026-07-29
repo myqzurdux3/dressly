@@ -99,6 +99,34 @@ which keeps the client's image cache useful.
 tighter one on failures, so a word-list run is cut off while someone mistyping
 their own password is not.
 
+## Moving the install to a server
+
+```bash
+./scripts/export_for_server.sh          # -> ../dressly-backend.tar
+```
+
+Use tar, not zip. Image bytes are stored once and hard-linked into two places
+(`data/images/<cloth_id>/…` and the content-addressed `data/blobs/…`), so there
+are about 1000 paths for 550 real files. tar stores the second path as a link;
+zip has no concept of hard links and copies the bytes again — which is why a
+400 MB directory becomes an 800 MB zip. Measured here: 433 MB as tar, 846 MB as
+zip, for the same content.
+
+Compressing further is not worth it: JPEG and WebP are already compressed, so
+gzip costs minutes and saves almost nothing. Pass `--gzip` only if the network
+is slower than the CPU.
+
+Secrets are deliberately left out of the archive — `certs/` and `.env`. The
+certificate has to be regenerated on the server anyway, since it is issued for
+that host's address, and `CLOTHESAPP_SECRET` should travel through a password
+manager rather than a tarball.
+
+After extracting, run `scripts/relocate_paths.py --apply`. Image locations are
+stored as absolute paths, so a moved install leaves every row pointing at the
+old machine. The failure is quiet rather than loud: `public_url_for` cannot make
+the path relative to `IMAGES_DIR`, falls back to a bare filename, and every
+image in the app 404s at once. The script is idempotent.
+
 ## Connecting from the Flutter app
 
 - Android emulator → `http://10.0.2.2:8000`
