@@ -66,7 +66,13 @@ class PinnedHttp {
       // Keep sockets around between requests: measured against the deployed
       // server, eight requests over one kept-alive connection cost 140 ms each
       // against 670 ms each when every one reconnects.
-      ..idleTimeout = const Duration(seconds: 30)
+      //
+      // Ten seconds, not thirty. A mobile network's NAT drops an idle mapping
+      // after roughly fifteen to thirty seconds and sends nothing to say so, so
+      // a socket held longer than that may already be dead — and a request sent
+      // down it disappears silently until the timeout fires. Closing first
+      // costs one handshake; the alternative costs twenty seconds of nothing.
+      ..idleTimeout = const Duration(seconds: 10)
       ..maxConnectionsPerHost = maxConnections
       // Without this a TCP connect to an unreachable host waits on the OS
       // default, which is minutes.

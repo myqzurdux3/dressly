@@ -33,7 +33,21 @@ class TimeoutFileService extends FileService {
   final Duration timeout;
 
   @override
-  Future<FileServiceResponse> get(String url, {Map<String, String>? headers}) {
+  Future<FileServiceResponse> get(String url,
+      {Map<String, String>? headers}) async {
+    try {
+      return await _attempt(url, headers);
+    } catch (_) {
+      // One retry, on a fresh connection. A kept-alive socket can be dropped by
+      // the network without either end being told; the request sent down it
+      // then goes nowhere until the deadline. Reissuing usually just works, and
+      // an image that fails outright leaves a visible gap in the grid.
+      return _attempt(url, headers);
+    }
+  }
+
+  Future<FileServiceResponse> _attempt(
+      String url, Map<String, String>? headers) {
     return _inner.get(url, headers: headers).timeout(
       timeout,
       onTimeout: () => throw TimeoutException(

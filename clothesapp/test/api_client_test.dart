@@ -259,12 +259,78 @@ void main() {
   });
 
   group('transport failures', () {
-    test('a connection error propagates instead of being swallowed', () async {
-      final rec = _Recorder();
+    test('a GET is retried once on a transport error', () async {
+      // A kept-alive socket can be dropped by the network with neither end
+      // told; the request sent down it vanishes until the timeout. Reissuing
+      // costs a round trip, and the user sees nothing.
+      var attempts = 0;
       final api = ApiClient(
-          token: 't', httpClient: rec.fail(http.ClientException('down')));
+        token: 't',
+        httpClient: MockClient((req) async {
+          attempts++;
+          if (attempts == 1) throw http.ClientException('stale socket');
+          return http.Response.bytes(utf8.encode('{"ok":true}'), 200,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
 
-      expect(() => api.get('/clothes'), throwsA(isA<http.ClientException>()));
+      expect(await api.get('/clothes/1'), {'ok': true});
+      expect(attempts, 2, reason: 'the first failure should have been retried');
+    });
+
+    test('a GET that keeps failing reports something readable', () async {
+      final api = ApiClient(
+        token: 't',
+        httpClient: MockClient((req) async {
+          throw http.ClientException('down');
+        }),
+      );
+
+      // Not "ClientException: down", and certainly not
+      // "TimeoutException after 0:00:20.000000: Future not completed".
+      await expectLater(
+        api.get('/clothes'),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message',
+            contains('Could not reach the server'))),
+      );
+    });
+
+    test('a POST is NOT retried', () async {
+      // Repeating a write that did reach the server would apply it twice.
+      var attempts = 0;
+      final api = ApiClient(
+        token: 't',
+        httpClient: MockClient((req) async {
+          attempts++;
+          throw http.ClientException('down');
+        }),
+      );
+
+      await expectLater(api.post('/outfits/generate', const {}),
+          throwsA(anything));
+      expect(attempts, 1);
+    });
+
+    test('a server error is not mistaken for a transport failure', () async {
+      // A 500 means the server answered; retrying would just repeat it.
+      var attempts = 0;
+      final api = ApiClient(
+        token: 't',
+        httpClient: MockClient((req) async {
+          attempts++;
+          return http.Response.bytes(
+              utf8.encode('{"detail":"boom"}'), 500,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
+
+      await expectLater(
+        api.get('/clothes'),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 500)
+            .having((e) => e.message, 'message', 'boom')),
+      );
+      expect(attempts, 1, reason: 'a 500 is an answer, not a lost connection');
     });
   });
 }
