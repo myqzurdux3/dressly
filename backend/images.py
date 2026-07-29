@@ -43,7 +43,16 @@ ORIGINAL_JPEG_QUALITY = int(os.environ.get("CLOTHESAPP_ORIGINAL_QUALITY", "95"))
 # Lossy WebP was measured at 42.5 dB (q95) and plateaus around 43.4 dB even at
 # q100 — its chroma subsampling puts a ceiling on it — so paying 2.5x the bytes
 # for genuinely zero loss is the better trade here.
-CUTOUT_MAX_PX = int(os.environ.get("CLOTHESAPP_CUTOUT_MAX_PX", "2400"))
+# 1600, not 2400. This is what every cut-out in the library already was before
+# the quality pass touched it, and nothing displays more: the grids use 400 px
+# copies and the detail screens 800 px, so the stored file is only ever seen
+# through the fullscreen zoom — where 1600 px already exceeds a phone screen.
+#
+# The cost of 2400 was not storage but latency, on the one path where the user
+# is actively waiting: measured on a real photo, encoding a cut-out losslessly
+# takes 2745 ms at 2400 px against 1130 ms at 1600 px, for 3.8 MB against
+# 1.8 MB. Adding a garment runs that twice, front and back.
+CUTOUT_MAX_PX = int(os.environ.get("CLOTHESAPP_CUTOUT_MAX_PX", "1600"))
 CUTOUT_WEBP_LOSSLESS = os.environ.get(
     "CLOTHESAPP_CUTOUT_LOSSLESS", "1").strip().lower() not in ("0", "false", "")
 # Only consulted when lossless is turned off.

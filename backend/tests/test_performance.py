@@ -150,6 +150,44 @@ def test_listing_does_not_issue_a_query_per_cloth(client, wardrobe, monkeypatch)
 
 # --- upload path ----------------------------------------------------------
 
+def test_the_cutout_cap_stays_at_the_size_the_library_uses():
+    """2400 px cost 2745 ms to encode against 1130 ms at 1600 px, on the one
+    path where someone is waiting — and nothing displays more than 800."""
+    assert images.CUTOUT_MAX_PX <= 1600
+
+
+def test_two_photos_are_processed_in_parallel(monkeypatch, tmp_path):
+    """Adding a garment means a front and a back. Background removal has to be
+    serialised, but the re-encoding around it does not, and it is the larger
+    half."""
+    import threading
+    import time as _time
+
+    import routes_clothes
+
+    concurrent = {"max": 0, "now": 0}
+    lock = threading.Lock()
+
+    def slow(dest_dir, role, slot, data):
+        with lock:
+            concurrent["now"] += 1
+            concurrent["max"] = max(concurrent["max"], concurrent["now"])
+        _time.sleep(0.2)
+        with lock:
+            concurrent["now"] -= 1
+        return {"role": role, "sort_order": slot,
+                "original": tmp_path / f"{role}.jpg",
+                "cutout": tmp_path / f"{role}.webp"}
+
+    monkeypatch.setattr(routes_clothes, "_process_upload", slow)
+    payloads = [("front", 0, b"a"), ("back", 1, b"b"), ("extra", 2, b"c")]
+    result = routes_clothes._stage_uploads(tmp_path, payloads)
+
+    assert concurrent["max"] > 1, "the photos were processed one after another"
+    # Order decides front/back and the sort order, so it must survive.
+    assert [r["role"] for r in result] == ["front", "back", "extra"]
+
+
 def test_lossless_cutout_encoding_stays_within_budget():
     """Lossless is inherently slow (~1 s for a 1600 px cut-out) and that is
     accepted — it runs in a worker thread. This only catches it getting worse."""

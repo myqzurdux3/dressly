@@ -117,9 +117,25 @@ def _process_upload(dest_dir: Path, role: str, slot, data: bytes) -> dict:
 
 
 def _stage_uploads(stage: Path, payloads) -> List[dict]:
-    """Process every upload of a request into ``stage``. One threadpool hop for
-    the whole batch instead of one per photo."""
-    return [_process_upload(stage, role, idx, data) for role, idx, data in payloads]
+    """Process every upload of a request into ``stage``.
+
+    In parallel, because most of the work is not the part that has to be
+    serialised. Background removal takes a lock — the ONNX session is not
+    thread-safe — but the re-encoding around it, which is the larger half, does
+    not, and PIL releases the GIL while it runs. A garment is two photos, front
+    and back, and the person who pressed Add is waiting for both.
+    """
+    if len(payloads) < 2:
+        return [_process_upload(stage, role, idx, data)
+                for role, idx, data in payloads]
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(4, len(payloads))) as pool:
+        futures = [pool.submit(_process_upload, stage, role, idx, data)
+                   for role, idx, data in payloads]
+        # Order matters: it decides front/back and the sort order.
+        return [f.result() for f in futures]
 
 
 def _move_staged(cloth_id: int, staged: List[dict]) -> List[dict]:

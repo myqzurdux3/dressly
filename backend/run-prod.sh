@@ -114,7 +114,7 @@ EOF
   exit 1
 fi
 
-exec python -m uvicorn main:app \
+exec python3 -m uvicorn main:app \
   --host "$HOST" \
   --port "$PORT" \
   --workers "$WORKERS" \
