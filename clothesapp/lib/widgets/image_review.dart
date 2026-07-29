@@ -286,26 +286,48 @@ void showImageFullscreen(BuildContext context, String url) {
 /// Background-removal status pill. 'pending' shows the shared "Review" word
 /// used everywhere a user choice is still needed.
 class BgStatusBadge extends StatelessWidget {
-  const BgStatusBadge({super.key, required this.status});
+  const BgStatusBadge({super.key, required this.status, this.cutoutStatus = 'ready'});
   final String status; // 'pending' | 'accepted' | 'rejected'
+  /// 'processing' | 'ready' | 'failed'. While the cut-out is still being made
+  /// there is nothing to accept or reject yet, so that state wins the badge.
+  final String cutoutStatus;
 
   @override
   Widget build(BuildContext context) {
+    if (cutoutStatus == 'processing') {
+      return _pill(context, tr(context, 'review.badgeProcessing'), Colors.amber,
+          leading: const SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.black54)));
+    }
+    if (cutoutStatus == 'failed') {
+      return _pill(context, tr(context, 'review.badgeCutoutFailed'),
+          Colors.blueGrey);
+    }
     final (labelKey, color) = switch (status) {
       'accepted' => ('review.badgeCutout', Colors.green),
       'rejected' => ('review.badgeOriginal', Colors.blueGrey),
       _ => ('review.badgeReview', Colors.amber),
     };
-    final label = tr(context, labelKey);
+    return _pill(context, tr(context, labelKey), color);
+  }
+
+  Widget _pill(BuildContext context, String label, Color color,
+      {Widget? leading}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(label,
-          style: const TextStyle(
-              fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (leading != null) ...[leading, const SizedBox(width: 6)],
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black)),
+      ]),
     );
   }
 }

@@ -11,7 +11,15 @@ from tests.conftest import create_cloth
 
 
 def _cutout_url(client, auth, cloth):
-    return cloth["images"][0]["cutout_url"].split("?")[0]
+    """The finished cut-out's URL.
+
+    Re-reads the cloth rather than trusting the create response: uploads now
+    answer before the cut-out exists, and until it does cutout_url points at the
+    original .jpg. These tests are about the .webp.
+    """
+    fresh = client.get(f"/clothes/{cloth['id']}", headers=auth).json()
+    assert fresh["images"][0]["cutout_status"] == "ready", "cut-out never finished"
+    return fresh["images"][0]["cutout_url"].split("?")[0]
 
 
 def test_current_url_is_served(client, auth):
@@ -35,7 +43,11 @@ def test_old_png_url_still_resolves_to_the_webp(client, auth):
 
 def test_thumbnail_route_also_accepts_the_old_extension(client, auth):
     c = create_cloth(client, auth)
-    thumb = c["images"][0]["thumb_url"].split("?")[0]
+    # Same reason as _cutout_url: read it back, or thumb_url still points at the
+    # original .jpg and the .webp->.png swap below produces "front_.png".
+    fresh = client.get(f"/clothes/{c['id']}", headers=auth).json()
+    thumb = fresh["images"][0]["thumb_url"].split("?")[0]
+    assert thumb.endswith(".webp"), thumb
     legacy = thumb[: -len(".webp")] + ".png"
     assert client.get(legacy).status_code == 200
 

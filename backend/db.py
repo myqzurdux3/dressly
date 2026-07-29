@@ -347,6 +347,24 @@ def _password_change_invalidates_tokens(conn) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN tokens_valid_from INTEGER")
 
 
+@migration
+def _cutout_runs_in_the_background(conn) -> None:
+    """Lets a garment exist before its cut-out does.
+
+    Background removal is ~5 s a photo on the deployment server, and a garment
+    has two, so adding one held the request — and the whole screen — for fifteen
+    seconds. The AI enhancement already worked the other way: return, then
+    report progress. This is the column that lets uploads do the same.
+
+    Rows that predate this have a cut-out already, so 'ready' is the truth for
+    them, not a default that happens to be convenient.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cloth_images)")}
+    if "cutout_status" not in cols:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN cutout_status TEXT")
+        conn.execute("UPDATE cloth_images SET cutout_status = 'ready'")
+
+
 def reset_orphan_generations(conn) -> int:
     """Fail outfits whose rendering process is gone.
 

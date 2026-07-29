@@ -167,6 +167,21 @@ class ClothesService {
     return get(clothId);
   }
 
+  /// Poll a freshly added garment until every photo has been cut out.
+  ///
+  /// Adding a garment now answers before the cut-outs exist, so the app shows
+  /// the originals with a "cutting out" badge and calls this to learn when the
+  /// real thing is ready. Gives up quietly after [maxTries] rather than
+  /// hammering: the next screen refresh will pick it up anyway.
+  Future<Cloth> pollCutouts(int clothId, {int maxTries = 60}) async {
+    for (var i = 0; i < maxTries; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      final c = await get(clothId);
+      if (!c.images.any((x) => x.cutoutStatus == 'processing')) return c;
+    }
+    return get(clothId);
+  }
+
   Future<Cloth> acceptEnhance(int clothId, int imageId) async {
     final data = await _api.post(
       '/clothes/$clothId/images/$imageId/enhance/accept',
