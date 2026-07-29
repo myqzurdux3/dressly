@@ -39,6 +39,26 @@ class ApiClient {
   /// not answered in twenty seconds is not going to.
   static const Duration _readTimeout = Duration(seconds: 20);
 
+  /// Writes that can be repeated without changing the outcome.
+  ///
+  /// A POST is not retried in general: one that did reach the server would be
+  /// applied twice. But these set a state rather than add to one — accepting an
+  /// already-accepted cut-out, or marking a favourite that is already a
+  /// favourite, lands in the same place — so a lost connection should cost a
+  /// round trip, not an error the user has to act on.
+  ///
+  /// Deliberately absent: /generate and /enhance, which bill bfl.ai per call,
+  /// and anything that toggles rather than assigns.
+  static bool _isIdempotentWrite(String path) =>
+      path.endsWith('/accept') ||
+      path.endsWith('/reject') ||
+      path.endsWith('/favorite') ||
+      path.endsWith('/exclude-algo') ||
+      path.endsWith('/blacklist') ||
+      path.endsWith('/wear') ||
+      path.endsWith('/redo-bg') ||
+      path.contains('/score');
+
   /// Endpoints that legitimately take minutes: they wait on a bfl.ai render.
   static bool _isSlowPath(String path) =>
       path.contains('/generate') ||
@@ -115,14 +135,18 @@ class ApiClient {
 
   Future<dynamic> post(String path, Map<String, dynamic> body) =>
       _send(path, (c) => c.post(Uri.parse(apiUrl(path)),
-          headers: _headers(), body: jsonEncode(body)));
+          headers: _headers(), body: jsonEncode(body)),
+          retry: _isIdempotentWrite(path));
 
+  // Deleting something already deleted is a 404, not a second deletion.
   Future<dynamic> delete(String path) => _send(path, (c) =>
-      c.delete(Uri.parse(apiUrl(path)), headers: _headers(json: false)));
+      c.delete(Uri.parse(apiUrl(path)), headers: _headers(json: false)),
+      retry: true);
 
   Future<dynamic> patch(String path, Map<String, dynamic> body) =>
       _send(path, (c) => c.patch(Uri.parse(apiUrl(path)),
-          headers: _headers(), body: jsonEncode(body)));
+          headers: _headers(), body: jsonEncode(body)),
+          retry: _isIdempotentWrite(path));
 
   /// Multipart upload. File list is mapped to the `images` field; the first
   /// two are sent in order (front, back) per the backend contract.
