@@ -44,3 +44,6 @@ never_killed.json
 backend/certs/
 *.key
 *.pem
+
+# Deployment archive produced by scripts/export_for_server.sh (~430 MB).
+dressly-backend.tar*
