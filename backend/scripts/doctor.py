@@ -153,21 +153,87 @@ def check_data():
         report(OK, f"{thumbs} cached thumbnails")
 
 
+def _listening_sockets(port: int):
+    """Addresses this machine is actually listening on for `port`.
+
+    Read from the kernel rather than probed: connecting to 127.0.0.1 succeeds
+    whether the socket is bound to localhost only or to every interface, so a
+    probe cannot tell the two apart — and that difference is exactly what makes
+    a server unreachable from outside while looking fine locally.
+    """
+    out = []
+    for path, family in (("/proc/net/tcp", 4), ("/proc/net/tcp6", 6)):
+        try:
+            lines = Path(path).read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            f = line.split()
+            if len(f) < 4 or f[3] != "0A":        # 0A = LISTEN
+                continue
+            addr_hex, port_hex = f[1].rsplit(":", 1)
+            if int(port_hex, 16) != port:
+                continue
+            if family == 4:
+                b = bytes.fromhex(addr_hex)
+                addr = ".".join(str(x) for x in reversed(b))
+            else:
+                addr = "::" if set(addr_hex) <= {"0"} else f"[{addr_hex}]"
+            out.append(addr)
+    return out
+
+
+def _public_ip():
+    """This machine's address as the outside world sees it."""
+    import urllib.request
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                ip = r.read().decode().strip()
+                if ip:
+                    return ip
+        except Exception:
+            continue
+    return None
+
+
 def check_port():
     host = os.environ.get("CLOTHESAPP_HOST", "0.0.0.0")
     port = int(os.environ.get("CLOTHESAPP_PORT", "8000"))
-    probe = "127.0.0.1" if host in ("0.0.0.0", "") else host
-    s = socket.socket()
-    s.settimeout(2)
-    listening = s.connect_ex((probe, port)) == 0
-    s.close()
-    if listening:
-        report(OK, f"something is listening on {probe}:{port}")
-    else:
-        report(WARN, f"nothing is listening on {probe}:{port}",
-               "Expected if the server is stopped. If it should be running, "
-               "check its output — it may have refused to start.")
 
+    bound = _listening_sockets(port)
+    if not bound:
+        report(WARN, f"nothing is listening on port {port}",
+               "Expected if the server is stopped. If it should be running, "
+               "read its output — it may have refused to start.")
+        return
+
+    local_only = all(a in ("127.0.0.1", "::1") for a in bound)
+    if local_only:
+        report(FAIL, f"port {port} is bound to localhost only ({', '.join(bound)})",
+               "Reachable from this machine and nowhere else. The phone cannot "
+               "connect.\n"
+               "Set CLOTHESAPP_HOST=0.0.0.0 in .env and restart.")
+    else:
+        report(OK, f"port {port} is listening on {', '.join(bound)}")
+
+    ip = _public_ip()
+    if ip:
+        report(OK, f"public address of this machine: {ip}")
+        print(f"         the app must use: https://{ip}:{port}")
+        print(f"         (with the port — https://{ip}/ goes to 443, "
+              f"where nothing listens)")
+    else:
+        report(WARN, "could not determine the public address",
+               "No outbound internet, or both lookup services are blocked.")
+
+    if not local_only:
+        print()
+        print("         If it is still unreachable from outside, the block is")
+        print("         upstream of this machine — a cloud provider firewall or")
+        print("         security group, which iptables does not show. Check the")
+        print("         provider's console for an inbound rule on TCP "
+              f"{port}.")
 
 def main() -> int:
     if (BACKEND / ".env").is_file():
