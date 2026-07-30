@@ -1,29 +1,29 @@
 /// Backend connection configuration.
 ///
 /// `127.0.0.1` won't reach the host from a device. Use:
-///  - Linux desktop / web debug: http://127.0.0.1:80
-///  - Android emulator:          http://10.0.2.2:80
-///  - Physical device on the LAN: `http://<this machine's LAN IP>:80`
-///  - Public server:              `https://<host>:80`
+///  - Linux desktop / web debug: http://127.0.0.1:8000
+///  - Android emulator:          http://10.0.2.2:8000
+///  - Physical device on the LAN: `http://<this machine's LAN IP>:8000`
+///  - Public server:              `https://<domain>`
 const String apiBaseUrl = 'https://dressly.xyz';
 
 /// SHA-256 fingerprint of the server's certificate, lower-case hex, no colons.
 ///
-/// Only needed while the server uses a self-signed certificate — which nothing
-/// trusts, so the app has to say which single certificate it accepts. That is
-/// what makes a self-signed setup actually safe: the connection cannot be
-/// intercepted, not even by someone holding a certificate from a real
-/// authority, because only this exact one is accepted.
+/// EMPTY, and it should stay empty now that the app talks to dressly.xyz
+/// through Cloudflare: the certificate the phone sees is Cloudflare's, issued
+/// by a real authority and rotated by them on their own schedule. Pinning it
+/// would break the app without warning on the day they rotate it, and normal
+/// certificate validation already covers this hop.
 ///
-/// Get it from `python scripts/make_cert.py`, which prints it when generating
-/// the certificate. Regenerating the certificate changes the pin — update both
-/// at the same time or the app will refuse to connect.
+/// Set it only if the app ever connects straight to a self-signed origin, which
+/// nothing trusts by itself. `python scripts/make_cert.py` prints the value.
+/// Regenerating the certificate changes the pin — update both together or the
+/// app refuses to connect.
 ///
-/// Leave EMPTY once the server has a real certificate (Let's Encrypt behind
-/// Caddy/nginx): normal certificate validation then applies, with no pin to
-/// keep in sync.
-const String apiCertSha256 =
-    '3625b16ad604ccde1e06bd8f5a337b1ff6fd471f4d7a103932a3c1f9b6fbb321';
+/// Note this pins the phone-to-Cloudflare hop only. Cloudflare to the origin is
+/// a separate connection, secured by the Cloudflare SSL mode (Full here), not
+/// by anything in this file.
+const String apiCertSha256 = '';
 
 /// Whether the app talks TLS at all.
 bool get apiUsesTls => apiBaseUrl.startsWith('https://');
