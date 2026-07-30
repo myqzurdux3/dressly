@@ -298,6 +298,9 @@ def test_same_brand_algo_never_mixes_brands(client, auth):
     # pull in a cloth of a different brand — the outfit is single-brand.
     _cloth_branded(client, auth, "Tee", "Nike", "tshirt")
     _cloth_branded(client, auth, "Hoodie", "Nike", "hoodie")
+    _cloth_branded(client, auth, "Nike Jeans", "Nike", "jeans")
+    # Stussy owns a bottom and nothing else, so it can never be the theme — it
+    # is here to be wrongly mixed in, which is what this test watches for.
     _cloth_branded(client, auth, "Jeans", "Stussy", "jeans")
     for _ in range(8):
         r = client.post("/outfits/preview-algo", headers=auth,
@@ -332,6 +335,7 @@ def test_locked_cloth_forced_into_algo_selection(client, auth):
     # A hoodie is cold-only, so weather=hot filters it out of the pool. Locking
     # it must still put it in the outfit (winning its 'top' slot over the tee).
     _cloth_branded(client, auth, "Tee", "Nike", "tshirt")
+    _cloth_branded(client, auth, "Shorts", "Nike", "shorts")  # so an outfit exists
     hoodie = _cloth_branded(client, auth, "Hoodie", "Nike", "hoodie")
     r = client.post("/outfits/preview-algo", headers=auth,
                     json={"algo": "random", "weather": "hot", "count": 1,

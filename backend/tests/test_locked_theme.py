@@ -43,6 +43,12 @@ def _generate(client, auth, algo, locked, count=1, **extra):
     return r.json()["selections"]
 
 
+def _generate_raw(client, auth, algo, locked, **extra):
+    return client.post("/outfits/preview-algo", headers=auth,
+                       json={"algo": algo, "count": 1,
+                             "locked_cloth_ids": locked, **extra})
+
+
 # --- the report -----------------------------------------------------------
 
 def test_locking_a_brand_keeps_the_whole_outfit_on_that_brand(client, auth):
@@ -117,33 +123,44 @@ def test_a_locked_cloth_with_no_brand_falls_back_to_the_wardrobe(client, auth):
     assert len(sel) > 1, "nothing was built around the locked cloth"
 
 
-def test_a_locked_brand_you_own_only_once_still_wins(client, auth):
-    """The weighting would give this brand almost no chance. Locking it is the
-    user saying so explicitly, which outranks how much of it they own."""
-    only = _cloth(client, auth, "Lone Adidas Tee", "Adidas", "tshirt")
+def test_a_barely_owned_locked_brand_still_wins(client, auth):
+    """Two Adidas items against twenty Nike: the weighting would pick Adidas
+    about one time in eleven. Locking it is the user saying so explicitly, which
+    outranks how much of it they own."""
+    tee = _cloth(client, auth, "Adidas Tee", "Adidas", "tshirt")
+    _cloth(client, auth, "Adidas Short", "Adidas", "shorts")
     for i in range(10):
         _cloth(client, auth, f"Nike Tee {i}", "Nike", "tshirt")
         _cloth(client, auth, f"Nike Short {i}", "Nike", "shorts")
 
     for _ in range(6):
-        sel = _generate(client, auth, "same-brand", [only["id"]])[0]
+        sel = _generate(client, auth, "same-brand", [tee["id"]])[0]
         assert {c["brand"] for c in sel} == {"ADIDAS"}
 
 
-def test_fill_gaps_is_what_brings_another_brand_in(client, auth):
-    """Adidas owns no bottom here, so a same-brand outfit cannot have one. With
-    fill_gaps the user asked for the missing role to be filled from anywhere —
-    that is the option working, not the theme failing. Without it, the outfit
-    stays pure and short."""
+def test_an_impossible_theme_returns_nothing_rather_than_half_an_outfit(client, auth):
+    """Adidas owns no bottom here, so there is no Adidas outfit to make.
+
+    Returning the lone tee is what produced the other half of the complaint —
+    "ça me génère qu'un short vert sans aucun t-shirt". Nothing is the honest
+    answer, and the user can see they own no Adidas bottom. Turning fill_gaps on
+    is how they ask for the rest to come from elsewhere.
+    """
     tee = _cloth(client, auth, "Adidas Tee", "Adidas", "tshirt")
     _cloth(client, auth, "Nike Short", "Nike", "shorts")
 
-    pure = _generate(client, auth, "same-brand", [tee["id"]], fill_gaps=False)[0]
-    assert {c["brand"] for c in pure} == {"ADIDAS"}
+    pure = _generate_raw(client, auth, "same-brand", [tee["id"]], fill_gaps=False)
+    assert pure.status_code == 404, f"half an outfit was proposed: {pure.text}"
+    detail = pure.json()["detail"]
+    assert "whole outfit" in detail, detail
+    assert "rating" not in detail, \
+        f"blames a rating filter the user never set: {detail}"
 
     filled = _generate(client, auth, "same-brand", [tee["id"]], fill_gaps=True)[0]
     assert any(c["brand"] == "NIKE" for c in filled), \
         "fill_gaps should complete the outfit from the rest of the wardrobe"
+    roles = {c["role"] for c in filled}
+    assert roles & {"top", "outer", "onepiece"} and roles & {"bottom", "onepiece"}
 
 
 # --- the same flaw in the sibling algorithms ------------------------------

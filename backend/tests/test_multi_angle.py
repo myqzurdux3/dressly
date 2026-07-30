@@ -214,6 +214,13 @@ def test_same_cut_ignores_no_cut_items(client, auth):
                       data={"name": "Tee", "category": "tshirt", "cut": "normal"},
                       files=[("images", ("f.png", make_png(), "image/png")),
                              ("images", ("b.png", make_png(), "image/png"))]).json()
+    # A bottom of the same cut, so there is a whole outfit to propose. Without
+    # one the generator now returns nothing rather than a lone tee, which is the
+    # point of the wearability rule but would hide what this test is about.
+    client.post("/clothes", headers=auth,
+                data={"name": "Jeans", "category": "jeans", "cut": "normal"},
+                files=[("images", ("f.png", make_png(), "image/png")),
+                       ("images", ("b.png", make_png(), "image/png"))])
     r = client.post("/outfits/preview-algo", headers=auth,
                     json={"algo": "same-cut", "count": 1})
     assert r.status_code == 200
@@ -228,6 +235,14 @@ def test_pick_by_tag_algorithm(client, auth):
                     files=[("images", ("f.png", make_png(), "image/png")),
                            ("images", ("b.png", make_png(), "image/png"))])
     cid = r.json()["id"]
+    # A tagged bottom, so "summer" can dress a whole person — the generator no
+    # longer proposes a top with nothing below it.
+    shorts = client.post("/clothes", headers=auth,
+                         data={"name": "Shorts", "category": "shorts",
+                               "cut": "normal", "tags": '["summer"]'},
+                         files=[("images", ("f.png", make_png(), "image/png")),
+                                ("images", ("b.png", make_png(), "image/png"))])
+    tagged = {cid, shorts.json()["id"]}
     # untagged distractor
     client.post("/clothes", headers=auth,
                 data={"name": "Jeans", "category": "jeans", "cut": "normal"},
@@ -239,7 +254,8 @@ def test_pick_by_tag_algorithm(client, auth):
     res = client.post("/outfits/preview-algo", headers=auth,
                       json={"algo": "pick-by-tag", "tag": "summer"}).json()
     ids = [c["id"] for sel in res["selections"] for c in sel]
-    assert cid in ids and all(c["id"] == cid for sel in res["selections"] for c in sel)
+    assert cid in ids
+    assert set(ids) <= tagged, "an untagged cloth got in"
 
 
 def test_detect_colors_from_cutout(client, auth):
