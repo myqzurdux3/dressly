@@ -359,14 +359,44 @@ def _theme_from_locked(locked, values_of):
     return seen
 
 
-def _pick_theme(locked, values_of, counts):
+def _dressable_values(pool, values_of, counts):
+    """Theme values that can cover an upper AND a lower on their own.
+
+    matching-tag already refused tags that could not dress anybody ("maillot"
+    returning a lone t-shirt). The brand, colour and cut themes did not, so they
+    would happily pick the colour you own exactly one pair of shorts in, produce
+    that pair of shorts, and get thrown away by the wearability check. The draw
+    is re-rolled either way, but choosing a value that can work beats rolling
+    the dice thirty times and giving up.
+
+    Falls back to every value when none qualifies: an incomplete themed outfit
+    is still worth offering when fill_gaps can finish it.
+    """
+    from collections import defaultdict
+    roles = defaultdict(set)
+    for c in pool:
+        for v in values_of(c) or ():
+            if v:
+                roles[v].add(c["role"])
+    good = {v: n for v, n in counts.items()
+            if "onepiece" in roles.get(v, ())
+            or ({"bottom"} <= roles.get(v, ()) and roles.get(v, ()) & {"top", "outer"})}
+    return good or counts
+
+
+def _pick_theme(locked, values_of, counts, all_counts=None):
     """Choose a theme value: from the locked clothes when they name one,
     otherwise weighted by how much of it you own.
 
-    Locked values are filtered against ``counts`` so a brand you own exactly one
-    of — the locked item itself — still wins. That is the point: you locked it.
+    ``counts`` is the preferred set (values that can dress a whole outfit);
+    ``all_counts`` is every value there is. A locked value is looked up in
+    ``all_counts``, never in the preferred set — filtering it there would drop
+    the brand the user explicitly pinned just because they own no trousers of
+    it, and silently theme the outfit on something else. That is the bug this
+    whole function exists to fix; it must not reappear one layer down.
     """
-    from_locked = [v for v in _theme_from_locked(locked, values_of) if v in counts]
+    known = all_counts if all_counts is not None else counts
+    from_locked = [v for v in _theme_from_locked(locked, values_of) if v in known]
     if from_locked:
         # Several locked clothes can disagree (an Adidas tee and Nike shorts).
         # Honouring one of them beats honouring neither, so pick among those.
@@ -387,7 +417,9 @@ def _algo_same_brand(pool, locked=()):
     # A locked cloth decides the brand. Otherwise pick one WEIGHTED by how many
     # items of it you own, so a brand you have a lot of comes up proportionally
     # more often than one you barely own, instead of always the most common.
-    target = _pick_theme(locked, lambda c: [c["brand"]], counts)
+    target = _pick_theme(locked, lambda c: [c["brand"]],
+                         _dressable_values(pool, lambda c: [c["brand"]], counts),
+                         all_counts=counts)
     if target is None:
         return []
     themed = [c for c in pool if c["brand"] == target]
@@ -408,7 +440,10 @@ def _algo_single_color(pool, locked=()):
     counts = Counter(col for c in pool for col in c.get("dom_colors", ()))
     if not counts:
         return []
-    target = _pick_theme(locked, lambda c: c.get("dom_colors", ()), counts)
+    target = _pick_theme(
+        locked, lambda c: c.get("dom_colors", ()),
+        _dressable_values(pool, lambda c: c.get("dom_colors", ()), counts),
+        all_counts=counts)
     if target is None:
         return []
     themed = [c for c in pool if target in c.get("dom_colors", ())]
@@ -468,7 +503,8 @@ def _algo_matching_tag(pool, locked=()):
     # its own: the user named it. Restricted to candidates so a tag no pool
     # cloth carries does not empty the result.
     target = _pick_theme(locked, lambda c: c["tags"],
-                         {t: tag_counts[t] for t in candidates})
+                         {t: tag_counts[t] for t in candidates},
+                         all_counts=tag_counts)
     if target is None:
         return []
     themed = [c for c in pool if target in c["tags"]]
@@ -487,8 +523,10 @@ def _algo_same_cut(pool, locked=()):
     from collections import Counter
     counts = Counter(cuts)
     # A locked cloth decides the cut; otherwise weighted by how many you own.
-    target = _pick_theme(locked, lambda c: [c["cut"]] if has_cut(c["category"]) else [],
-                         counts)
+    _cut_of = lambda c: [c["cut"]] if has_cut(c["category"]) else []  # noqa: E731
+    target = _pick_theme(locked, _cut_of,
+                         _dressable_values(candidates, _cut_of, counts),
+                         all_counts=counts)
     if target is None:
         return []
     themed = [c for c in candidates if c["cut"] == target]
@@ -680,6 +718,56 @@ def _fetch_clothes_by_id(conn, user_id: int, ids: List[int]) -> List[dict]:
     return [by_id[i] for i in ids if i in by_id]
 
 
+def why_empty(req) -> str:
+    """A sentence explaining why select() came back with nothing.
+
+    "No clothes match this algorithm (and rating filter). Add more or lower the
+    rating." was the only message, and for the case this module now guards
+    against it is simply untrue: the clothes match fine, they just cannot make a
+    whole outfit between them. Being told to lower a rating filter you never set
+    sends you looking in the wrong place.
+    """
+    theme = {
+        "same-brand": "of a single brand",
+        "single-color": "of a single colour",
+        "pick-by-color": f"in {req.color}" if getattr(req, "color", "") else "in that colour",
+        "pick-by-brand": f"from {req.brand}" if getattr(req, "brand", "") else "from that brand",
+        "pick-by-tag": f"tagged {req.tag}" if getattr(req, "tag", "") else "with that tag",
+        "matching-tag": "sharing a tag",
+        "same-cut": "of the same cut",
+    }.get(getattr(req, "algo", ""), "")
+    if theme:
+        return (f"Not enough clothes {theme} to make a whole outfit — a top and "
+                f"a bottom, or a one-piece. Add some, or turn on "
+                f"\u201cfill gaps with other clothes\u201d.")
+    return ("No clothes match this algorithm (and rating filter). Add more or "
+            "lower the rating.")
+
+
+def _is_wearable(picked: List[dict], req) -> bool:
+    """Is this something a person could put on?
+
+    Reported as "pour vert ça me génère qu'un short vert sans aucun t-shirt". A
+    themed algorithm completes only from within its own theme, so a wardrobe
+    whose only green item is a pair of shorts produced an outfit of one pair of
+    shorts. An audit over every algorithm found six of the ten could do it:
+    single-color, pick-by-color, matching-tag and pick-by-tag every time on such
+    a wardrobe, same-brand and same-cut some of the time.
+
+    Wearable means something on top and something on the bottom, or a one-piece
+    that is both. Shoes are optional — a missing pair is a gap, not a nonsense.
+
+    Exception: an explicit category list. Asking for shorts only and getting
+    shorts only is the feature, not the bug.
+    """
+    if getattr(req, "categories", None):
+        return True
+    roles = {c["role"] for c in picked}
+    upper = roles & {"top", "outer", "onepiece"}
+    lower = roles & {"bottom", "onepiece"}
+    return bool(upper and lower)
+
+
 def select(req: GenerateRequest) -> List[dict]:
     """Run an algorithm and return the chosen clothes (list of dicts with id,
     name, brand, category, role). Empty list if nothing matched — or if every
@@ -752,16 +840,23 @@ def select(req: GenerateRequest) -> List[dict]:
         # ever emit a physically-impossible outfit.
         return _dedupe_slots(result)
 
-    # Re-roll past blacklisted combinations so the generator never proposes an
-    # outfit the user banned. Deterministic algos just converge to empty.
-    last: List[dict] = []
+    # Re-roll past blacklisted combinations, and past draws that are not an
+    # outfit at all. Both are re-rolls rather than refusals: single-color that
+    # landed on the one colour you own a single garment of will find a workable
+    # colour on the next draw, and giving up on the first try would have hidden
+    # every outfit the wardrobe could actually make.
+    #
+    # Deterministic algos converge to empty, which is the honest answer: the
+    # caller reports "no outfit" instead of showing a lone pair of shorts.
     for _ in range(30):
         last = _pick_once()
-        if not last or not blacklist:
+        if not last:
             return last
-        if combo_key([c["id"] for c in last]) not in blacklist:
+        if not _is_wearable(last, req):
+            continue
+        if not blacklist or combo_key([c["id"] for c in last]) not in blacklist:
             return last
-    return []  # only blacklisted combos were reachable
+    return []  # only blacklisted or unwearable combos were reachable
 
 
 def explain(picked: List[dict], algo: str) -> str:

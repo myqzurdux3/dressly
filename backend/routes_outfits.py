@@ -30,6 +30,7 @@ from generator import (
     explain as algo_explain,
     is_multi_angle,
     select as algo_select,
+    why_empty as algo_why_empty,
 )
 from images import public_url_for  # noqa: F401  (shared helper, kept for parity)
 
@@ -1519,7 +1520,9 @@ def preview_algo(req: AlgoRequest, user=Depends(get_current_user)):
     if not selections:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            "No clothes match this algorithm (and rating filter). Add more or lower the rating.",
+            algo_why_empty(GenReq(
+                algo=req.algo, color=req.color, brand=req.brand,
+                tag=req.tag, user_id=user["id"])),
         )
     out = []
     for sel in selections:
@@ -1558,7 +1561,9 @@ def generate_from_algo(req: AlgoRequest, background: BackgroundTasks,
     if len(picked) < 1:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            "No clothes match this algorithm (and rating filter). Add more or lower the rating.",
+            algo_why_empty(GenReq(
+                algo=req.algo, color=req.color, brand=req.brand,
+                tag=req.tag, user_id=user["id"])),
         )
     cloth_ids = [c["id"] for c in picked]
 
