@@ -52,6 +52,13 @@ Description=Dressly backend
 After=network-online.target
 Wants=network-online.target
 
+# These belong in [Unit], not [Service] — systemd ignores them there. Without a
+# limit, a unit that fails instantly restarts forever and `systemctl start`
+# waits for a state that never arrives, which looks like the command hanging
+# rather than like a broken configuration.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
 [Service]
 Type=exec
 User=$SERVICE_USER
@@ -66,9 +73,6 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 Restart=always
 RestartSec=5
-# Do not give up after a burst of quick failures — a misconfigured .env would
-# otherwise leave the server permanently down after five minutes of retries.
-StartLimitIntervalSec=0
 
 # The data directory is the only thing it needs to write. ProtectSystem=full
 # leaves /usr and /boot read-only; the cut-out child process still works, it
@@ -95,3 +99,6 @@ echo
 echo "    sudo systemctl start dressly"
 echo "    systemctl status dressly"
 echo "    journalctl -u dressly -f"
+echo
+echo "If it hangs or fails, the reason is in that log: run-prod.sh now"
+echo "checks the port before uvicorn does and names the problem."

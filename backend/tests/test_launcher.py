@@ -53,6 +53,43 @@ def test_the_port_check_happens_before_anything_slow():
     assert "port 443" in (r.stdout + r.stderr)
 
 
+def test_a_port_already_in_use_says_so_instead_of_blaming_permissions():
+    """The other reason a start fails, and the one that actually bites: an older
+    copy is still running. Predicting the answer from capabilities could never
+    have found this."""
+    import socket
+
+    sock = socket.socket()
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.listen(1)
+    try:
+        r = _run(CLOTHESAPP_PORT=str(port), CLOTHESAPP_HOST="127.0.0.1")
+    finally:
+        sock.close()
+
+    out = r.stdout + r.stderr
+    assert r.returncode == 1
+    assert "already taken" in out, out
+    assert "ss -ltnp" in out, "it should say how to find what holds the port"
+    assert "privileged" not in out, "wrong diagnosis: this is not a permission problem"
+
+
+def test_the_check_asks_the_kernel_rather_than_guessing():
+    """The bug this replaced: the guard decided from `getcap` on the python
+    binary, so under systemd — where the capability is granted to the process,
+    not the file — it refused a port it could have taken. The service then
+    restarted every five seconds and `systemctl start` hung forever.
+
+    A capability test cannot be written here without root, so this asserts the
+    method instead: the script must open the socket, not inspect the binary.
+    """
+    script = open(SCRIPT).read()
+    assert "getcap" not in script,         "back to predicting from file capabilities, which systemd does not use"
+    assert "s.bind((host, port))" in script, "the port is no longer probed"
+
+
 def test_a_high_port_is_not_blocked_by_the_privileged_port_check():
     """The guard must not become a reason a working setup stops working. On a
     machine with no certificate it stops at TLS instead, which is a different
