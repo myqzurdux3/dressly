@@ -337,25 +337,65 @@ def _shuffle(items: List[dict]) -> List[dict]:
 
 # --- algorithms ----------------------------------------------------------
 
-def _algo_same_brand(pool):
+def _theme_from_locked(locked, values_of):
+    """The theme the user already committed to by locking a cloth.
+
+    Without this, locking an Adidas tee and asking for "same brand" picked a
+    brand weighted by wardrobe share — usually not Adidas — and then filled the
+    remaining roles from THAT brand. The locked tee stayed, everything around it
+    came from somewhere else, and the result looked like the theme was ignored,
+    because it was.
+
+    ``values_of`` pulls the candidate theme values out of one cloth (its brand,
+    its dominant colours, its cut...). Returns the values worth honouring, most
+    specific first, or an empty list when the locked clothes carry none — a
+    locked no-brand item cannot say which brand you meant.
+    """
+    seen = []
+    for c in locked or ():
+        for v in values_of(c) or ():
+            if v and v not in seen:
+                seen.append(v)
+    return seen
+
+
+def _pick_theme(locked, values_of, counts):
+    """Choose a theme value: from the locked clothes when they name one,
+    otherwise weighted by how much of it you own.
+
+    Locked values are filtered against ``counts`` so a brand you own exactly one
+    of — the locked item itself — still wins. That is the point: you locked it.
+    """
+    from_locked = [v for v in _theme_from_locked(locked, values_of) if v in counts]
+    if from_locked:
+        # Several locked clothes can disagree (an Adidas tee and Nike shorts).
+        # Honouring one of them beats honouring neither, so pick among those.
+        return _random.choice(from_locked)
+    if not counts:
+        return None
+    keys = list(counts)
+    return _random.choices(keys, weights=[counts[k] for k in keys], k=1)[0]
+
+
+def _algo_same_brand(pool, locked=()):
     if not pool:
         return []
     from collections import Counter
     counts = Counter(c["brand"] for c in pool if c["brand"])
     if not counts:
         return []
-    # Pick the brand WEIGHTED by how many items of it you own — so a brand you
-    # have a lot of (e.g. Nike) comes up proportionally more often than one you
-    # barely own (e.g. a single Adidas tee), instead of always the most common
-    # or a flat random. Rarely-owned brands still appear, just rarely.
-    brands = list(counts)
-    target = _random.choices(brands, weights=[counts[b] for b in brands], k=1)[0]
+    # A locked cloth decides the brand. Otherwise pick one WEIGHTED by how many
+    # items of it you own, so a brand you have a lot of comes up proportionally
+    # more often than one you barely own, instead of always the most common.
+    target = _pick_theme(locked, lambda c: [c["brand"]], counts)
+    if target is None:
+        return []
     themed = [c for c in pool if c["brand"] == target]
     # Complete ONLY from the same brand — never mix in another brand's cloth.
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
 
-def _algo_single_color(pool):
+def _algo_single_color(pool, locked=()):
     if not pool:
         return []
     # Use each cloth's DOMINANT colour(s) (highest dominance tier), not just any
@@ -368,8 +408,9 @@ def _algo_single_color(pool):
     counts = Counter(col for c in pool for col in c.get("dom_colors", ()))
     if not counts:
         return []
-    colors = list(counts)
-    target = _random.choices(colors, weights=[counts[c] for c in colors], k=1)[0]
+    target = _pick_theme(locked, lambda c: c.get("dom_colors", ()), counts)
+    if target is None:
+        return []
     themed = [c for c in pool if target in c.get("dom_colors", ())]
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
@@ -397,7 +438,7 @@ def _algo_color_match(pool):
     return _complete(_pick_one_per_role(_shuffle(best)), best)
 
 
-def _algo_matching_tag(pool):
+def _algo_matching_tag(pool, locked=()):
     if not pool:
         return []
     from collections import Counter, defaultdict
@@ -423,13 +464,18 @@ def _algo_matching_tag(pool):
     # (favours a tag you use a lot, varies between runs), then shuffle so
     # different items fill each role.
     candidates = [t for t in tag_counts if _wearable(t)] or list(tag_counts)
-    target = _random.choices(
-        candidates, weights=[tag_counts[t] for t in candidates], k=1)[0]
+    # A locked cloth's tag wins, even one that cannot dress a whole outfit on
+    # its own: the user named it. Restricted to candidates so a tag no pool
+    # cloth carries does not empty the result.
+    target = _pick_theme(locked, lambda c: c["tags"],
+                         {t: tag_counts[t] for t in candidates})
+    if target is None:
+        return []
     themed = [c for c in pool if target in c["tags"]]
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
 
-def _algo_same_cut(pool):
+def _algo_same_cut(pool, locked=()):
     if not pool:
         return []
     # Only clothes that actually have a cut count — shoes/bags/accessories are
@@ -440,9 +486,11 @@ def _algo_same_cut(pool):
         return []
     from collections import Counter
     counts = Counter(cuts)
-    keys = list(counts)
-    # Weighted by how many clothes have each cut (varies, favours common cuts).
-    target = _random.choices(keys, weights=[counts[k] for k in keys], k=1)[0]
+    # A locked cloth decides the cut; otherwise weighted by how many you own.
+    target = _pick_theme(locked, lambda c: [c["cut"]] if has_cut(c["category"]) else [],
+                         counts)
+    if target is None:
+        return []
     themed = [c for c in candidates if c["cut"] == target]
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
@@ -556,16 +604,19 @@ def _ensure_feet(picked, pool):
 
 
 _ALGOS = {
-    "same-brand": lambda p, r: _algo_same_brand(p),
-    "single-color": lambda p, r: _algo_single_color(p),
-    "color-match": lambda p, r: _algo_color_match(p),
-    "matching-tag": lambda p, r: _algo_matching_tag(p),
-    "same-cut": lambda p, r: _algo_same_cut(p),
-    "least-worn": lambda p, r: _algo_least_worn(p),
-    "pick-by-color": lambda p, r: _algo_pick_by_color(p, r.color),
-    "pick-by-brand": lambda p, r: _algo_pick_by_brand(p, r.brand),
-    "pick-by-tag": lambda p, r: _algo_pick_by_tag(p, r.tag),
-    "random": lambda p, r: _algo_random(p, r.weather),
+    # `locked` is the clothes the user pinned. Themed algorithms take their
+    # theme FROM them: locking an Adidas tee and asking for "same brand" must
+    # mean Adidas, not whichever brand the wardrobe weighting landed on.
+    "same-brand": lambda p, r, locked: _algo_same_brand(p, locked),
+    "single-color": lambda p, r, locked: _algo_single_color(p, locked),
+    "color-match": lambda p, r, locked: _algo_color_match(p),
+    "matching-tag": lambda p, r, locked: _algo_matching_tag(p, locked),
+    "same-cut": lambda p, r, locked: _algo_same_cut(p, locked),
+    "least-worn": lambda p, r, locked: _algo_least_worn(p),
+    "pick-by-color": lambda p, r, locked: _algo_pick_by_color(p, r.color),
+    "pick-by-brand": lambda p, r, locked: _algo_pick_by_brand(p, r.brand),
+    "pick-by-tag": lambda p, r, locked: _algo_pick_by_tag(p, r.tag),
+    "random": lambda p, r, locked: _algo_random(p, r.weather),
 }
 
 
@@ -668,7 +719,7 @@ def select(req: GenerateRequest) -> List[dict]:
             picked = _select_by_categories(themed_pool, req.categories)
             core = [c for c in picked if c["role"] != "other"] or picked
         else:
-            picked = _ALGOS[algo](themed_pool, req)
+            picked = _ALGOS[algo](themed_pool, req, locked)
             core = [c for c in _pick_one_per_role(picked) if c["role"] != "other"] or picked
         if not locked:
             result = core
