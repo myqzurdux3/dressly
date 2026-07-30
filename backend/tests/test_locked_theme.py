@@ -156,11 +156,18 @@ def test_an_impossible_theme_returns_nothing_rather_than_half_an_outfit(client, 
     assert "rating" not in detail, \
         f"blames a rating filter the user never set: {detail}"
 
-    filled = _generate(client, auth, "same-brand", [tee["id"]], fill_gaps=True)[0]
-    assert any(c["brand"] == "NIKE" for c in filled), \
-        "fill_gaps should complete the outfit from the rest of the wardrobe"
-    roles = {c["role"] for c in filled}
-    assert roles & {"top", "outer", "onepiece"} and roles & {"bottom", "onepiece"}
+    # And fill_gaps does not rescue it either: borrowing a Nike pair of shorts
+    # to finish an Adidas outfit is exactly the complaint. Shoes it may borrow;
+    # trousers it may not.
+    filled = _generate_raw(client, auth, "same-brand", [tee["id"]], fill_gaps=True)
+    if filled.status_code == 200:
+        for sel in filled.json()["selections"]:
+            garments = [c for c in sel
+                        if c["role"] in ("top", "bottom", "outer", "onepiece")]
+            assert {c["brand"] for c in garments} == {"ADIDAS"}, \
+                f"fill_gaps crossed the brand: {[(c['name'], c['brand']) for c in garments]}"
+    else:
+        assert filled.status_code == 404
 
 
 # --- the same flaw in the sibling algorithms ------------------------------
