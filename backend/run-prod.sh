@@ -102,6 +102,39 @@ fi
 export OMP_NUM_THREADS OMP_THREAD_LIMIT="$OMP_NUM_THREADS"
 echo "Threads: $OMP_NUM_THREADS per worker for background removal ($WORKERS workers)"
 
+# Ports below 1024 are privileged on Linux. uvicorn reports the refusal as
+# "ERROR:    [Errno 13] Permission denied" with no mention of the port, which
+# reads like a file-permission problem and sends you to chmod.
+if (( PORT < 1024 )) && [[ "$(id -u)" != "0" ]]; then
+  if ! command -v getcap >/dev/null 2>&1 ||
+     ! getcap "$(readlink -f "$(command -v python3)")" 2>/dev/null | grep -q cap_net_bind_service; then
+    cat >&2 <<EOF
+Cannot listen on port $PORT as $(whoami): ports below 1024 need root.
+
+uvicorn would report this as "[Errno 13] Permission denied", which says nothing
+about the port. Pick one:
+
+  1. Let this interpreter bind low ports (one command, survives reboots):
+
+       sudo setcap cap_net_bind_service=+ep \$(readlink -f \$(command -v python3))
+
+     Applies to every python3 script on the machine, which is fine on a box
+     that only runs this.
+
+  2. Use a high port and let the proxy in front map it. With Cloudflare, add an
+     Origin Rule rewriting the destination port:
+
+       CLOTHESAPP_PORT=8443    in .env
+
+  3. Run it as a systemd service with the capability granted to this service
+     only — also restarts it on boot and when it dies:
+
+       scripts/install_service.sh
+EOF
+    exit 1
+  fi
+fi
+
 TLS_ARGS=()
 if [[ -f certs/server.crt && -f certs/server.key ]]; then
   TLS_ARGS=(--ssl-certfile certs/server.crt --ssl-keyfile certs/server.key)
@@ -136,6 +169,15 @@ To run without TLS anyway (local testing only):
   CLOTHESAPP_ALLOW_PLAINTEXT=1 ./run-prod.sh
 EOF
   exit 1
+fi
+
+# Pre-flight: run every check above and stop, without taking the port. Lets you
+# validate a .env change before restarting a server people are using, and lets
+# the tests exercise the refusals without one of them starting a real server and
+# hanging the suite.
+if [[ "${CLOTHESAPP_CHECK_ONLY:-0}" == "1" ]]; then
+  echo "Configuration looks startable (checked, not started)."
+  exit 0
 fi
 
 exec python3 -m uvicorn main:app \
