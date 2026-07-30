@@ -292,10 +292,59 @@ def _complete(picked: List[dict], pool: List[dict]) -> List[dict]:
     return picked
 
 
-def _fill_missing_roles(picked: List[dict], pool: List[dict]) -> List[dict]:
-    """Fill any missing core role (top, bottom, feet) from the WHOLE pool —
-    regardless of the theme. Used by the 'fill gaps with other clothes' option so
-    e.g. a same-brand outfit still gets shoes when that brand has none."""
+# Algorithms whose whole promise is that every GARMENT shares one property.
+# "Fill gaps" may still borrow shoes for them — nobody asks a brand to make
+# trainers — but borrowing a top is the difference between "same brand" and
+# "some brand", and it is what the option used to do.
+_HARD_THEMES = {
+    "same-brand": lambda c: c["brand"],
+    "pick-by-brand": lambda c: c["brand"],
+    "single-color": lambda c: frozenset(c.get("dom_colors", ())),
+    "pick-by-color": lambda c: frozenset(c.get("dom_colors", ())),
+    "matching-tag": lambda c: frozenset(c["tags"]),
+    "pick-by-tag": lambda c: frozenset(c["tags"]),
+    "same-cut": lambda c: c["cut"] if has_cut(c["category"]) else None,
+}
+
+# Roles a theme is not expected to cover. Shoes and accessories are where
+# "complete it from the rest of the wardrobe" earns its keep.
+_BORROWABLE_ROLES = {"feet", "other"}
+
+
+def _theme_allows(algo: str, picked: List[dict]):
+    """Predicate: may this cloth join the outfit without breaking the theme?
+
+    Derived from what was already picked rather than from the algorithm's
+    internals, so it cannot drift out of step with them. A set-valued theme
+    (colours, tags) matches on overlap; a scalar one (brand, cut) on equality.
+    """
+    key = _HARD_THEMES.get(algo)
+    if key is None:
+        return lambda c: True
+    values = [key(c) for c in picked if key(c)]
+    if not values:
+        return lambda c: True
+    if isinstance(values[0], frozenset):
+        common = set.intersection(*(set(v) for v in values)) or set().union(*values)
+        return lambda c: bool(set(key(c) or ()) & common)
+    allowed = set(values)
+    return lambda c: key(c) in allowed
+
+
+def _fill_missing_roles(picked: List[dict], pool: List[dict],
+                        algo: str = "") -> List[dict]:
+    """Fill any missing core role (top, bottom, feet) from the pool.
+
+    Used by the "fill gaps with other clothes" option. It used to fill from the
+    WHOLE pool regardless of the theme, which is how locking an Adidas pair of
+    shorts and asking for the same brand came back with a Stussy t-shirt: Adidas
+    owned no top, so the gap was filled from everything.
+
+    Now a themed run keeps its theme for the garments and only borrows shoes.
+    If the theme owns no top, the outfit has no top, and the caller reports that
+    honestly instead of quietly changing what the user asked for.
+    """
+    allows = _theme_allows(algo, picked)
     have_ids = {p["id"] for p in picked}
     covered = {p["role"] for p in picked}
     if "onepiece" in covered:  # a dress already covers top + bottom
@@ -303,12 +352,16 @@ def _fill_missing_roles(picked: List[dict], pool: List[dict]) -> List[dict]:
     for role in ("top", "bottom", "feet"):
         if role in covered:
             continue
-        for c in _shuffle(pool):
-            if c["role"] == role and c["id"] not in have_ids:
-                picked.append(c)
-                covered.add(role)
-                have_ids.add(c["id"])
-                break
+        candidates = [c for c in _shuffle(pool)
+                      if c["role"] == role and c["id"] not in have_ids]
+        if role not in _BORROWABLE_ROLES:
+            on_theme = [c for c in candidates if allows(c)]
+            candidates = on_theme          # never cross the theme for a garment
+        for c in candidates:
+            picked.append(c)
+            covered.add(role)
+            have_ids.add(c["id"])
+            break
     return picked
 
 
@@ -821,7 +874,7 @@ def select(req: GenerateRequest) -> List[dict]:
         # Optionally fill missing core roles (top/bottom/shoes) from ANY cloth —
         # e.g. add other-brand shoes when the chosen brand has none.
         if req.fill_gaps:
-            result = _fill_missing_roles(result, pool)
+            result = _fill_missing_roles(result, pool, algo)
         # Hot/cold outfits pair socks WITH shoes — you don't wear shoes barefoot,
         # nor socks with no shoes. So if the outfit ended up with only one of the
         # pair (a category list omitted one, or a colour/brand theme excluded it),

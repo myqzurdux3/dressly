@@ -150,12 +150,34 @@ def test_an_explicit_category_list_is_exempt(client, auth, full_wardrobe):
     assert sel and all(c["category"] == "shorts" for c in sel)
 
 
-def test_fill_gaps_completes_a_one_sided_theme(client, auth, thin_wardrobe):
-    """The way out, and the reason refusing is acceptable: the user can ask for
-    the rest of the outfit to come from anywhere."""
-    r = _draw(client, auth, "pick-by-color", fill_gaps=True)
+def test_fill_gaps_borrows_shoes_but_never_a_garment(client, auth,
+                                                     full_wardrobe, client_ok=None):
+    """What "fill gaps" means now.
+
+    It used to complete a one-sided theme from the whole wardrobe, which is how
+    "je mets un short Adidas, je mets même marque et l'algo me retourne un
+    t-shirt Stussy" happened. Shoes are still borrowed — no brand is expected to
+    make everything — but a garment never is.
+    """
+    r = _draw(client, auth, "pick-by-brand", brand="Nike", fill_gaps=True)
     assert r.status_code == 200, r.text
     sel = r.json()["selections"][0]
-    assert _is_wearable(sel)
-    assert any(c["name"] == "green short" for c in sel), \
-        "the requested colour vanished from its own outfit"
+    garments = [c for c in sel if c["role"] in ("top", "bottom", "outer", "onepiece")]
+    assert garments, "no garment at all"
+    assert {c["brand"] for c in garments} == {"NIKE"}, \
+        f"fill_gaps crossed the theme: {[(c['name'], c['brand']) for c in garments]}"
+
+
+def test_fill_gaps_cannot_rescue_a_theme_with_no_top(client, auth, thin_wardrobe):
+    """Green exists only as a pair of shorts. There is no green outfit, and
+    fill_gaps must not invent one out of a white t-shirt."""
+    r = _draw(client, auth, "pick-by-color", fill_gaps=True)
+    if r.status_code == 200:
+        for sel in r.json()["selections"]:
+            garments = [c for c in sel
+                        if c["role"] in ("top", "bottom", "outer", "onepiece")]
+            names = [c["name"] for c in garments]
+            assert all("green" in n for n in names), \
+                f"an off-colour garment was added: {names}"
+    else:
+        assert r.status_code == 404
