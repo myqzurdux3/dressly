@@ -102,38 +102,79 @@ fi
 export OMP_NUM_THREADS OMP_THREAD_LIMIT="$OMP_NUM_THREADS"
 echo "Threads: $OMP_NUM_THREADS per worker for background removal ($WORKERS workers)"
 
-# Ports below 1024 are privileged on Linux. uvicorn reports the refusal as
-# "ERROR:    [Errno 13] Permission denied" with no mention of the port, which
-# reads like a file-permission problem and sends you to chmod.
-if (( PORT < 1024 )) && [[ "$(id -u)" != "0" ]]; then
-  if ! command -v getcap >/dev/null 2>&1 ||
-     ! getcap "$(readlink -f "$(command -v python3)")" 2>/dev/null | grep -q cap_net_bind_service; then
+# Can we actually take the port? Asked by opening it, not by reasoning about it.
+#
+# An earlier version predicted the answer: "port < 1024 and not root, unless the
+# python binary carries cap_net_bind_service". That was wrong under systemd,
+# where the capability is granted to the PROCESS (AmbientCapabilities) and the
+# binary has no file capability at all. So it refused to start a service that
+# would have worked, Restart=always retried it every five seconds, and
+# `systemctl start dressly` hung forever waiting for a unit that never settled.
+#
+# Opening the socket answers the real question and catches the other reason a
+# start fails — something is already listening — which no amount of reasoning
+# about capabilities would have found.
+probe=$(python3 - "$HOST" "$PORT" <<'PY'
+import socket, sys
+host, port = sys.argv[1], int(sys.argv[2])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind((host, port))
+    print("ok")
+except PermissionError:
+    print("denied")
+except OSError as e:
+    print("inuse" if e.errno in (98, 48) else f"error:{e}")
+finally:
+    s.close()
+PY
+) || probe="error:could not probe"
+
+case "$probe" in
+  ok) ;;
+  denied)
     cat >&2 <<EOF
-Cannot listen on port $PORT as $(whoami): ports below 1024 need root.
+Cannot listen on port $PORT as $(whoami): ports below 1024 are privileged.
 
-uvicorn would report this as "[Errno 13] Permission denied", which says nothing
-about the port. Pick one:
+uvicorn reports this as "[Errno 13] Permission denied", which never mentions the
+port. Pick one:
 
-  1. Let this interpreter bind low ports (one command, survives reboots):
+  1. Run it as a systemd service, which grants the permission to this service
+     alone — and restarts it on boot and after a crash, so it stops dying with
+     the terminal it was started from:
+
+       sudo scripts/install_service.sh
+
+  2. Let this interpreter bind low ports. One command, but it applies to every
+     python3 script on the machine:
 
        sudo setcap cap_net_bind_service=+ep \$(readlink -f \$(command -v python3))
 
-     Applies to every python3 script on the machine, which is fine on a box
-     that only runs this.
-
-  2. Use a high port and let the proxy in front map it. With Cloudflare, add an
+  3. Use a high port and map it in the proxy in front. With Cloudflare, add an
      Origin Rule rewriting the destination port:
 
        CLOTHESAPP_PORT=8443    in .env
-
-  3. Run it as a systemd service with the capability granted to this service
-     only — also restarts it on boot and when it dies:
-
-       scripts/install_service.sh
 EOF
-    exit 1
-  fi
-fi
+    exit 1 ;;
+  inuse)
+    cat >&2 <<EOF
+Port $PORT on $HOST is already taken — most likely this server is already
+running somewhere else.
+
+  ss -ltnp | grep :$PORT        who has it
+  tmux ls                       an older copy left in a terminal session
+  systemctl status dressly      one started as a service
+
+Stop that one before starting this one. Starting a second copy would fail the
+same way every five seconds, and under systemd that makes \`systemctl start\`
+hang rather than report anything.
+EOF
+    exit 1 ;;
+  *)
+    echo "Could not check whether port $PORT is free (${probe#error:})." >&2
+    echo "Continuing; uvicorn will report the real error." >&2 ;;
+esac
 
 TLS_ARGS=()
 if [[ -f certs/server.crt && -f certs/server.key ]]; then
