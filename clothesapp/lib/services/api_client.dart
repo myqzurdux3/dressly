@@ -148,6 +148,13 @@ class ApiClient {
           headers: _headers(), body: jsonEncode(body)),
           retry: _isIdempotentWrite(path));
 
+  /// A PUT replaces the resource with the body, so sending it twice lands on
+  /// the same state as sending it once — safe to retry on a flaky connection.
+  Future<dynamic> put(String path, Map<String, dynamic> body) =>
+      _send(path, (c) => c.put(Uri.parse(apiUrl(path)),
+          headers: _headers(), body: jsonEncode(body)),
+          retry: true);
+
   /// Multipart upload. File list is mapped to the `images` field; the first
   /// two are sent in order (front, back) per the backend contract.
   Future<dynamic> postMultipart(

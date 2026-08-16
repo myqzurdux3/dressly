@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/cloth.dart';
+import '../models/dormant.dart';
 import 'api_client.dart';
 
 class ClothesService {
@@ -117,6 +118,19 @@ class ClothesService {
     await _api.post('/clothes/$id/wear', {if (day != null) 'day': day});
   }
 
+  /// Clothes untouched for [months] or more, longest-forgotten first, with the
+  /// wardrobe totals for the header.
+  Future<DormantReport> dormant(
+      {int months = 6, int? limit, int offset = 0}) async {
+    final params = <String>[
+      'months=$months',
+      if (limit != null) 'limit=$limit',
+      if (limit != null && offset > 0) 'offset=$offset',
+    ];
+    final data = await _api.get('/clothes/dormant?${params.join('&')}');
+    return DormantReport.fromJson(data as Map<String, dynamic>);
+  }
+
   Future<void> delete(int id) async {
     await _api.delete('/clothes/$id');
   }
@@ -129,11 +143,27 @@ class ClothesService {
   /// Start an enhancement for one image. `mode` is 'auto' (free, deterministic)
   /// or 'ai' (FLUX de-wrinkle/flatten). Returns the cloth with the image marked
   /// 'processing'; poll with [pollEnhance].
+  ///
+  /// [describe] decides whether what the owner typed about the garment — name,
+  /// brand, cut, colours, tags — goes into the AI prompt. Omitting it keeps
+  /// whatever the image was last set to, which is what makes a retry repeat the
+  /// same job instead of reverting to the default.
   Future<Cloth> enhanceImage(int clothId, int imageId, String mode,
-      {String tier = 'flex'}) async {
+      {String tier = 'flex', bool? describe}) async {
     final data = await _api.post(
       '/clothes/$clothId/images/$imageId/enhance',
-      {'mode': mode, 'tier': tier},
+      {'mode': mode, 'tier': tier, if (describe != null) 'describe': describe},
+    );
+    return Cloth.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Save the "describe this garment in the AI prompt" choice WITHOUT starting
+  /// a run — the user is setting up the next enhancement, not asking for one.
+  Future<Cloth> setEnhanceDescribe(
+      int clothId, int imageId, bool describe) async {
+    final data = await _api.patch(
+      '/clothes/$clothId/images/$imageId/enhance-describe',
+      {'describe': describe},
     );
     return Cloth.fromJson(data as Map<String, dynamic>);
   }

@@ -148,11 +148,14 @@ BFL_MODEL_PRO = os.environ.get("BFL_MODEL_PRO", "flux-2-pro")
 BFL_MODEL_MAX = os.environ.get("BFL_MODEL_MAX", "flux-2-max")
 # FLUX Virtual Try-On (VTO). Highest-quality path for outfit generation, but it
 # REQUIRES a person image (the model) — it renders the garment onto that person.
-# Prepended to the outfit cascade (vto -> flex -> pro -> max) and skipped when no
-# model is available. The slug is the endpoint path under BFL_BASE_URL.
-BFL_MODEL_VTO = os.environ.get("BFL_MODEL_VTO", "flux-tools/vto-v1")
-# Back-compat alias for the previous mid tier name.
-BFL_MODEL_FLUX = os.environ.get("BFL_MODEL_FLUX", BFL_MODEL_PRO)
+# Slotted into the outfit cascade after flex and skipped when no model is
+# available. The slug is the endpoint path under BFL_BASE_URL.
+#
+# v2 since 2026-07: identical request shape to v1, with reference and output
+# resolution supported up to 4 MP instead of ~1 MP. Same body, same response —
+# nothing but the path changes.
+# https://docs.bfl.ml/api-reference/models/virtual-try-on-v2
+BFL_MODEL_VTO = os.environ.get("BFL_MODEL_VTO", "flux-tools/vto-v2")
 BFL_POLL_TIMEOUT_S = int(os.environ.get("BFL_POLL_TIMEOUT_S", "60"))
 BFL_POLL_INTERVAL_S = float(os.environ.get("BFL_POLL_INTERVAL_S", "2"))
 # Connect/read timeout per HTTP call. A dead/wrong endpoint should fail fast
@@ -160,22 +163,61 @@ BFL_POLL_INTERVAL_S = float(os.environ.get("BFL_POLL_INTERVAL_S", "2"))
 BFL_CONNECT_TIMEOUT_S = float(os.environ.get("BFL_CONNECT_TIMEOUT_S", "12"))
 # Submit (POST) includes uploading base64 images, so it gets a longer budget
 # than a plain poll GET.
-BFL_UPLOAD_TIMEOUT_S = float(os.environ.get("BFL_UPLOAD_TIMEOUT_S", "120"))
+# One POST carrying the base64 reference images. 60 s is already generous for
+# the ~1-2 MB that is (BFL_IMAGE_MAX_PX caps each side at 1024), and the figure
+# has to stay under the budgets below — see the chain in ENHANCE_TIMEOUT_S.
+BFL_UPLOAD_TIMEOUT_S = float(os.environ.get("BFL_UPLOAD_TIMEOUT_S", "60"))
 # Downscale reference images to this max dimension before base64-encoding, to
 # keep uploads fast and the user's input_mp cost down.
 BFL_IMAGE_MAX_PX = int(os.environ.get("BFL_IMAGE_MAX_PX", "1024"))
+# How tolerant the provider's input/output moderation is, 0 (strictest) to 5.
+# Their default is 2 and that is kept — raising it is a policy decision for
+# whoever runs the server, not a default to change quietly. It is the lever for
+# the case where an ordinary photo of a garment keeps coming back refused.
+# https://docs.bfl.ml/api-reference/models/virtual-try-on-v2
+BFL_SAFETY_TOLERANCE = max(0, min(5, int(
+    os.environ.get("BFL_SAFETY_TOLERANCE", "2"))))
 # Try-on (VTO) reference images get a larger cap than the FLUX render tiers: the
 # VTO output follows the person image's resolution, so a bigger person/garment
 # input yields a higher-detail result. Falls back to BFL_IMAGE_MAX_PX.
 BFL_VTO_IMAGE_MAX_PX = int(os.environ.get("BFL_VTO_IMAGE_MAX_PX", "1280"))
-# Ask the VTO endpoint to upsample the prompt for extra detail/realism. If the
-# configured vto slug rejects this field (400), set BFL_VTO_PROMPT_UPSAMPLING=0
-# — the request will then submit without it instead of the cascade skipping VTO.
+# Ask the VTO endpoint to upsample the prompt for extra detail/realism.
+#
+# OFF by default now, and the default is the honest one: neither vto-v1 nor
+# vto-v2 has a prompt_upsampling field — both take Flux2KleinTryonInputs, whose
+# schema is prompt / person / garment / seed / safety_tolerance / output_format
+# / webhook_*. Sending it meant every try-on submitted twice: once rejected for
+# an unknown field, once accepted. The retry path is kept for a slug that does
+# accept it, but nothing is spent probing for it any more.
+# https://docs.bfl.ml/api-reference/models/virtual-try-on-v2
 BFL_VTO_PROMPT_UPSAMPLING = os.environ.get(
-    "BFL_VTO_PROMPT_UPSAMPLING", "1").strip().lower() not in ("0", "false", "")
+    "BFL_VTO_PROMPT_UPSAMPLING", "0").strip().lower() not in ("0", "false", "")
 # Auth header bfl expects. bfl.ai historically uses "X-Key"; newer endpoints
 # may use "Authorization: Bearer". Set BFL_AUTH_HEADER=Authorization and
 # BFL_AUTH_SCHEME=Bearer to switch. When BFL_AUTH_HEADER is "X-Key" the key
 # is sent verbatim; otherwise it's sent as "<scheme> <key>".
 BFL_AUTH_HEADER = os.environ.get("BFL_AUTH_HEADER", "X-Key")
 BFL_AUTH_SCHEME = os.environ.get("BFL_AUTH_SCHEME", "")  # "" or "Bearer"
+
+# How long an image enhancement may run before it is called failed.
+#
+# Reported: "j'ai lance l'amelioration d'image pour un short et ca fait 2 mins
+# que ca charge". The cascade tries flex, then pro, then max, and each attempt
+# can spend the submit budget plus the poll budget — several minutes in total,
+# with somebody watching a spinner that has no end. Two guards now: the cascade
+# stops starting new tiers past ENHANCE_DEADLINE_S, and any job still marked
+# 'processing' after ENHANCE_TIMEOUT_S is reported as failed (which also
+# recovers rows whose worker died with a server restart).
+# These three have to hold in this order, and they did not:
+#
+#   one attempt  <= BFL_UPLOAD_TIMEOUT_S + BFL_POLL_TIMEOUT_S   (60 + 60 = 120s)
+#   ENHANCE_DEADLINE_S  (90s)  stops the cascade STARTING another tier
+#   ENHANCE_TIMEOUT_S  (180s)  declares a job that is no longer running failed
+#
+# With the old submit budget of 120 s, one legitimate attempt could take 180 s —
+# exactly the sweep threshold — so a job still working could be reported as
+# stalled while it was mid-flight, and the deadline could never stop a second
+# tier because the first alone outlasted it. The sweep must sit above the
+# longest honest run, not inside it.
+ENHANCE_DEADLINE_S = float(os.environ.get("CLOTHESAPP_ENHANCE_DEADLINE_S", "90"))
+ENHANCE_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_ENHANCE_TIMEOUT_S", "180"))

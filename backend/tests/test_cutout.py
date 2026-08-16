@@ -12,11 +12,9 @@ So inference moved into a child process that exits, and out of rembg (0.94 s and
 onnxruntime call. That second change is only safe if the output is unchanged,
 which is what test_the_mask_matches_rembg_exactly is for.
 """
-import io
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import numpy as np

@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
+import '../../models/weather.dart';
 import '../../services/outfits_service.dart';
+import '../settings/weather_location_screen.dart';
 
 class AlgoPick {
   final String algo;
@@ -12,7 +14,9 @@ class AlgoPick {
   final String brand;
   final String tag;
   final int count;
-  final String weather; // 'any' | 'hot' | 'cold'
+  /// 'any' | 'hot' | 'cold' | 'auto'. 'auto' lets the server read the
+  /// forecast; it resolves to 'any' when there is no location or no forecast.
+  final String weather;
   final List<String> categories; // explicit category choices (overrides weather)
   final bool fillGaps; // fill missing roles (e.g. shoes) from any cloth
   AlgoPick({
@@ -48,7 +52,12 @@ class AlgoSheetState extends State<AlgoSheet> {
   AlgoMeta? _algo;
   int _minScore = 0;
   int _count = 1;
-  String _weather = 'any'; // any | hot | cold
+  String _weather = 'any'; // any | hot | cold | auto
+  /// Today's forecast, fetched only once the user asks for 'auto' — nobody
+  /// else's screen should pay a network round trip for a feature they are not
+  /// using.
+  DayWeather? _forecast;
+  bool _forecastLoading = false;
   final Set<String> _cats = {};
   String? _color;
   String? _brand;
@@ -78,6 +87,95 @@ class AlgoSheetState extends State<AlgoSheet> {
       if (w == 'hot') _cats.addAll(_hotDefaults);
       if (w == 'cold') _cats.addAll(_coldDefaults);
     });
+    if (w == 'auto') _loadForecast();
+  }
+
+  /// Ask what today looks like, then pre-tick the same categories the matching
+  /// manual choice would have. The user sees the result of the decision, not
+  /// just the word "auto" — and can still untick anything.
+  Future<void> _loadForecast() async {
+    final svc = weatherServiceOf(context);
+    setState(() => _forecastLoading = true);
+    try {
+      final got = await svc.forecast();
+      if (!mounted) return;
+      setState(() {
+        _forecast = got;
+        _forecastLoading = false;
+        if (_weather != 'auto') return; // the user moved on while it loaded
+        _cats.clear();
+        if (got.isHot) _cats.addAll(_hotDefaults);
+        if (got.isCold) _cats.addAll(_coldDefaults);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // No forecast is not an error worth a dialog: the server resolves 'auto'
+      // to 'any' and the outfit still gets generated.
+      setState(() {
+        _forecast = null;
+        _forecastLoading = false;
+      });
+    }
+  }
+
+  /// What 'auto' decided, in one line: the temperature and which wardrobe it
+  /// picked — or, when there is nothing to go on, the way to fix that.
+  Widget _forecastLine() {
+    final theme = Theme.of(context);
+    if (_forecastLoading) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(tr(context, 'algo.autoLoading'),
+            style: TextStyle(
+                fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+      );
+    }
+    final f = _forecast;
+    if (f == null || !f.available) {
+      // No location set is the likely reason, and it is one tap to fix, so the
+      // line is a button rather than a complaint.
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            icon: const Icon(Icons.place_outlined, size: 18),
+            label: Text(tr(context, 'algo.autoNeedsPlace')),
+            onPressed: () async {
+              await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const WeatherLocationScreen()));
+              if (mounted && _weather == 'auto') await _loadForecast();
+            },
+          ),
+        ),
+      );
+    }
+    final label = f.isHot
+        ? tr(context, 'algo.hot')
+        : f.isCold
+            ? tr(context, 'algo.cold')
+            : tr(context, 'algo.any');
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(children: [
+        Icon(f.isHot ? Icons.wb_sunny_outlined : Icons.ac_unit,
+            size: 16, color: theme.colorScheme.primary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            tr(context, 'algo.autoResult', {
+              'place': f.place,
+              'temp': f.shortTemp,
+              'mode': label,
+            }),
+            style: TextStyle(
+                fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ]),
+    );
   }
 
   /// Toggle a category. Unlike manual clothes picking, you CAN tick several
@@ -269,7 +367,19 @@ class AlgoSheetState extends State<AlgoSheet> {
                     selected: _weather == 'cold',
                     onSelected: (_) => _setWeather('cold'),
                   ),
+                  ChoiceChip(
+                    avatar: _forecastLoading
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.wb_sunny_outlined, size: 16),
+                    label: Text(tr(context, 'algo.autoWeather')),
+                    selected: _weather == 'auto',
+                    onSelected: (_) => _setWeather('auto'),
+                  ),
                 ]),
+                if (_weather == 'auto') _forecastLine(),
                 const SizedBox(height: 12),
                 Text(tr(context, 'algo.clothingTypes'),
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),

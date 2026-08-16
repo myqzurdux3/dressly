@@ -75,14 +75,9 @@ def test_a_cached_thumbnail_costs_almost_nothing(client, auth):
     assert ms < 150, f"a cached thumbnail took {ms:.0f} ms — cache not hit?"
 
 
-def test_thumbnail_is_much_smaller_than_its_source(client, auth):
-    """The whole point of serving thumbnails to the grid."""
-    c = create_cloth(client, auth)
-    im = c["images"][0]
-    full = client.get(im["cutout_url"])
-    thumb = client.get(im["thumb_url"])
-    assert thumb.status_code == full.status_code == 200
-    assert len(thumb.content) <= len(full.content)
+# That a thumbnail is smaller than its source is asserted in
+# test_thumbnails.py, on a 2000 px upload — the 32 px fixture used here made it
+# a comparison between two images that were already thumbnail-sized.
 
 
 # --- listing endpoints ----------------------------------------------------

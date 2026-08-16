@@ -1,5 +1,6 @@
 """On-demand thumbnails: correctness, caching, and path safety."""
 import io
+from pathlib import Path
 
 from PIL import Image
 
@@ -122,7 +123,12 @@ def test_stale_thumbnail_is_regenerated_after_the_source_changes(client, auth):
     c = create_cloth(client, auth)
     url = _thumb_path_of(c)
     assert client.get(url).status_code == 200
-    cached = next(iter(THUMBS_DIR.rglob("*.webp")))
+    # This image's own cached file. Taking whatever rglob yielded first used to
+    # work when one thumbnail existed; pre-warming renders several, and the
+    # arbitrary one belonged to another photo.
+    rel = url.split("/thumb/images/400/", 1)[1].split("?")[0]
+    cached = THUMBS_DIR / "400" / "images" / (rel + ".webp")
+    assert cached.is_file(), cached
     before = cached.stat().st_mtime_ns
 
     # Touch the source into the future, as a crop/redo-bg rewrite would.
@@ -134,3 +140,105 @@ def test_stale_thumbnail_is_regenerated_after_the_source_changes(client, auth):
 
     assert client.get(url).status_code == 200
     assert cached.stat().st_mtime_ns != before, "stale thumbnail was served"
+
+
+# --- pre-warming ----------------------------------------------------------
+#
+# Measured: 99 ms per 400 px thumbnail, 165 ms at 800 px. A cold thirty-garment
+# grid was three seconds of encoding inside the requests somebody was waiting
+# on. The cut-out job is already off the request path and already holds the
+# file, so it renders them there.
+
+def test_the_grid_thumbnails_exist_before_anyone_asks(client, auth):
+    from config import THUMBS_DIR
+
+    c = create_cloth(client, auth)
+    fresh = client.get(f"/clothes/{c['id']}", headers=auth).json()
+    assert fresh["images"][0]["cutout_status"] == "ready"
+
+    cached = {p.name for p in THUMBS_DIR.rglob("*.webp")}
+    assert cached, "no thumbnail was pre-rendered"
+    # Both the sizes the app requests: 400 in the grids, 800 on the detail view.
+    widths = {p.parent.parent.parent.name for p in THUMBS_DIR.rglob("*.webp")}
+    assert {"400", "800"} <= widths, widths
+
+
+def test_a_prewarmed_thumbnail_is_fresh_enough_to_serve(client, auth):
+    """The point of pre-warming: by the time a screen asks, the cached file is
+    newer than the cut-out it came from, so the request serves it instead of
+    encoding it.
+
+    Asserted on mtimes rather than by watching for a re-render, because each
+    test starts with a fresh database while the images directory persists for
+    the whole run: cloth id 1 is reused, and a leftover thumbnail from an
+    earlier test is legitimately stale.
+    """
+    from config import THUMBS_DIR
+
+    c = create_cloth(client, auth)
+    fresh = client.get(f"/clothes/{c['id']}", headers=auth).json()
+    cutout = Path(fresh["images"][0]["cutout_url"].split("?")[0]
+                  .replace("/images/", "", 1))
+    from config import IMAGES_DIR
+    source = IMAGES_DIR / cutout
+    cached = THUMBS_DIR / "400" / "images" / (cutout.as_posix() + ".webp")
+
+    assert cached.is_file(), f"not pre-rendered: {cached}"
+    assert cached.stat().st_mtime_ns >= source.stat().st_mtime_ns, \
+        "the pre-rendered thumbnail is already stale against its source"
+
+
+def test_prewarming_never_breaks_the_cutout(client, auth, monkeypatch):
+    """A thumbnail is a nicety; the cut-out is the user's garment."""
+    import routes_thumbs
+
+    def boom(*a, **kw):
+        raise RuntimeError("no disk space")
+
+    monkeypatch.setattr(routes_thumbs, "_render", boom)
+    c = create_cloth(client, auth)
+    fresh = client.get(f"/clothes/{c['id']}", headers=auth).json()
+    assert [im["cutout_status"] for im in fresh["images"]] == ["ready", "ready"]
+
+
+def test_a_file_outside_the_images_root_is_ignored(client, auth, tmp_path):
+    """prewarm takes a path; one that is not under the images root must not
+    write a thumbnail somewhere unexpected."""
+    from PIL import Image
+
+    import routes_thumbs
+
+    stray = tmp_path / "stray.webp"
+    Image.new("RGBA", (40, 40), (1, 2, 3, 255)).save(stray)
+    assert routes_thumbs.prewarm(stray) == 0
+
+
+def test_prewarming_replaces_a_stale_thumbnail(client, auth):
+    """A cut-out is rewritten by redo-bg, by accept-after-reject and by a crop.
+    Skipping a thumbnail merely because a file exists at that name would leave
+    the stale one — and the slow on-demand re-render — for exactly the cases
+    pre-warming exists to cover."""
+    import os
+    import time
+
+    from config import IMAGES_DIR, THUMBS_DIR
+    import routes_thumbs
+
+    c = create_cloth(client, auth)
+    fresh = client.get(f"/clothes/{c['id']}", headers=auth).json()
+    cutout = Path(fresh["images"][0]["cutout_url"].split("?")[0]
+                  .replace("/images/", "", 1))
+    source = IMAGES_DIR / cutout
+    cached = THUMBS_DIR / "400" / "images" / (cutout.as_posix() + ".webp")
+    assert cached.is_file()
+
+    before = cached.stat().st_mtime_ns
+    # Rewrite the source, as a redo-bg would. Stamped into the future so the
+    # comparison cannot depend on filesystem timestamp resolution.
+    future = time.time() + 5
+    os.utime(source, (future, future))
+
+    assert routes_thumbs.prewarm(source) >= 1, "the stale thumbnail was kept"
+    # Re-rendered: its own timestamp moved. (Not compared against the source,
+    # which was deliberately stamped in the future.)
+    assert cached.stat().st_mtime_ns > before

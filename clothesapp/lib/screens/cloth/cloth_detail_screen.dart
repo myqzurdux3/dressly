@@ -54,6 +54,22 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
     });
   }
 
+  /// Take a cloth the server just handed back and show it, without asking for
+  /// it again.
+  ///
+  /// Reported: "à chaque fois que je rogne un habit la page se reload". It did
+  /// — every action replaced the future with a fresh GET, and the FutureBuilder
+  /// blanked the whole screen to a spinner while it ran. The crop endpoint
+  /// already returns the updated cloth, so there is nothing to fetch: the image
+  /// URLs carry a new cache-buster and the picture changes on the spot.
+  void _applyCloth(Cloth c) {
+    _last = c;
+    setState(() {
+      _future = Future.value(c);
+    });
+    _watchCutouts(c);
+  }
+
   /// True while a poll for pending cut-outs is already running, so opening the
   /// screen twice does not start two.
   bool _watchingCutouts = false;
@@ -283,7 +299,29 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
         builder: (_) => PhotoEditScreen(clothId: widget.clothId, image: img),
       ),
     );
-    if (updated != null && mounted) _reload();
+    if (updated != null && mounted) _applyCloth(updated);
+  }
+
+  /// Save the describe choice without starting a run: the user is setting up
+  /// the next enhancement, not asking for one.
+  Future<void> _setEnhanceDescribe(ClothImage img, bool describe) async {
+    final svc = clothesServiceOf(context);
+    // Reflected immediately — the checkbox must not wait on a round trip.
+    _applyCloth(_lastWith(img.id, describe));
+    try {
+      await svc.setEnhanceDescribe(widget.clothId, img.id, describe);
+    } catch (e) {
+      if (mounted) _toastKey('detail.enhanceFailed', e);
+    }
+  }
+
+  /// The current cloth with one image's describe flag flipped.
+  Cloth _lastWith(int imageId, bool describe) {
+    final cloth = _last!;
+    return cloth.copyWith(images: [
+      for (final im in cloth.images)
+        if (im.id == imageId) im.copyWith(enhanceDescribe: describe) else im,
+    ]);
   }
 
   Future<void> _enhance(ClothImage img, String mode, {String tier = 'flex'}) async {
@@ -365,13 +403,17 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
       body: FutureBuilder<Cloth>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
+          // Only the very first load gets a spinner. Afterwards the last known
+          // cloth stays on screen while a refresh runs, so an accept, a reject
+          // or a redo does not blank the page either.
+          final waiting = snap.connectionState == ConnectionState.waiting;
+          if (waiting && _last == null) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snap.hasError) {
+          if (snap.hasError && _last == null) {
             return Center(child: Text('${tr(context, 'detail.error')}: ${snap.error}'));
           }
-          final cloth = snap.data!;
+          final cloth = snap.data ?? _last!;
           if (cloth.images.isEmpty) {
             return Center(child: Text(tr(context, 'detail.noImages')));
           }
@@ -502,6 +544,10 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
                   onAccept: () => _act(img, accept: true),
                   onReject: () => _act(img, accept: false),
                   onEnhance: (mode) => _enhance(img, mode),
+                  onEnhanceTier: (mode, tier) =>
+                      _enhance(img, mode, tier: tier),
+                  onDescribeChanged: (describe) =>
+                      _setEnhanceDescribe(img, describe),
                   onAcceptEnhance: () => _acceptEnhance(img),
                   onRejectEnhance: () => _rejectEnhance(img),
                   onTryBetter: () => img.enhanceNextTier == null
@@ -528,6 +574,8 @@ class _ImageReviewCard extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onEnhance,
+    required this.onEnhanceTier,
+    required this.onDescribeChanged,
     required this.onAcceptEnhance,
     required this.onRejectEnhance,
     required this.onTryBetter,
@@ -541,6 +589,13 @@ class _ImageReviewCard extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onReject;
   final void Function(String mode) onEnhance;
+
+  /// Same action, with an explicit AI tier — the "try a stronger model" step.
+  final void Function(String mode, String tier) onEnhanceTier;
+
+  /// Toggle whether the owner's own description of the garment is put in the
+  /// AI prompt. Saved on the image, so a retry repeats the same job.
+  final void Function(bool describe) onDescribeChanged;
   final VoidCallback onAcceptEnhance;
   final VoidCallback onRejectEnhance;
   final VoidCallback onTryBetter;
@@ -740,13 +795,23 @@ class _ImageReviewCard extends StatelessWidget {
   Widget _enhanceSection(BuildContext context) {
     final status = image.enhanceStatus;
     if (status == 'processing') {
+      // The server gives up on its own now, so this cannot spin forever — but
+      // the way out is offered here as well: a retry re-runs it from scratch,
+      // which is the only useful thing to do with one that is taking too long.
       return Row(children: [
         const SizedBox(
             height: 18,
             width: 18,
             child: CircularProgressIndicator(strokeWidth: 2)),
         const SizedBox(width: 10),
-        Text(tr(context, 'detail.enhancing'), style: const TextStyle(color: Colors.white70)),
+        Expanded(
+          child: Text(tr(context, 'detail.enhancing'),
+              style: const TextStyle(color: Colors.white70)),
+        ),
+        TextButton(
+          onPressed: () => onEnhance(image.enhancePendingMethod ?? 'auto'),
+          child: Text(tr(context, 'detail.enhanceRetry')),
+        ),
       ]);
     }
     if (status == 'ready' && image.enhancedUrl.isNotEmpty) {
@@ -799,50 +864,133 @@ class _ImageReviewCard extends StatelessWidget {
       ]);
     }
     // idle or failed → offer to (re)run
-    return Row(children: [
-      if (status == 'failed') ...[
-        const Icon(Icons.error_outline, size: 18, color: Colors.redAccent),
-        const SizedBox(width: 6),
-        Text(tr(context, 'detail.enhanceFailed'),
-            style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
-        const Spacer(),
-      ],
-      PopupMenuButton<String>(
-        onSelected: onEnhance,
-        itemBuilder: (_) => [
-          PopupMenuItem(
-            value: 'auto',
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.auto_fix_high),
-              title: Text(tr(context, 'detail.autoCleanup')),
-              subtitle: Text(tr(context, 'detail.autoCleanupSub')),
+    if (status == 'failed') {
+      // Reported: some garments "ne veulent pas s'améliorer avec l'IA et
+      // mettent sans cesse fail même après réessayer". Retrying the identical
+      // request is exactly what does not help there, so the step up to a
+      // stronger model sits right next to it — and the server's own reason is
+      // shown, because "failed" on its own leaves nothing to decide with.
+      final nextTier = image.enhanceNextTier;
+      final lastMethod = image.enhancePendingMethod ?? 'auto';
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.error_outline, size: 18, color: Colors.redAccent),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(tr(context, 'detail.enhanceTimedOut'),
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
+        ]),
+        if ((image.enhanceError ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 24),
+            child: Text(image.enhanceError!,
+                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.tonalIcon(
+            onPressed: () => onEnhance(lastMethod),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: Text(tr(context, 'detail.enhanceRetry')),
+          ),
+          if (nextTier != null)
+            FilledButton.icon(
+              onPressed: () => onEnhanceTier('ai', nextTier),
+              icon: const Icon(Icons.upgrade, size: 18),
+              label: Text(tr(context, 'detail.enhanceRetryStronger',
+                  {'tier': enhanceTierLabel(nextTier)})),
+            )
+          else if (lastMethod != 'ai')
+            // The deterministic pass failed; the AI one is a different engine
+            // entirely, so it is worth offering rather than repeating.
+            FilledButton.icon(
+              onPressed: () => onEnhanceTier('ai', 'flex'),
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: Text(tr(context, 'detail.enhanceTryAi')),
             ),
-          ),
-          PopupMenuItem(
-            value: 'ai',
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.auto_awesome),
-              title: Text(tr(context, 'detail.aiEnhance')),
-              subtitle: Text(tr(context, 'detail.aiEnhanceSub')),
-            ),
-          ),
-        ],
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white38),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.auto_fix_high, size: 18),
-            const SizedBox(width: 8),
-            Text(status == 'failed' ? tr(context, 'detail.retry') : tr(context, 'detail.improvePhoto')),
-          ]),
-        ),
-      ),
+          _enhanceMenu(context),
+        ]),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _describeToggle(context),
+      const SizedBox(height: 4),
+      Row(children: [_enhanceMenu(context)]),
     ]);
+  }
+
+  /// Whether the AI prompt names what the owner typed about this garment.
+  ///
+  /// Sits next to the button rather than behind a dialog: it is one tap, it is
+  /// remembered per image, and it only changes what the AI pass is told — the
+  /// deterministic pass builds no prompt at all, which is why the line says so.
+  Widget _describeToggle(BuildContext context) {
+    return InkWell(
+      onTap: () => onDescribeChanged(!image.enhanceDescribe),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              value: image.enhanceDescribe,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onChanged: (v) => onDescribeChanged(v ?? true),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(tr(context, 'detail.describeItem'),
+                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// The Auto / AI chooser. Shared by the idle state and the failed one, where
+  /// it sits next to the retry button so a different method is one tap away.
+  Widget _enhanceMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      onSelected: onEnhance,
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'auto',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.auto_fix_high),
+            title: Text(tr(context, 'detail.autoCleanup')),
+            subtitle: Text(tr(context, 'detail.autoCleanupSub')),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'ai',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.auto_awesome),
+            title: Text(tr(context, 'detail.aiEnhance')),
+            subtitle: Text(tr(context, 'detail.aiEnhanceSub')),
+          ),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white38),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.auto_fix_high, size: 18),
+          const SizedBox(width: 8),
+          Text(image.enhanceStatus == 'failed'
+              ? tr(context, 'detail.otherMethod')
+              : tr(context, 'detail.improvePhoto')),
+        ]),
+      ),
+    );
   }
 }
 

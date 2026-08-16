@@ -28,6 +28,21 @@ bfl.DEFAULT_API_KEY = ""
 
 
 @pytest.fixture(autouse=True)
+def no_provider_balance(monkeypatch):
+    """Never ask bfl.ai for the account balance during a test run.
+
+    BALANCE_URL now defaults to the real GET /v1/credits, so any test that
+    monkeypatches an API key into place and then reads /admin/credits made a
+    live HTTPS call — two seconds a go, and a suite that fails on a train.
+    Tests that exercise the balance path set the URL themselves.
+    """
+    import apiusage
+
+    monkeypatch.setattr(apiusage, "BALANCE_URL", "")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fresh_rate_limits(fresh_db):
     """Counters now live in the DB, which fresh_db recreates per test, so this
     mainly guards the ordering: it must run AFTER the schema exists."""

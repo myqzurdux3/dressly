@@ -8,6 +8,8 @@ import '../../state/locale_controller.dart';
 import '../../state/session.dart';
 import '../../state/theme_controller.dart';
 import 'change_password_screen.dart';
+import 'api_credits_screen.dart';
+import 'weather_location_screen.dart';
 
 /// Appearance customization + account. Keeps "Sign out" here, away from the
 /// Models management (which lives on the Create screen).
@@ -102,6 +104,38 @@ class SettingsScreen extends StatelessWidget {
                 context.read<GenPrefsController>().setHighQualityOnly(v),
             title: Text(tr(context, 'settings.hqOnly')),
             subtitle: Text(tr(context, 'settings.hqOnlyHint')),
+          ),
+          // Admin-only, and hidden rather than disabled: a screen you cannot
+          // open is noise on everybody else's settings page.
+          if (context.watch<Session>().user?.isAdmin == true) ...[
+            const Divider(height: 40),
+            _SectionLabel(tr(context, 'settings.admin')),
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: Text(tr(context, 'settings.apiCredits')),
+              subtitle: Text(tr(context, 'settings.apiCreditsHint')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ApiCreditsScreen()),
+              ),
+            ),
+          ],
+          const Divider(height: 40),
+          _SectionLabel(tr(context, 'settings.weather')),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.wb_sunny_outlined),
+            title: Text(tr(context, 'settings.weatherPlace')),
+            subtitle: Text(tr(context, 'settings.weatherPlaceHint')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WeatherLocationScreen()),
+            ),
           ),
           const Divider(height: 40),
           _SectionLabel(tr(context, 'settings.account')),

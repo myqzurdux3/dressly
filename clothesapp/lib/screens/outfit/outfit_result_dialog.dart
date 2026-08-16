@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app.dart';
 import '../../l10n/app_text.dart';
@@ -227,6 +228,57 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
         ),
       ),
     );
+  }
+
+  /// Make a public link and hand it to the user, with the way to take it back
+  /// in the same place — a link you cannot revoke is not one you want to send.
+  Future<void> _share() async {
+    final svc = outfitsServiceOf(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final shared = await svc.share(_outfit.id);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr(ctx, 'share.title')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(tr(ctx, 'share.explain')),
+            const SizedBox(height: 12),
+            SelectableText(shared.url,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                // Resolved before the await: the dialog's context is gone by
+                // the time the call returns.
+                final revoked = tr(ctx, 'share.revoked');
+                await svc.unshare(_outfit.id);
+                if (ctx.mounted) Navigator.pop(ctx);
+                messenger.showSnackBar(SnackBar(content: Text(revoked)));
+              },
+              child: Text(tr(ctx, 'share.revoke')),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final copied = tr(ctx, 'share.copied');
+                await Clipboard.setData(ClipboardData(text: shared.url));
+                if (ctx.mounted) Navigator.pop(ctx);
+                messenger.showSnackBar(SnackBar(content: Text(copied)));
+              },
+              child: Text(tr(ctx, 'share.copy')),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
   }
 
   Future<void> _toggleFav() async {
@@ -731,6 +783,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                       : Icons.favorite_border),
                   label: Text(_outfit.isFavorite ? 'Saved' : 'Save'),
                 ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _busy ? null : _share,
+                icon: const Icon(Icons.ios_share),
+                tooltip: tr(context, 'share.action'),
               ),
             ]),
           if (!failed) ...[

@@ -241,3 +241,35 @@ def test_shoes_may_still_be_borrowed(client, auth, wardrobe):
                 seen_borrowed = True
     assert seen_borrowed, \
         "gap-filling no longer borrows shoes, which is all it is still for"
+
+
+def test_a_theme_with_nothing_left_refuses_rather_than_borrowing(client, auth):
+    """When the themed pick comes back EMPTY, gap-filling must not fill the
+    whole outfit from the wardrobe.
+
+    Found while planning a week: by day four the brand's clothes had all been
+    used by earlier days, so pick-by-brand("Nike") had nothing to pick — and
+    fill_gaps, which infers the theme from what was picked, saw an empty
+    selection, concluded "anything goes", and produced a Stussy outfit under a
+    Nike heading. The same shape as the original report, one layer down.
+    """
+    from generator import GenerateRequest, select as algo_select
+
+    _cloth(client, auth, "Nike Tee", "Nike", "tshirt")
+    _cloth(client, auth, "Nike Jeans", "Nike", "jeans")
+    stussy = _cloth(client, auth, "Stussy Tee", "Stussy", "tshirt")
+    _cloth(client, auth, "Stussy Jeans", "Stussy", "jeans")
+
+    with_nike = algo_select(GenerateRequest(
+        algo="pick-by-brand", brand="Nike", user_id=1, fill_gaps=True))
+    assert {c["brand"] for c in with_nike} == {"NIKE"}
+
+    # Now put every Nike garment out of reach, as a week plan does.
+    nike_ids = [c["id"] for c in with_nike]
+    starved = algo_select(GenerateRequest(
+        algo="pick-by-brand", brand="Nike", user_id=1, fill_gaps=True,
+        avoid_cloth_ids=nike_ids))
+    brands = {c["brand"] for c in starved}
+    assert stussy["id"] not in [c["id"] for c in starved], \
+        f"borrowed another brand: {[(c['name'], c['brand']) for c in starved]}"
+    assert brands <= {"NIKE"}, brands

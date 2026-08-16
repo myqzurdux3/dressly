@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
+import 'services/admin_service.dart';
 import 'services/agenda_service.dart';
 import 'services/api_client.dart';
 import 'services/clothes_service.dart';
 import 'services/models_service.dart';
 import 'services/outfits_service.dart';
+import 'services/plan_service.dart';
 import 'services/stats_service.dart';
+import 'services/weather_service.dart';
 import 'state/gen_prefs_controller.dart';
 import 'state/locale_controller.dart';
 import 'state/session.dart';
@@ -75,6 +78,18 @@ AgendaService agendaServiceOf(BuildContext context) {
 
 StatsService statsServiceOf(BuildContext context) {
   return StatsService(_apiFor(context));
+}
+
+WeatherService weatherServiceOf(BuildContext context) {
+  return WeatherService(_apiFor(context));
+}
+
+PlanService planServiceOf(BuildContext context) {
+  return PlanService(_apiFor(context));
+}
+
+AdminService adminServiceOf(BuildContext context) {
+  return AdminService(_apiFor(context));
 }
 
 /// The user's outfit-generation quality preference (read once at generate time).

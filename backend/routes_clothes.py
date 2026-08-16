@@ -184,6 +184,15 @@ def _run_cutouts(image_ids: List[int]) -> None:
             conn.execute(
                 "UPDATE cloth_images SET cutout_path = ?, cutout_status = ? "
                 "WHERE id = ?", (path_, status_, image_id))
+        # Render the grid sizes here rather than on the first screen that asks
+        # for them: this job is already off the request path and already has
+        # the file open. ~99 ms a thumbnail is time the user does not spend
+        # staring at an empty grid.
+        try:
+            from routes_thumbs import prewarm
+            prewarm(Path(path_))
+        except Exception as e:  # noqa: BLE001 - never fail a cut-out over this
+            log.info("thumbnail pre-warm skipped for image %s: %s", image_id, e)
 
 
 def _move_staged(cloth_id: int, staged: List[dict]) -> List[dict]:
@@ -207,7 +216,27 @@ def _move_staged(cloth_id: int, staged: List[dict]) -> List[dict]:
     return staged
 
 
+def _sweep_stalled_enhancements(conn) -> None:
+    """Turn enhancements that are no longer running into 'failed', before the
+    caller reads them.
+
+    Runs on the read path on purpose. The app polls this endpoint while an
+    enhancement is going, so a job whose worker died — or one that outlived its
+    budget — becomes visibly failed on the next poll instead of spinning until
+    somebody restarts the server. Cheap: an indexed scan of the rows that are
+    'processing', which is normally none.
+    """
+    from config import ENHANCE_TIMEOUT_S
+    from db import fail_stale_enhancements
+
+    try:
+        fail_stale_enhancements(conn, ENHANCE_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001 - reading a cloth must not fail on this
+        log.warning("stalled-enhancement sweep failed: %s", e)
+
+
 def _load_cloth(conn, cloth_id: int, user_id: int) -> dict:
+    _sweep_stalled_enhancements(conn)
     row = conn.execute(
         "SELECT * FROM clothes WHERE id = ? AND user_id = ?", (cloth_id, user_id)
     ).fetchone()
@@ -292,6 +321,15 @@ def _build_cloth(row, images, colors) -> dict:
                 if "enhance_tier" in im.keys() else None,
                 "enhance_next_tier": next_tier(im["enhance_tier"])
                 if ("enhance_tier" in im.keys() and im["enhance_tier"]) else None,
+                # Why the last attempt failed, in the server's own words. Shown
+                # to the user: "sans cesse fail" with no reason is unactionable.
+                "enhance_error": (im["enhance_error"]
+                                  if "enhance_error" in im.keys() else None),
+                # NULL (never chosen) reads as the default, which is to describe.
+                "enhance_describe": (
+                    True if ("enhance_describe" not in im.keys()
+                             or im["enhance_describe"] is None)
+                    else bool(im["enhance_describe"])),
             }
             for im in images
         ],
@@ -302,7 +340,7 @@ def _hydrate(conn, row) -> dict:
     cloth_id = row["id"]
     images = conn.execute(
         "SELECT id, role, original_path, cutout_path, sort_order, bg_accepted, bg_tolerance, "
-        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier, cutout_status "
+        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier, enhance_error, enhance_describe, cutout_status "
         "FROM cloth_images WHERE cloth_id = ? ORDER BY sort_order, id",
         (cloth_id,),
     ).fetchall()
@@ -326,7 +364,7 @@ def _hydrate_many(conn, rows) -> list:
     imgs_by = defaultdict(list)
     for im in conn.execute(
         "SELECT cloth_id, id, role, original_path, cutout_path, sort_order, bg_accepted, bg_tolerance, "
-        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier, cutout_status "
+        "enhanced_path, enhance_status, enhance_method, enhance_pending_method, enhance_tier, enhance_error, enhance_describe, cutout_status "
         f"FROM cloth_images WHERE cloth_id IN ({placeholders}) ORDER BY sort_order, id",
         ids,
     ).fetchall():
@@ -459,6 +497,114 @@ def list_clothes(
     with get_conn() as conn:
         rows = conn.execute(sql, args).fetchall()
         return _hydrate_many(conn, rows)
+
+
+# Clamped so a caller cannot ask for "dormant since 0 months ago", which would
+# return the whole wardrobe under a name that means the opposite.
+_DORMANT_MIN_MONTHS = 1
+_DORMANT_MAX_MONTHS = 60
+_DORMANT_DEFAULT_MONTHS = 6
+
+# Never-worn clothes are judged on a different clock, and this is why:
+#
+# The first version ran ONE rule — "untouched since `months` ago, counting from
+# the day it was added when it was never worn". On a wardrobe younger than the
+# threshold that answers "nothing is forgotten" for every garment, including a
+# hundred that have never once been put on. Reported, and correct: the screen is
+# called "never worn" and it showed an empty list next to a full wardrobe.
+#
+# So: something never worn qualifies after a short grace period — long enough
+# not to nag about this week's uploads, short enough that a new wardrobe still
+# gets an answer. Something worn and then dropped is judged on `months`, which
+# is the question that needs a real interval behind it.
+_NEVER_WORN_GRACE_DAYS = 21
+
+
+# Declared before /{cloth_id}: FastAPI matches in order, and "dormant" would
+# otherwise be read as a cloth id and rejected as a bad integer.
+@router.get("/dormant")
+def dormant_clothes(
+    user=Depends(get_current_user),
+    months: int = _DORMANT_DEFAULT_MONTHS,
+    limit: Optional[int] = None,
+    offset: int = 0,
+):
+    """Clothes nobody is wearing, longest-forgotten first.
+
+    Two kinds, on two clocks (see _NEVER_WORN_GRACE_DAYS):
+
+      * never worn — in the wardrobe for more than the grace period and still
+        never once put on;
+      * worn, then dropped — last worn more than ``months`` ago.
+
+    ``dormant_days`` counts from the last wear, or from the day it was added for
+    something never worn, so both kinds sort on one axis.
+
+    Returns the wardrobe totals alongside the items so the screen can say "38 of
+    150" without a second request.
+    """
+    # A non-integer is rejected by FastAPI before this runs (422); an integer
+    # outside the useful range is clamped rather than refused.
+    months = max(_DORMANT_MIN_MONTHS, min(_DORMANT_MAX_MONTHS, months))
+
+    # date(): created_at carries a time, last_worn_at does not — comparing them
+    # as they are stored would make '2026-01-02 00:00:00' look later than
+    # '2026-01-02'.
+    since = "COALESCE(c.last_worn_at, date(c.created_at))"
+    where = (
+        "c.user_id = ? AND ("
+        "  (c.last_worn_at IS NULL AND date(c.created_at) <= date('now', ?))"
+        "  OR (c.last_worn_at IS NOT NULL AND c.last_worn_at <= date('now', ?))"
+        ")"
+    )
+    filter_args = [user["id"], f"-{_NEVER_WORN_GRACE_DAYS} days", f"-{months} months"]
+    sql = (
+        f"SELECT c.*, {since} AS dormant_since, "
+        f"CAST(julianday('now') - julianday({since}) AS INTEGER) AS dormant_days, "
+        "c.last_worn_at IS NULL AS never_worn, "
+        "COALESCE(w.n, 0) AS times_worn "
+        "FROM clothes c "
+        "LEFT JOIN (SELECT cloth_id, COUNT(*) AS n FROM cloth_wears "
+        "           GROUP BY cloth_id) w ON w.cloth_id = c.id "
+        f"WHERE {where} "
+        "ORDER BY dormant_days DESC, c.name COLLATE NOCASE ASC"
+    )
+    args: list = list(filter_args)
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        args += [max(0, int(limit)), max(0, int(offset))]
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, args).fetchall()
+        items = _hydrate_many(conn, rows)
+        for item, row in zip(items, rows):
+            item["dormant_days"] = int(row["dormant_days"] or 0)
+            item["dormant_since"] = row["dormant_since"]
+            item["never_worn"] = bool(row["never_worn"])
+            item["times_worn"] = int(row["times_worn"] or 0)
+        total = conn.execute(
+            "SELECT COUNT(*) AS n FROM clothes WHERE user_id = ?", (user["id"],)
+        ).fetchone()["n"]
+        # Counted over everything that matches, which paging must not change:
+        # the header says "38 dormant", not "38 on this page". Split by kind so
+        # the screen can head each group without counting the page it was sent.
+        counts = conn.execute(
+            f"SELECT COUNT(*) AS n, "
+            f"SUM(CASE WHEN c.last_worn_at IS NULL THEN 1 ELSE 0 END) AS never "
+            f"FROM clothes c WHERE {where}",
+            filter_args,
+        ).fetchone()
+        dormant_total = counts["n"] or 0
+        never_total = counts["never"] or 0
+    return {
+        "months": months,
+        "grace_days": _NEVER_WORN_GRACE_DAYS,
+        "count": dormant_total,
+        "never_worn_count": never_total,
+        "stale_count": dormant_total - never_total,
+        "wardrobe_count": total,
+        "items": items,
+    }
 
 
 @router.get("/{cloth_id}")
@@ -1252,6 +1398,20 @@ def redo_background(cloth_id: int, image_id: int,
 class EnhanceRequest(BaseModel):
     mode: str = "auto"  # 'auto' = deterministic (free) | 'ai' = FLUX edit
     tier: str = "flex"  # AI model tier to start at (steps up on 'try better')
+    # Put what the owner typed about the garment — name, brand, cut, colours,
+    # tags — into the AI prompt. Omitted keeps whatever the image was last set
+    # to, so a retry repeats the same job rather than reverting to the default.
+    describe: Optional[bool] = None
+
+
+def _short_reason(exc: Exception) -> str:
+    """One readable line for the app, out of an error that may be a whole
+    cascade's worth of per-tier messages."""
+    text = str(exc).strip() or type(exc).__name__
+    # A cascade failure carries every tier's message joined by " | "; the first
+    # one is the one that matters and the rest are the same story again.
+    head = text.split(" | ")[0].strip()
+    return head[:200]
 
 
 def _run_enhance(cloth_id: int, image_id: int, mode: str, tier: str = "flex") -> None:
@@ -1264,17 +1424,31 @@ def _run_enhance(cloth_id: int, image_id: int, mode: str, tier: str = "flex") ->
 
     with get_conn() as conn:
         img = conn.execute(
-            "SELECT original_path, cutout_path, bg_accepted, role FROM cloth_images "
-            "WHERE id = ? AND cloth_id = ?",
+            "SELECT original_path, cutout_path, bg_accepted, role, "
+            "enhance_describe FROM cloth_images WHERE id = ? AND cloth_id = ?",
             (image_id, cloth_id),
         ).fetchone()
         cloth = conn.execute(
-            "SELECT name, category FROM clothes WHERE id = ?", (cloth_id,)
+            "SELECT name, category, brand, cut, custom_tags FROM clothes "
+            "WHERE id = ?", (cloth_id,)
         ).fetchone()
+        colors = [r["color"] for r in conn.execute(
+            "SELECT color FROM cloth_colors WHERE cloth_id = ? ORDER BY id",
+            (cloth_id,))] if cloth else []
     if not img:
         return
     cloth_name = cloth["name"] if cloth else ""
     cloth_category = cloth["category"] if cloth else ""
+    cloth_brand = (cloth["brand"] or "") if cloth else ""
+    cloth_cut = (cloth["cut"] or "") if cloth else ""
+    try:
+        cloth_tags = json.loads(cloth["custom_tags"] or "[]") if cloth else []
+    except (TypeError, ValueError):
+        cloth_tags = []
+    # NULL means the choice was never made for this image: describe, which is
+    # what the prompt did before the switch existed.
+    describe = True if img["enhance_describe"] is None \
+        else bool(img["enhance_describe"])
     # Enhance the image the user actually kept: the cut-out when they kept it
     # ("the cropped one"), or the original when they rejected the cut-out.
     # Otherwise a wrinkle-fix would run on the uncropped photo.
@@ -1290,22 +1464,58 @@ def _run_enhance(cloth_id: int, image_id: int, mode: str, tier: str = "flex") ->
         if mode == "ai":
             used_tier = enhance_ai(src, str(dst), tier=tier,
                                    name=cloth_name, category=cloth_category,
-                                   role=img["role"])
+                                   role=img["role"], describe=describe,
+                                   brand=cloth_brand, cut=cloth_cut,
+                                   colors=colors, tags=cloth_tags)
         else:
             enhance_deterministic(src, img["cutout_path"], str(dst))
         with get_conn() as conn:
             conn.execute(
                 "UPDATE cloth_images SET enhanced_path = ?, enhance_status = 'ready', "
-                "enhance_tier = ? WHERE id = ?",
+                "enhance_tier = ?, enhance_started_at = NULL WHERE id = ?",
                 (str(dst), used_tier, image_id),
             )
     except Exception as e:  # pragma: no cover - depends on rembg/bfl/PIL
         log.warning("enhance (%s) failed for image %s: %s", mode, image_id, e)
         with get_conn() as conn:
             conn.execute(
-                "UPDATE cloth_images SET enhance_status = 'failed' WHERE id = ?",
-                (image_id,),
+                # The tier that was tried is kept, not cleared: it is what lets
+                # the app offer the NEXT one up instead of only "try the same
+                # thing again", which is what a garment the cheap model keeps
+                # refusing actually needs.
+                "UPDATE cloth_images SET enhance_status = 'failed', "
+                "enhance_tier = ?, enhance_error = ?, enhance_started_at = NULL "
+                "WHERE id = ?",
+                (tier if mode == "ai" else None, _short_reason(e), image_id),
             )
+
+
+class EnhanceDescribeRequest(BaseModel):
+    describe: bool = True
+
+
+@router.patch("/{cloth_id}/images/{image_id}/enhance-describe")
+def set_enhance_describe(cloth_id: int, image_id: int,
+                         req: EnhanceDescribeRequest,
+                         user=Depends(get_current_user)):
+    """Record whether the AI prompt should name what the owner typed about this
+    garment. Deliberately separate from starting a run: ticking a box is not
+    asking for a paid render.
+    """
+    with get_conn() as conn:
+        owned = conn.execute(
+            "SELECT 1 FROM clothes WHERE id = ? AND user_id = ?",
+            (cloth_id, user["id"]),
+        ).fetchone()
+        if not owned:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Cloth not found")
+        cur = conn.execute(
+            "UPDATE cloth_images SET enhance_describe = ? "
+            "WHERE id = ? AND cloth_id = ?",
+            (1 if req.describe else 0, image_id, cloth_id))
+        if not cur.rowcount:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
+        return _load_cloth(conn, cloth_id, user["id"])
 
 
 @router.post("/{cloth_id}/images/{image_id}/enhance")
@@ -1330,9 +1540,14 @@ def enhance_image(cloth_id: int, image_id: int, req: EnhanceRequest,
         old_enhanced = img["enhanced_path"]
         conn.execute(
             "UPDATE cloth_images SET enhance_status = 'processing', enhanced_path = NULL, "
-            "enhance_pending_method = ?, enhance_tier = NULL WHERE id = ?",
+            "enhance_pending_method = ?, enhance_tier = NULL, enhance_error = NULL, "
+            "enhance_started_at = datetime('now') WHERE id = ?",
             (mode, image_id),
         )
+        if req.describe is not None:
+            conn.execute(
+                "UPDATE cloth_images SET enhance_describe = ? WHERE id = ?",
+                (1 if req.describe else 0, image_id))
     # Drop the previous candidate's file so they don't pile up on disk.
     if old_enhanced:
         from pathlib import Path
