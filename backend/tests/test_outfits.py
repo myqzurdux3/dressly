@@ -240,7 +240,7 @@ def test_outfit_filter_by_favorite(client, auth):
 
 
 def test_cloth_sort_by_times_worn(client, auth):
-    a = create_cloth(client, auth, name="Tee", category="tshirt")
+    create_cloth(client, auth, name="Tee", category="tshirt")  # never worn
     b = create_cloth(client, auth, name="Jeans", category="jeans")
     o = gen_outfit(client, auth, [b["id"]])
     client.post(f"/outfits/{o['id']}/wear", headers=auth, json={"day": "2026-03-03"})
@@ -293,21 +293,8 @@ def _cloth_branded(client, auth, name, brand, category):
     return r.json()
 
 
-def test_same_brand_algo_never_mixes_brands(client, auth):
-    # Whichever brand the (weighted) pick lands on, the completion step must not
-    # pull in a cloth of a different brand — the outfit is single-brand.
-    _cloth_branded(client, auth, "Tee", "Nike", "tshirt")
-    _cloth_branded(client, auth, "Hoodie", "Nike", "hoodie")
-    _cloth_branded(client, auth, "Nike Jeans", "Nike", "jeans")
-    # Stussy owns a bottom and nothing else, so it can never be the theme — it
-    # is here to be wrongly mixed in, which is what this test watches for.
-    _cloth_branded(client, auth, "Jeans", "Stussy", "jeans")
-    for _ in range(8):
-        r = client.post("/outfits/preview-algo", headers=auth,
-                        json={"algo": "same-brand", "count": 1})
-        assert r.status_code == 200
-        sel = r.json()["selections"][0]
-        assert len({c["brand"] for c in sel}) == 1  # never mixes brands
+# "same-brand never mixes brands" is covered in test_algo_theme_matrix.py, over
+# every combination of lock / fill_gaps / weather rather than the default one.
 
 
 def test_same_brand_weighted_by_wardrobe_share(client, auth):

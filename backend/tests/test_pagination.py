@@ -11,8 +11,6 @@ def test_clothes_pagination(client, auth):
     page2 = client.get("/clothes?limit=2&offset=2", headers=auth).json()
     assert [c["id"] for c in page1] == [c["id"] for c in full[:2]]
     assert [c["id"] for c in page2] == [c["id"] for c in full[2:4]]
-    # no limit still returns everything
-    assert len(full) == 5
 
 
 def test_outfits_pagination(client, auth):

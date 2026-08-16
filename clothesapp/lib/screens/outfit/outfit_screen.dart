@@ -77,8 +77,11 @@ class _OutfitScreenState extends State<OutfitScreen> {
     final modelsSvc = modelsServiceOf(context);
     final clothesSvc = clothesServiceOf(context);
     try {
-      final models = await modelsSvc.list();
-      final clothes = await clothesSvc.list();
+      // Two independent requests: awaited one after the other they cost two
+      // round trips before the screen can draw anything.
+      final results = await Future.wait([modelsSvc.list(), clothesSvc.list()]);
+      final models = results[0] as List<ModelEntity>;
+      final clothes = results[1] as List<Cloth>;
       if (!mounted) return;
       setState(() {
         _models = models;

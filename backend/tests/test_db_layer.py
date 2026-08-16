@@ -62,41 +62,9 @@ def test_agenda_lookup_uses_its_index():
     assert "SCAN agenda" not in plan, f"full scan of agenda: {plan}"
 
 
-def test_interrupted_generations_are_failed_on_startup(client, auth):
-    """A 'processing' row at boot has no worker behind it — the background task
-    died with the previous process. Left alone, the app polls it forever."""
-    with db.get_conn() as conn:
-        conn.execute("INSERT INTO users (email, password_hash) VALUES (?, ?)",
-                     ("orphan@test.co", "x"))
-        uid = conn.execute("SELECT id FROM users WHERE email = 'orphan@test.co'"
-                           ).fetchone()["id"]
-        conn.execute(
-            "INSERT INTO outfits (user_id, cloth_ids, status) VALUES (?, '[1]', 'processing')",
-            (uid,),
-        )
-
-    with db.get_conn() as conn:
-        changed = db.reset_orphan_generations(conn)
-    assert changed == 1
-
-    with db.get_conn() as conn:
-        row = conn.execute(
-            "SELECT status, error FROM outfits WHERE user_id = ?", (uid,)
-        ).fetchone()
-    assert row["status"] == "failed"
-    assert "restart" in row["error"]
-
-
-def test_sweep_leaves_finished_outfits_alone():
-    with db.get_conn() as conn:
-        conn.execute("INSERT INTO users (email, password_hash) VALUES ('d@t.co', 'x')")
-        uid = conn.execute("SELECT id FROM users WHERE email='d@t.co'").fetchone()["id"]
-        for st in ("done", "failed"):
-            conn.execute(
-                "INSERT INTO outfits (user_id, cloth_ids, status) VALUES (?, '[]', ?)",
-                (uid, st),
-            )
-        assert db.reset_orphan_generations(conn) == 0
+# The restart sweep itself (orphans failed, live siblings and finished outfits
+# left alone) is covered in test_multi_worker.py, which exercises the same
+# reset_orphan_generations() against every worker_pid case.
 
 
 def test_foreign_keys_are_enforced_on_every_connection():

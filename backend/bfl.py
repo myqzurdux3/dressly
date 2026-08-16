@@ -13,7 +13,7 @@ to expensive:
 
 Outfit generation slots FLUX Virtual Try-On (VTO) into that cascade after flex:
 
-  flex -> vto (flux-tools/vto-v1) -> pro -> max
+  flex -> vto (flux-tools/vto-v2) -> pro -> max
 
 A fresh render starts at flex; VTO is the next step up (the "try a better model"
 button). VTO REQUIRES both a person image and a garment image, so it's dropped
@@ -61,16 +61,44 @@ from config import (
     BFL_MODEL_VTO,
     BFL_POLL_INTERVAL_S,
     BFL_POLL_TIMEOUT_S,
+    BFL_SAFETY_TOLERANCE,
     BFL_UPLOAD_TIMEOUT_S,
 )
 
 # Environment-only; no key in source. Empty => DRY_RUN placeholder images.
 DEFAULT_API_KEY = os.environ.get("BFL_API_KEY", "").strip()
 
-# Per-tier max number of input images the model accepts (input_image + N-1 more).
-# Cascade: flex (cheap) -> pro -> max. On a real-call failure the cascade
-# advances, so if pro fails we still try max before giving up.
-TIER_MAX_IMAGES = {"flex": 8, "pro": 8, "max": 8}
+# How many input images each model actually accepts, from the endpoints' own
+# OpenAPI schemas: the klein models expose input_image .. input_image_4, while
+# pro / max / flex expose eight.
+# https://docs.bfl.ml/api-reference/models/generate-or-edit-an-image-with-flux2-[klein]-4b
+#
+# This used to be a flat {"flex": 8, "pro": 8, "max": 8}, keyed on the app's own
+# tier names — but the app's cheapest tier is configured as flux-2-klein-4b,
+# which takes four. Sending it a fifth reference image is a request the model
+# has no field for, so an outfit with several garments in separate-image mode
+# failed at the first tier and fell through to the expensive ones.
+_SLUG_MAX_IMAGES = {
+    "flux-2-klein-4b": 4,
+    "flux-2-klein-9b": 4,
+    "flux-2-klein-9b-preview": 4,
+    "flux-2-pro": 8,
+    "flux-2-pro-preview": 8,
+    "flux-2-max": 8,
+    "flux-2-flex": 8,
+}
+# Unknown slug: assume the smaller cap. Sending too few images is a poorer
+# reference; sending too many is a rejected request.
+_DEFAULT_MAX_IMAGES = 4
+
+
+def max_images_for(slug: str) -> int:
+    """How many reference images this model slug accepts."""
+    name = (slug or "").strip().lower().lstrip("/")
+    if name in _SLUG_MAX_IMAGES:
+        return _SLUG_MAX_IMAGES[name]
+    # A slug nobody listed: klein is the family with the small cap.
+    return 4 if "klein" in name else _DEFAULT_MAX_IMAGES
 
 TIER_ORDER = ("flex", "pro", "max")
 TIER_SLUGS = {
@@ -79,8 +107,27 @@ TIER_SLUGS = {
     "max": BFL_MODEL_MAX,
 }
 
+# Derived from what each tier is actually pointed at, so re-pointing a tier at
+# another model in the environment moves its cap with it.
+TIER_MAX_IMAGES = {tier: max_images_for(slug) for tier, slug in TIER_SLUGS.items()}
+
 # Outfit cascade: flex first (fast FLUX render), then VTO try-on (needs a
 # person), then the higher FLUX tiers.
+#
+# Why VTO is not first, checked 2026-07 against their published prices:
+# BFL lists no price line for try-on at all, but both vto-v1 and vto-v2 take
+# `Flux2KleinTryonInputs`, documented as "Input model for FLUX.2 Klein VTO
+# endpoint" — try-on runs on Klein and is billed by megapixel like the rest of
+# the FLUX.2 family. flex here IS flux-2-klein-4b, the cheapest entry in that
+# table (from $0.014), and vto-v2 renders up to 4 MP where klein-4b's first
+# megapixel is the flat floor. So try-on cannot come out under the cheapest
+# Klein call, and the cheap-first order stands.
+# https://docs.bfl.ml/quick_start/pricing
+# https://docs.bfl.ml/api-reference/models/virtual-try-on-v2
+#
+# The per-request truth is in the response's `cost` field, which is recorded —
+# so if this ever stops holding, the admin credits screen will show it rather
+# than this comment having to be believed.
 VTO_TIER = "vto"
 OUTFIT_TIER_ORDER = ("flex", VTO_TIER, "pro", "max")
 # A safe static prompt if the caller passes none (per the VTO prompting guide).
@@ -95,6 +142,19 @@ OUT_H = 1024
 
 class BflError(RuntimeError):
     pass
+
+
+class BflModerated(BflError):
+    """The provider refused the image itself.
+
+    A verdict, not a hiccup: the same picture through a bigger model gets the
+    same answer, so the cascade stops instead of paying for two more refusals.
+    """
+
+
+# From their documented StatusResponse enum. "Failed" is NOT in it — it was
+# being handled here while these two were not.
+MODERATED_STATUSES = ("Request Moderated", "Content Moderated")
 
 
 def api_key() -> str:
@@ -138,6 +198,7 @@ def generate(
     *,
     width: int = OUT_W,
     height: int = OUT_H,
+    deadline_s: Optional[float] = None,
 ) -> tuple[bytes, str, str]:
     """Generate an outfit image from the model + cloth photos.
 
@@ -163,12 +224,26 @@ def generate(
     prepared = [_prepare_image(p) for p in image_paths if p and Path(p).exists()]
 
     errors: list[str] = []
+    # Each tier can spend the submit budget plus the poll budget before it gives
+    # up, so a three-tier cascade can run for minutes with somebody watching a
+    # spinner. ``deadline_s`` stops starting new attempts past that point: the
+    # caller would rather hear "it failed" than keep waiting.
+    started = time.monotonic()
     for tier in TIER_ORDER[start_idx:]:
+        if deadline_s is not None and tier != TIER_ORDER[start_idx] \
+                and time.monotonic() - started >= deadline_s:
+            errors.append(
+                f"gave up before {tier}: {deadline_s:.0f}s budget spent")
+            break
         slug = TIER_SLUGS[tier]
         try:
             payload = _submit(slug, prompt, prepared, width=width, height=height)
             url = _resolve_image_url(payload, slug)
             return _download(url), tier, slug
+        except BflModerated:
+            # Every tier moderates the same picture the same way. Advancing the
+            # cascade here is three refusals billed instead of one.
+            raise
         except BflError as e:
             errors.append(f"{tier}({slug}): {e}")
         except Exception as e:
@@ -271,6 +346,10 @@ def generate_outfit(
             payload = _submit(slug, prompt, prepared, width=width, height=height)
             url = _resolve_image_url(payload, slug)
             return _download(url), tier, slug
+        except BflModerated:
+            # Same reasoning as the enhancement cascade: a refusal is a verdict
+            # on the picture, and the next tier will bill for the same verdict.
+            raise
         except BflError as e:
             errors.append(f"{tier}: {e}")
         except Exception as e:
@@ -280,15 +359,15 @@ def generate_outfit(
 
 
 def make_labeled_collage(items: List[dict], *, max_px: int = 1024) -> Optional[str]:
-    """Tile cloth cutouts onto a single reference image, split into role rows
-    (TOP / BOTTOM / FEET) with a small label per item.
+    """Tile cloth cutouts onto a single reference image, one label per item.
 
-    ``items`` is a list of ``{"path", "label"}`` dicts in display order. The
-    rows are assigned by position: the first ~⅓ of items go in the TOP row,
-    the next ~⅓ in BOTTOM, the rest in FEET. This gives bfl a stable visual
-    structure ("these are tops, these are bottoms, these are shoes") instead
-    of an undifferentiated pile of garments — which is what confused the model
-    when several clothes were sent at once.
+    ``items`` is a list of ``{"path", "label"}`` dicts. They are laid out in a
+    square grid in reading order, so the caller's order is what the model sees
+    first to last — the callers pass them innermost-worn first.
+
+    (This docstring used to claim the grid was split into TOP / BOTTOM / FEET
+    rows by position. It never was: _tile fills a square grid in list order and
+    the role only ever appeared in the text label.)
 
     Returns a temp PNG path, or None if no images.
     """
@@ -387,14 +466,55 @@ def _prepare_image(path: str) -> str:
     return f"data:image/jpeg;base64,{_encode_jpeg_b64(path)}"
 
 
+# Set by apiusage at import time. Called once per accepted job so the admin
+# screen can say how much of the paid API has been spent. Kept as a hook rather
+# than an import so this module stays free of the database.
+usage_recorder = None
+
+
+def _record_usage(slug: str, ok: bool, payload: Optional[dict] = None) -> None:
+    """Count one submitted job, with what it cost when the reply says.
+
+    Every FLUX.2 submit answers with `cost` in credits plus `input_mp` /
+    `output_mp` (see AsyncResponse in their OpenAPI). Recording it turns the
+    admin screen from "how many calls" into "how much", which is the question
+    anybody actually has.
+    """
+    if usage_recorder is None:
+        return
+    try:
+        extra = {}
+        if isinstance(payload, dict):
+            for key in ("cost", "output_mp"):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    extra[key] = float(value)
+        usage_recorder(slug=slug, tier=slug_to_tier(slug), ok=ok, **extra)
+    except Exception:  # noqa: BLE001 - metering must never break a render
+        pass
+
+
 def _submit(slug: str, prompt: str, image_data_uris: List[str], *, width: int, height: int) -> dict:
-    body: dict = {"prompt": prompt or "", "width": width, "height": height}
+    # safety_tolerance was never sent, so every call used the provider's
+    # default of 2 with no way to loosen it — see BFL_SAFETY_TOLERANCE.
+    body: dict = {"prompt": prompt or "", "width": width, "height": height,
+                  "safety_tolerance": BFL_SAFETY_TOLERANCE}
     # input_image, input_image_2, ... up to the tier's cap.
-    cap = TIER_MAX_IMAGES.get(slug_to_tier(slug), 4)
+    # Keyed on the slug, not on the tier name: the slug is what the request is
+    # going to, and it is the thing with a documented limit.
+    cap = max_images_for(slug)
     for i, uri in enumerate(image_data_uris[:cap]):
         key = "input_image" if i == 0 else f"input_image_{i + 1}"
         body[key] = uri
-    return _post_json(slug, body)
+    try:
+        payload = _post_json(slug, body)
+    except Exception:
+        # A rejected submit is not a job; a failed one after acceptance is
+        # counted when it is accepted, which is the moment that costs.
+        _record_usage(slug, ok=False)
+        raise
+    _record_usage(slug, ok=True, payload=payload)
+    return payload
 
 
 def _submit_vto(prompt: str, person_b64: str, garment_b64: str) -> dict:
@@ -409,18 +529,29 @@ def _submit_vto(prompt: str, person_b64: str, garment_b64: str) -> dict:
         "person": person_b64,
         "garment": garment_b64,
         "output_format": "png",
+        "safety_tolerance": BFL_SAFETY_TOLERANCE,
     }
     if BFL_VTO_PROMPT_UPSAMPLING:
         body["prompt_upsampling"] = True
         try:
-            return _post_json(BFL_MODEL_VTO, body)
+            payload = _post_json(BFL_MODEL_VTO, body)
+            _record_usage(BFL_MODEL_VTO, ok=True, payload=payload)
+            return payload
         except BflError as e:
             # If the slug rejects the quality field (400/422 bad request), retry
-            # WITHOUT it rather than let the cascade skip try-on entirely.
+            # WITHOUT it rather than let the cascade skip try-on entirely. A
+            # rejected submit costs nothing, so it is recorded as such.
+            _record_usage(BFL_MODEL_VTO, ok=False)
             if not any(code in str(e) for code in ("HTTP 400", "HTTP 422")):
                 raise
             body.pop("prompt_upsampling", None)
-    return _post_json(BFL_MODEL_VTO, body)
+    try:
+        payload = _post_json(BFL_MODEL_VTO, body)
+    except Exception:
+        _record_usage(BFL_MODEL_VTO, ok=False)
+        raise
+    _record_usage(BFL_MODEL_VTO, ok=True, payload=payload)
+    return payload
 
 
 def _post_json(slug: str, body: dict) -> dict:
@@ -454,6 +585,15 @@ def _post_json(slug: str, body: dict) -> dict:
 
 
 def slug_to_tier(slug: str) -> str:
+    """Which tier a model slug belongs to, for the usage breakdown.
+
+    VTO is included: it is not in TIER_SLUGS (it is a tool, not a FLUX tier),
+    and without this every try-on was filed under "flex" — so the admin screen
+    attributed try-on spend to the cheap tier, which is the one number you would
+    use to decide whether try-on is worth its place in the cascade.
+    """
+    if slug == BFL_MODEL_VTO:
+        return VTO_TIER
     for tier, s in TIER_SLUGS.items():
         if s == slug:
             return tier
@@ -526,6 +666,20 @@ def _poll(polling_url: str, slug: str) -> str:
             if isinstance(result, str):
                 return result
             raise BflError(f"{slug} task Ready but no sample url: {payload}")
+        if status in MODERATED_STATUSES:
+            # Reported: "certains habits n'arrivent juste pas à s'améliorer avec
+            # l'IA … avec tous les modèles". This is why. The documented status
+            # enum is Pending / Request Moderated / Content Moderated / Ready /
+            # Error, and this loop only knew Ready, Error and "Failed" — a
+            # status that does not exist. A moderated job therefore matched
+            # nothing, so the loop kept polling a verdict that was already final
+            # until the budget ran out, and the user was told it had timed out.
+            # Every tier then repeated it on the same image, at the same cost.
+            # https://docs.bfl.ml/api-reference/utility/get-result
+            raise BflModerated(
+                f"{slug}: the provider declined this image ({status}). "
+                f"Trying a different model will not change that — a clearer, "
+                f"plainer photo of the garment might.")
         if status in ("Error", "Failed"):
             raise BflError(f"{slug} task failed: {payload}")
         time.sleep(BFL_POLL_INTERVAL_S)

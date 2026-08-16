@@ -21,11 +21,22 @@ log = logging.getLogger(__name__)
 
 OUT_PX = 1024
 
-def _ai_prompt(name: str = "", category: str = "", role: str = "") -> str:
-    """Build the FLUX edit instruction, folding in what the item is (type + the
-    user's name) and which side the photo shows (front/back). The extra context
-    helps the model edit the right garment and not invent a design from the
-    other side. All fields are optional — with none it's the generic prompt."""
+def _ai_prompt(name: str = "", category: str = "", role: str = "", *,
+               describe: bool = True, brand: str = "", cut: str = "",
+               colors=(), tags=()) -> str:
+    """Build the FLUX edit instruction.
+
+    ``describe`` decides whether what the USER typed about the garment goes into
+    the prompt — its name, brand, cut, colours and tags. Naming the item helps
+    the model edit the right thing and keep the design; but a wrong or noisy
+    label (a nickname, a tag that means something only to its owner) is a
+    description the model will try to honour, and that is worth being able to
+    switch off.
+
+    The side (front/back) is not part of that choice: it describes the PHOTO,
+    not the owner's opinion of the garment, and getting it wrong invents a
+    design from the other side.
+    """
     cat = (category or "").strip().replace("-", " ").lower()
     nm = (name or "").strip()
     side = (role or "").strip().lower()
@@ -34,23 +45,42 @@ def _ai_prompt(name: str = "", category: str = "", role: str = "") -> str:
     desc = ""
     if cat:
         desc += f", a {cat}"
-    if nm:
-        desc += f' named "{nm}"'
+    if describe:
+        if nm:
+            desc += f' named "{nm}"'
+        # Brand, cut, colours and tags — everything the owner actually entered,
+        # in one clause so the sentence stays readable.
+        extras = []
+        b = (brand or "").strip()
+        if b:
+            extras.append(f"by {b}")
+        c = (cut or "").strip().lower()
+        if c:
+            extras.append(f"{c} fit")
+        cols = [str(x).strip() for x in (colors or []) if str(x).strip()]
+        if cols:
+            extras.append("in " + ", ".join(cols[:3]).lower())
+        tg = [str(t).strip() for t in (tags or []) if str(t).strip()]
+        if tg:
+            extras.append(", ".join(tg[:3]).lower())
+        if extras:
+            desc += " (" + "; ".join(extras) + ")"
     if side:
         desc += f" (this photo shows the {side} of the garment)"
-    side_hint = (f" Keep it as the {side} of the item — do not add details from "
-                 f"the other side." if side else "")
+    # Positive phrasing throughout: FLUX.2 does not support negative prompts,
+    # and its guide says to describe the wanted outcome instead ("sharp focus
+    # throughout", not "no blur"). The subject leads, because word order is
+    # weighted. https://docs.bfl.ai/guides/prompting_guide_flux2
+    side_hint = (f" Show this {side} exactly as it is, with only the details "
+                 f"this side actually has." if side else "")
     return (
-        f"Clean product photo of the exact same clothing item{desc}: remove all "
-        f"wrinkles and creases, smooth and lay the fabric flat, straighten and "
-        f"center it, even soft studio lighting, pure white background.{side_hint} "
-        f"Keep the exact same colors, pattern, text, logos and shape — do not "
-        f"redesign the garment."
+        f"The exact same clothing item{desc}, as a clean product photo: fabric "
+        f"smooth and laid flat with the wrinkles and creases pressed out, "
+        f"straightened and centred, even soft studio lighting, pure white "
+        f"background.{side_hint} Keep the colours, pattern, text, logos and "
+        f"shape identical to the original."
     )
 
-
-# Generic fallback (no per-item context).
-_AI_PROMPT = _ai_prompt()
 
 
 def _subject_bbox(cutout_path: str, ref_size) -> tuple | None:
@@ -117,7 +147,9 @@ def enhance_deterministic(src_path: str, cutout_path: str, dst_path: str) -> str
 
 
 def enhance_ai(src_path: str, dst_path: str, tier: str = "flex", *,
-               name: str = "", category: str = "", role: str = "") -> str:
+               name: str = "", category: str = "", role: str = "",
+               describe: bool = True, brand: str = "", cut: str = "",
+               colors=(), tags=()) -> str:
     """Run a FLUX image edit starting at ``tier`` (the caller steps the tier up
     on demand, like outfit generation). Returns the tier actually used. With no
     BFL key configured this returns the mock placeholder. A transparent cut-out
@@ -131,7 +163,9 @@ def enhance_ai(src_path: str, dst_path: str, tier: str = "flex", *,
 
     from bfl import generate
 
-    prompt = _ai_prompt(name=name, category=category, role=role)
+    prompt = _ai_prompt(name=name, category=category, role=role,
+                        describe=describe, brand=brand, cut=cut,
+                        colors=colors, tags=tags)
 
     src = src_path
     tmp = None
@@ -147,7 +181,11 @@ def enhance_ai(src_path: str, dst_path: str, tier: str = "flex", *,
         src = fd.name
         tmp = src
     try:
-        image_bytes, tier_used, _slug = generate(prompt, [src], start_tier=tier)
+        # Bounded: without this the flex -> pro -> max cascade can run for
+        # minutes on a photo somebody is waiting for.
+        from config import ENHANCE_DEADLINE_S
+        image_bytes, tier_used, _slug = generate(
+            prompt, [src], start_tier=tier, deadline_s=ENHANCE_DEADLINE_S)
         Path(dst_path).write_bytes(image_bytes)
     finally:
         if tmp:

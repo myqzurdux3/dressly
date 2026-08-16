@@ -38,6 +38,50 @@ ACCESSORY_CATS = {"hat", "cap", "socks", "underwear", "bag"}
 # These items get their extra angles fed to the generator's spare input slots.
 MULTI_ANGLE_ROLES = {"feet", "accessory"}
 
+# Roles the "don't repeat within a plan" rule does not apply to. A week of
+# outfits should not put the same t-shirt on twice; expecting seven different
+# pairs of shoes would just make the plan fail.
+AVOID_EXEMPT_ROLES = {"feet", "accessory"}
+
+# How a real person puts clothes on, innermost first. Everything that draws or
+# describes a whole outfit uses this: the collage the model is shown, the
+# sentence that tells it what covers what, and the manual builder's canvas.
+#
+# Without it the order was whatever the clothes happened to be picked in, which
+# is how a jacket came out underneath the t-shirt — the model was never told
+# which one was on top, so it guessed, and guessed differently every render.
+#
+# Shoes sit above socks and above the trouser hem; a bag hangs over everything.
+LAYER_ORDER = {
+    "underwear": 10,
+    "socks": 20,
+    "jeans": 30, "trousers": 30, "shorts": 30, "skirt": 30, "jogging": 30,
+    "dress": 35,                                   # replaces top + bottom
+    "tank-top": 40, "tshirt": 42, "polo": 44, "shirt": 46,
+    "sweatshirt": 50, "hoodie": 52,                # mid layer, over a t-shirt
+    "jacket": 60, "coat": 62,                      # outer, over everything worn
+    "sneakers": 70, "shoes": 70,
+    "hat": 80, "cap": 80,
+    "bag": 90,
+}
+# Unknown categories land between the outer layer and the shoes: visible, but
+# never hiding a garment whose place we do know.
+_DEFAULT_LAYER = 65
+
+
+def layer_of(category: str) -> int:
+    """Where a category sits in the stack — smaller is closer to the skin."""
+    return LAYER_ORDER.get((category or "").strip().lower(), _DEFAULT_LAYER)
+
+
+def layer_sorted(items, key=lambda it: it):
+    """``items`` ordered from innermost to outermost.
+
+    Stable, so two garments on the same layer keep the order the user chose.
+    ``key`` extracts the category from whatever the caller is sorting.
+    """
+    return sorted(items, key=lambda it: layer_of(key(it)))
+
 
 def is_multi_angle(category: str) -> bool:
     """True for shoes/bags/accessories etc. — items photographed from arbitrary
@@ -170,7 +214,9 @@ class GenerateRequest:
                  weather: str = "any",
                  categories: Optional[List[str]] = None,
                  locked_cloth_ids: Optional[List[int]] = None,
-                 fill_gaps: bool = False, **_):
+                 fill_gaps: bool = False,
+                 avoid_cloth_ids: Optional[List[int]] = None,
+                 avoid_theme_values: Optional[List[str]] = None, **_):
         self.algo = algo
         self.min_score = int(min_score or 0)
         self.color = (color or "").strip()
@@ -184,6 +230,16 @@ class GenerateRequest:
         # cover are filled from ANY cloth — e.g. add other-brand shoes when the
         # chosen brand has none.
         self.fill_gaps = bool(fill_gaps)
+        # Garments already used elsewhere in the same run — the week planner
+        # passes what earlier days took so a t-shirt does not come back on
+        # Wednesday. Shoes and accessories are deliberately NOT avoided: nobody
+        # owns seven pairs, and refusing to repeat them empties the plan.
+        self.avoid_cloth_ids = set(int(x) for x in (avoid_cloth_ids or []))
+        # Theme values (brands, colours, tags, cuts) already used elsewhere in
+        # the same run. Reported: "pour le mode meme marque je ne veux pas que
+        # toute la semaine il y ait la meme chose".
+        self.avoid_theme_values = {
+            str(v).strip().lower() for v in (avoid_theme_values or []) if str(v).strip()}
 
 
 def _weather_categories(weather: str):
@@ -311,19 +367,42 @@ _HARD_THEMES = {
 _BORROWABLE_ROLES = {"feet", "other"}
 
 
-def _theme_allows(algo: str, picked: List[dict]):
+def _theme_allows(algo: str, picked: List[dict], req=None):
     """Predicate: may this cloth join the outfit without breaking the theme?
 
     Derived from what was already picked rather than from the algorithm's
     internals, so it cannot drift out of step with them. A set-valued theme
     (colours, tags) matches on overlap; a scalar one (brand, cut) on equality.
+
+    With one exception, and it is the important one: pick-by-colour/brand/tag
+    carry their theme in the REQUEST, so it is known even when the pick came
+    back empty. Inferring from an empty selection used to yield "anything
+    goes", and gap-filling then dressed a "Nike" outfit in Stussy — the exact
+    complaint this file already carries a fix for, reappearing whenever the
+    themed pool ran dry (which a week plan does by design, once it has used
+    that brand's clothes on the earlier days).
     """
+    if req is not None:
+        if algo == "pick-by-brand" and getattr(req, "brand", ""):
+            want = req.brand.strip().lower()
+            return lambda c: (c.get("brand") or "").strip().lower() == want
+        if algo == "pick-by-color" and getattr(req, "color", ""):
+            want = req.color.strip().lower()
+            return lambda c: any(
+                (v or "").strip().lower() == want
+                for v in (c.get("dom_colors") or ()))
+        if algo == "pick-by-tag" and getattr(req, "tag", ""):
+            want = req.tag.strip().lower()
+            return lambda c: any(
+                (t or "").strip().lower() == want for t in (c.get("tags") or ()))
     key = _HARD_THEMES.get(algo)
     if key is None:
         return lambda c: True
     values = [key(c) for c in picked if key(c)]
     if not values:
-        return lambda c: True
+        # A themed algorithm that picked nothing still has a theme; letting
+        # anything in would quietly answer a different question.
+        return (lambda c: True) if algo not in _HARD_THEMES else (lambda c: False)
     if isinstance(values[0], frozenset):
         common = set.intersection(*(set(v) for v in values)) or set().union(*values)
         return lambda c: bool(set(key(c) or ()) & common)
@@ -332,7 +411,7 @@ def _theme_allows(algo: str, picked: List[dict]):
 
 
 def _fill_missing_roles(picked: List[dict], pool: List[dict],
-                        algo: str = "") -> List[dict]:
+                        algo: str = "", req=None) -> List[dict]:
     """Fill any missing core role (top, bottom, feet) from the pool.
 
     Used by the "fill gaps with other clothes" option. It used to fill from the
@@ -344,7 +423,7 @@ def _fill_missing_roles(picked: List[dict], pool: List[dict],
     If the theme owns no top, the outfit has no top, and the caller reports that
     honestly instead of quietly changing what the user asked for.
     """
-    allows = _theme_allows(algo, picked)
+    allows = _theme_allows(algo, picked, req)
     have_ids = {p["id"] for p in picked}
     covered = {p["role"] for p in picked}
     if "onepiece" in covered:  # a dress already covers top + bottom
@@ -437,7 +516,7 @@ def _dressable_values(pool, values_of, counts):
     return good or counts
 
 
-def _pick_theme(locked, values_of, counts, all_counts=None):
+def _pick_theme(locked, values_of, counts, all_counts=None, avoid=()):
     """Choose a theme value: from the locked clothes when they name one,
     otherwise weighted by how much of it you own.
 
@@ -447,6 +526,13 @@ def _pick_theme(locked, values_of, counts, all_counts=None):
     the brand the user explicitly pinned just because they own no trousers of
     it, and silently theme the outfit on something else. That is the bug this
     whole function exists to fix; it must not reappear one layer down.
+
+    ``avoid`` holds theme values already used elsewhere in the same run. The
+    week planner passes what earlier days landed on: without it, "same brand"
+    weighted by wardrobe share picks the brand you own most of on nearly every
+    day, and a planned week is seven variations of one brand. Avoided values
+    are dropped only while something else remains — a repeated theme beats no
+    outfit, and a locked cloth still wins outright.
     """
     known = all_counts if all_counts is not None else counts
     from_locked = [v for v in _theme_from_locked(locked, values_of) if v in known]
@@ -456,11 +542,12 @@ def _pick_theme(locked, values_of, counts, all_counts=None):
         return _random.choice(from_locked)
     if not counts:
         return None
-    keys = list(counts)
+    avoid = {str(v).strip().lower() for v in (avoid or ())}
+    keys = [k for k in counts if str(k).strip().lower() not in avoid] or list(counts)
     return _random.choices(keys, weights=[counts[k] for k in keys], k=1)[0]
 
 
-def _algo_same_brand(pool, locked=()):
+def _algo_same_brand(pool, locked=(), avoid=()):
     if not pool:
         return []
     from collections import Counter
@@ -472,7 +559,7 @@ def _algo_same_brand(pool, locked=()):
     # more often than one you barely own, instead of always the most common.
     target = _pick_theme(locked, lambda c: [c["brand"]],
                          _dressable_values(pool, lambda c: [c["brand"]], counts),
-                         all_counts=counts)
+                         all_counts=counts, avoid=avoid)
     if target is None:
         return []
     themed = [c for c in pool if c["brand"] == target]
@@ -480,7 +567,7 @@ def _algo_same_brand(pool, locked=()):
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
 
-def _algo_single_color(pool, locked=()):
+def _algo_single_color(pool, locked=(), avoid=()):
     if not pool:
         return []
     # Use each cloth's DOMINANT colour(s) (highest dominance tier), not just any
@@ -496,7 +583,7 @@ def _algo_single_color(pool, locked=()):
     target = _pick_theme(
         locked, lambda c: c.get("dom_colors", ()),
         _dressable_values(pool, lambda c: c.get("dom_colors", ()), counts),
-        all_counts=counts)
+        all_counts=counts, avoid=avoid)
     if target is None:
         return []
     themed = [c for c in pool if target in c.get("dom_colors", ())]
@@ -526,7 +613,7 @@ def _algo_color_match(pool):
     return _complete(_pick_one_per_role(_shuffle(best)), best)
 
 
-def _algo_matching_tag(pool, locked=()):
+def _algo_matching_tag(pool, locked=(), avoid=()):
     if not pool:
         return []
     from collections import Counter, defaultdict
@@ -557,6 +644,7 @@ def _algo_matching_tag(pool, locked=()):
     # cloth carries does not empty the result.
     target = _pick_theme(locked, lambda c: c["tags"],
                          {t: tag_counts[t] for t in candidates},
+                         avoid=avoid,
                          all_counts=tag_counts)
     if target is None:
         return []
@@ -564,7 +652,7 @@ def _algo_matching_tag(pool, locked=()):
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
 
-def _algo_same_cut(pool, locked=()):
+def _algo_same_cut(pool, locked=(), avoid=()):
     if not pool:
         return []
     # Only clothes that actually have a cut count — shoes/bags/accessories are
@@ -579,7 +667,7 @@ def _algo_same_cut(pool, locked=()):
     _cut_of = lambda c: [c["cut"]] if has_cut(c["category"]) else []  # noqa: E731
     target = _pick_theme(locked, _cut_of,
                          _dressable_values(candidates, _cut_of, counts),
-                         all_counts=counts)
+                         all_counts=counts, avoid=avoid)
     if target is None:
         return []
     themed = [c for c in candidates if c["cut"] == target]
@@ -698,11 +786,15 @@ _ALGOS = {
     # `locked` is the clothes the user pinned. Themed algorithms take their
     # theme FROM them: locking an Adidas tee and asking for "same brand" must
     # mean Adidas, not whichever brand the wardrobe weighting landed on.
-    "same-brand": lambda p, r, locked: _algo_same_brand(p, locked),
-    "single-color": lambda p, r, locked: _algo_single_color(p, locked),
+    "same-brand": lambda p, r, locked: _algo_same_brand(
+        p, locked, getattr(r, "avoid_theme_values", ())),
+    "single-color": lambda p, r, locked: _algo_single_color(
+        p, locked, getattr(r, "avoid_theme_values", ())),
     "color-match": lambda p, r, locked: _algo_color_match(p),
-    "matching-tag": lambda p, r, locked: _algo_matching_tag(p, locked),
-    "same-cut": lambda p, r, locked: _algo_same_cut(p, locked),
+    "matching-tag": lambda p, r, locked: _algo_matching_tag(
+        p, locked, getattr(r, "avoid_theme_values", ())),
+    "same-cut": lambda p, r, locked: _algo_same_cut(
+        p, locked, getattr(r, "avoid_theme_values", ())),
     "least-worn": lambda p, r, locked: _algo_least_worn(p),
     "pick-by-color": lambda p, r, locked: _algo_pick_by_color(p, r.color),
     "pick-by-brand": lambda p, r, locked: _algo_pick_by_brand(p, r.brand),
@@ -821,6 +913,40 @@ def _is_wearable(picked: List[dict], req) -> bool:
     return bool(upper and lower)
 
 
+def theme_value_of(algo: str, picked: List[dict]) -> Optional[str]:
+    """The theme a selection ended up on — the brand of a "same brand" outfit,
+    the colour of a "single colour" one, and so on.
+
+    Read back from the result rather than returned by ``select`` so the
+    signature every caller uses stays a plain list of clothes. The week planner
+    feeds it to the next day's ``avoid_theme_values``.
+    """
+    if not picked:
+        return None
+    garments = [c for c in picked if c.get("role") in
+                ("top", "bottom", "outer", "onepiece")] or picked
+    if algo in ("same-brand", "pick-by-brand"):
+        brands = {c.get("brand") for c in garments if c.get("brand")}
+        return next(iter(brands)) if len(brands) == 1 else None
+    if algo in ("single-color", "pick-by-color"):
+        shared = None
+        for c in garments:
+            cols = set(c.get("dom_colors") or c.get("colors") or ())
+            shared = cols if shared is None else (shared & cols)
+        return next(iter(shared)) if shared and len(shared) == 1 else (
+            next(iter(sorted(shared))) if shared else None)
+    if algo in ("matching-tag", "pick-by-tag"):
+        shared = None
+        for c in garments:
+            tags = set(c.get("tags") or ())
+            shared = tags if shared is None else (shared & tags)
+        return next(iter(sorted(shared))) if shared else None
+    if algo == "same-cut":
+        cuts = {c.get("cut") for c in garments if c.get("cut")}
+        return next(iter(cuts)) if len(cuts) == 1 else None
+    return None  # untuned algorithms promise no shared property
+
+
 def select(req: GenerateRequest) -> List[dict]:
     """Run an algorithm and return the chosen clothes (list of dicts with id,
     name, brand, category, role). Empty list if nothing matched — or if every
@@ -834,6 +960,12 @@ def select(req: GenerateRequest) -> List[dict]:
     with get_conn() as conn:
         pool = _fetch_pool(conn, req.user_id, req.min_score,
                            weather=req.weather, categories=req.categories)
+        # Garments earlier days of a plan already used. Applied here rather than
+        # in _fetch_pool so the socks/shoes sources below are untouched.
+        avoid = getattr(req, "avoid_cloth_ids", None) or set()
+        if avoid:
+            pool = [c for c in pool
+                    if c["id"] not in avoid or c["role"] in AVOID_EXEMPT_ROLES]
         # Socks + shoes sources, independent of the category / theme restriction:
         # hot/cold outfits pair socks WITH shoes even when the chosen types or a
         # colour/brand theme dropped one of them.
@@ -874,7 +1006,7 @@ def select(req: GenerateRequest) -> List[dict]:
         # Optionally fill missing core roles (top/bottom/shoes) from ANY cloth —
         # e.g. add other-brand shoes when the chosen brand has none.
         if req.fill_gaps:
-            result = _fill_missing_roles(result, pool, algo)
+            result = _fill_missing_roles(result, pool, algo, req)
         # Hot/cold outfits pair socks WITH shoes — you don't wear shoes barefoot,
         # nor socks with no shoes. So if the outfit ended up with only one of the
         # pair (a category list omitted one, or a colour/brand theme excluded it),

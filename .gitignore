@@ -47,3 +47,10 @@ backend/certs/
 
 # Deployment archive produced by scripts/export_for_server.sh (~430 MB).
 dressly-backend.tar*
+
+# --- notes personnelles et sauvegardes locales (hors dépôt) ---------------
+backup-do-not-read/
+do-not-read.txt
+usefull-commands.txt
+install.log
+backend/certs/

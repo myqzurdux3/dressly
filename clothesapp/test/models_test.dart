@@ -4,6 +4,41 @@ import 'package:clothesapp/models/outfit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('ClothImage.enhanceDescribe', () {
+    // The switch that decides whether the owner's own words about a garment go
+    // into the AI prompt. Remembered per image, so a retry repeats the job.
+    test('an image nobody has chosen for describes', () {
+      final im = ClothImage.fromJson({
+        'id': 1, 'role': 'front', 'original_url': '', 'cutout_url': '',
+      });
+      expect(im.enhanceDescribe, isTrue);
+    });
+
+    test('an explicit false is read as false', () {
+      final im = ClothImage.fromJson({
+        'id': 1, 'role': 'front', 'original_url': '', 'cutout_url': '',
+        'enhance_describe': false,
+      });
+      expect(im.enhanceDescribe, isFalse);
+    });
+
+    test('copyWith flips it and keeps everything else', () {
+      final im = ClothImage.fromJson({
+        'id': 7, 'role': 'back', 'original_url': 'o', 'cutout_url': 'c',
+        'enhance_status': 'failed', 'enhance_error': 'declined',
+        'enhance_tier': 'flex',
+      });
+      final off = im.copyWith(enhanceDescribe: false);
+      expect(off.enhanceDescribe, isFalse);
+      expect(off.id, 7);
+      expect(off.role, 'back');
+      expect(off.enhanceStatus, 'failed');
+      expect(off.enhanceError, 'declined');
+      expect(off.enhanceTier, 'flex');
+    });
+  });
+
+
   _cutoutStatusTests();
   _enhancedPreviewTests();
   group('Cloth.fromJson', () {

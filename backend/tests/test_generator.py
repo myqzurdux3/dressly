@@ -151,7 +151,7 @@ def test_hot_no_socks_when_no_shoes_in_outfit(client, auth):
 def test_least_worn_prefers_never_worn(client, auth):
     # Two tops: one worn recently, one never worn; plus a bottom.
     worn = create_cloth(client, auth, name="Worn Tee", category="tshirt")
-    never = create_cloth(client, auth, name="Fresh Tee", category="tshirt")
+    create_cloth(client, auth, name="Fresh Tee", category="tshirt")
     create_cloth(client, auth, name="Jeans", category="jeans")
     client.post(f"/clothes/{worn['id']}/wear", headers=auth, json={"day": "2026-06-06"})
 

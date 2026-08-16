@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../l10n/app_text.dart';
-
 import '../../app.dart';
+import '../../l10n/app_text.dart';
 import '../../models/agenda.dart';
 import '../../models/outfit.dart';
 import '../../widgets/app_image.dart';
 import '../outfit/outfit_result_dialog.dart';
+import 'week_plan_screen.dart';
 
 /// Plan which outfit to wear on which day. Each entry can reference a generated
 /// outfit; marking it worn stamps last_worn_at on that outfit's clothes (which
@@ -61,6 +61,14 @@ class _AgendaScreenState extends State<AgendaScreen> {
     if (diff == 1) return 'Tomorrow · $label';
     if (diff == -1) return 'Yesterday · $label';
     return label;
+  }
+
+  /// The week planner. Reached from the app bar, from the top of the list and
+  /// from the empty state: an unlabelled icon in a corner was not found.
+  Future<void> _openWeekPlanner() async {
+    final saved = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => const WeekPlanScreen()));
+    if (saved == true && mounted) _reload();
   }
 
   Future<void> _schedule() async {
@@ -171,7 +179,16 @@ class _AgendaScreenState extends State<AgendaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'nav.agenda'))),
+      appBar: AppBar(
+        title: Text(tr(context, 'nav.agenda')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome_motion_outlined),
+            tooltip: tr(context, 'plan.title'),
+            onPressed: _openWeekPlanner,
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _schedule,
         icon: const Icon(Icons.event),
@@ -198,6 +215,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   const SizedBox(height: 4),
                   Text(tr(context, 'agenda.emptyHint'),
                       style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  FilledButton.tonalIcon(
+                    onPressed: _openWeekPlanner,
+                    icon: const Icon(Icons.auto_awesome_motion_outlined),
+                    label: Text(tr(context, 'plan.title')),
+                  ),
                 ],
               ),
             );
@@ -217,6 +240,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _openWeekPlanner,
+                    icon: const Icon(Icons.auto_awesome_motion_outlined, size: 18),
+                    label: Text(tr(context, 'plan.title')),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 if (upcoming.isNotEmpty) ...[
                   _sectionTitle('Upcoming'),
                   ..._dayGroups(upcoming),

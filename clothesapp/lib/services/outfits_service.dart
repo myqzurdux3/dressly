@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../models/outfit.dart';
+import '../config/api_config.dart';
 import 'api_client.dart';
 
 class AlgoMeta {
@@ -60,6 +61,25 @@ class OutfitsService {
       if (next.status != 'processing') return next;
     }
     return get(o.id); // give back the latest state on timeout
+  }
+
+  /// Make (or fetch) a public link to this outfit, and return its absolute URL.
+  ///
+  /// Idempotent server-side: pressing share twice hands back the same link
+  /// rather than leaving a second one open.
+  Future<({String url, String expiresAt})> share(int outfitId) async {
+    final data = await _api.post('/outfits/$outfitId/share', const {})
+        as Map<String, dynamic>;
+    return (
+      url: apiUrl((data['path'] ?? '') as String),
+      expiresAt: (data['expires_at'] ?? '') as String,
+    );
+  }
+
+
+  /// Stop every link to this outfit working.
+  Future<void> unshare(int outfitId) async {
+    await _api.delete('/outfits/$outfitId/share');
   }
 
   Future<List<Outfit>> favorites({

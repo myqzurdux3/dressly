@@ -365,6 +365,180 @@ def _cutout_runs_in_the_background(conn) -> None:
         conn.execute("UPDATE cloth_images SET cutout_status = 'ready'")
 
 
+@migration
+def _weather_location(conn) -> None:
+    """Where to look up the forecast for this user.
+
+    Stored per account rather than read from the device on every request: the
+    app then needs no location permission, and the answer stays the same when
+    the phone is somewhere else for an afternoon. A NULL pair means "not set",
+    which every weather path treats as "no forecast" and falls back from.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    if "weather_lat" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN weather_lat REAL")
+    if "weather_lon" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN weather_lon REAL")
+    if "weather_place" not in cols:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN weather_place TEXT NOT NULL DEFAULT ''")
+
+
+@migration
+def _enhance_started_at(conn) -> None:
+    """When an enhancement was kicked off, so a stuck one can be recognised.
+
+    Without it, a job whose worker died — a server restart, a provider that
+    never answers — stays 'processing' forever and the app spins on it. There
+    was already a sweep for outfits; enhancements had none.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cloth_images)")}
+    if "enhance_started_at" not in cols:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_started_at TEXT")
+        # Anything already 'processing' predates the column and cannot be
+        # running any more — the process that owned it is gone.
+        conn.execute(
+            "UPDATE cloth_images SET enhance_status = 'failed' "
+            "WHERE enhance_status = 'processing'")
+
+
+@migration
+def _api_usage(conn) -> None:
+    """Every paid image job this server submits.
+
+    The provider does not document a balance endpoint, so the only figure that
+    can be stated truthfully is our own consumption. Recorded at submit time,
+    which is the moment that costs.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_usage (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER,
+            kind       TEXT NOT NULL DEFAULT '',   -- 'outfit' | 'enhance' | ''
+            tier       TEXT NOT NULL DEFAULT '',
+            slug       TEXT NOT NULL DEFAULT '',
+            ok         INTEGER NOT NULL DEFAULT 1, -- 0 = the submit was refused
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at)")
+
+
+@migration
+def _enhance_failure_reason(conn) -> None:
+    """Why an enhancement failed, and at which tier it was tried.
+
+    Reported: some garments "ne veulent pas s'ameliorer avec l'IA et mettent
+    sans cesse fail meme apres reessayer". Retrying the same thing that just
+    failed is the only move the app could offer, because the only thing it knew
+    was the word "failed". Storing the reason lets it say what happened, and
+    keeping the attempted tier lets it offer the next one up.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cloth_images)")}
+    if "enhance_error" not in cols:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_error TEXT")
+
+
+@migration
+def _outfit_shares(conn) -> None:
+    """Public links to a single outfit.
+
+    A row per link rather than a signature over the outfit id, for one reason:
+    a link somebody regrets sending has to be revocable, and a pure signature
+    cannot be taken back. Expiry is stored so an old link stops working even if
+    nobody revokes it.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS outfit_shares (
+            token      TEXT PRIMARY KEY,
+            outfit_id  INTEGER NOT NULL REFERENCES outfits(id) ON DELETE CASCADE,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            revoked    INTEGER NOT NULL DEFAULT 0,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shares_outfit ON outfit_shares(outfit_id)")
+
+
+@migration
+def _api_usage_cost(conn) -> None:
+    """What each job actually cost, from the provider's own reply.
+
+    Every FLUX.2 submit answers with `cost` in credits and `output_mp`. Counting
+    calls was a proxy; this is the number. Rows written before this exist with
+    NULL, which is why the summary reports how many it could price.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_usage)")}
+    if "cost" not in cols:
+        conn.execute("ALTER TABLE api_usage ADD COLUMN cost REAL")
+    if "output_mp" not in cols:
+        conn.execute("ALTER TABLE api_usage ADD COLUMN output_mp REAL")
+
+
+@migration
+def _outfit_add_detail(conn) -> None:
+    """The extra instruction the user typed on a regenerate ("hands in
+    pockets"), as a column rather than smuggled into the prompt text.
+
+    It used to be glued onto the front of the user's own prompt, which is the
+    one position the FLUX.2 guide says not to put a secondary detail in — it
+    displaces the subject sentence, which the model weights most. Moving it
+    after the subject meant it no longer survived the next re-compose, because
+    _user_prompt_of recovers the user's text by cutting at the generated
+    markers. Storing it is what lets it be in the right place AND persist, like
+    describe_clothes / image_mode / render_cloth_ids already are.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(outfits)")}
+    if "add_detail" not in cols:
+        conn.execute(
+            "ALTER TABLE outfits ADD COLUMN add_detail TEXT NOT NULL DEFAULT ''")
+
+
+@migration
+def _enhance_describe(conn) -> None:
+    """Whether the owner's own description of the garment goes into the AI
+    enhancement prompt.
+
+    Stored per image, not passed per request, for the same reason the outfit's
+    add_detail is stored: the retry buttons re-post the same job, and a choice
+    that silently reverted to the default on retry is a setting the user cannot
+    trust. NULL means "never chosen", which reads as the default.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cloth_images)")}
+    if "enhance_describe" not in cols:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_describe INTEGER")
+
+
+def fail_stale_enhancements(conn, timeout_s: float) -> int:
+    """Mark long-running enhancements as failed. Returns how many.
+
+    Called on startup and again whenever a cloth is read, so the app learns the
+    truth on its next poll instead of at the next server restart.
+    """
+    rows = conn.execute(
+        "SELECT id FROM cloth_images WHERE enhance_status = 'processing' AND ("
+        "  enhance_started_at IS NULL"
+        "  OR (julianday('now') - julianday(enhance_started_at)) * 86400.0 > ?"
+        ")",
+        (float(timeout_s),),
+    ).fetchall()
+    if not rows:
+        return 0
+    ids = [r["id"] for r in rows]
+    ph = ",".join("?" * len(ids))
+    conn.execute(
+        f"UPDATE cloth_images SET enhance_status = 'failed', "
+        f"enhance_error = 'Timed out — the job did not finish in time' "
+        f"WHERE id IN ({ph})",
+        ids,
+    )
+    log.warning("marked %s stalled enhancement(s) as failed", len(ids))
+    return len(ids)
+
+
 def reset_orphan_generations(conn) -> int:
     """Fail outfits whose rendering process is gone.
 

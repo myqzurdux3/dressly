@@ -237,3 +237,58 @@ def test_vto_submits_person_and_garment(monkeypatch, tmp_path):
     assert seen["body"]["person"] and seen["body"]["garment"]
     # Raw base64, not a data: URI (the VTO endpoint expects bare base64).
     assert not seen["body"]["person"].startswith("data:")
+
+
+def test_the_try_on_prompt_always_names_the_garments(client, auth, monkeypatch):
+    """Their try-on guide: "to get higher quality results, we recommend to add a
+    concise description of the garments … a detailed description can
+    significantly improve the outcome" (docs.bfl.ml/flux_tools/flux_vto).
+
+    So the VTO prompt describes them even when the user left "describe items"
+    off — that toggle is about the FLUX prompt, not about what makes try-on
+    work.
+    """
+    import routes_outfits
+    captured = {}
+
+    def fake(prompt, image_paths, start_tier="flex", *, vto_prompt=None, **kw):
+        captured["flux_prompt"] = prompt
+        captured["vto_prompt"] = vto_prompt
+        return make_png(), start_tier, "mock"
+
+    monkeypatch.setattr(routes_outfits, "bfl_generate_outfit", fake)
+    a = create_cloth(client, auth, name="Bomber", category="jacket")
+    m = _create_model(client, auth)
+    o = client.post("/outfits/generate", headers=auth,
+                    json={"cloth_ids": [a["id"]], "model_id": m["id"],
+                          "describe_clothes": False}).json()
+    wait_done(client, auth, o["id"])
+
+    assert captured["vto_prompt"], "no try-on prompt was built"
+    assert "bomber" in captured["vto_prompt"].lower(), captured["vto_prompt"]
+    # The FLUX prompt still honours the user's choice.
+    assert "bomber" not in captured["flux_prompt"].lower()
+
+
+def test_the_try_on_prompt_still_follows_the_documented_formula(
+        client, auth, monkeypatch):
+    """Their core formula is "The person of image 1, … wearing the {garments}
+    of image 2." — the collage shape, not the enumerated per-image one."""
+    import routes_outfits
+    captured = {}
+
+    def fake(prompt, image_paths, start_tier="flex", *, vto_prompt=None, **kw):
+        captured["vto_prompt"] = vto_prompt or ""
+        return make_png(), start_tier, "mock"
+
+    monkeypatch.setattr(routes_outfits, "bfl_generate_outfit", fake)
+    a, b = _two_clothes(client, auth)
+    m = _create_model(client, auth)
+    o = client.post("/outfits/generate", headers=auth,
+                    json={"cloth_ids": [a["id"], b["id"]], "model_id": m["id"],
+                          "image_mode": "separate"}).json()
+    wait_done(client, auth, o["id"])
+    p = captured["vto_prompt"].lower()
+    assert "person of image 1" in p, p
+    assert "of image 2" in p, p
+    assert "image 3 is" not in p, "the enumerated prompt leaked into try-on"

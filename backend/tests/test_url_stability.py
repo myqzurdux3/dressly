@@ -75,11 +75,8 @@ def test_a_freshly_issued_url_is_valid_for_most_of_the_ttl(signing_on):
         )
 
 
-def test_a_stable_url_still_verifies(client, auth, signing_on):
-    c = create_cloth(client, auth)
-    cutout, thumb, _ = _urls(client, auth, c["id"])
-    assert client.get(cutout).status_code == 200
-    assert client.get(thumb).status_code == 200
+# That a signed URL is actually served is test_signed_images.py's
+# test_a_signed_url_is_served; this file is about the URL staying the same.
 
 
 # --- the cache-busting part must still work -------------------------------

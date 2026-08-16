@@ -84,6 +84,48 @@ def _thumb_path(root_key: str, rel_path: str, width: int) -> Path:
     return THUMBS_DIR / str(width) / root_key / (rel_path + ".webp")
 
 
+# The widths the app actually asks for: 400 in the grids, 800 on the detail
+# screens. Generating the whole ALLOWED_WIDTHS ladder up front would spend time
+# on variants nothing requests.
+PREWARM_WIDTHS = (400, 800)
+
+
+def prewarm(source: Path, root_key: str = "images") -> int:
+    """Render this image's grid thumbnails now, off the request path.
+
+    Measured at 99 ms per 400 px thumbnail and 165 ms at 800 px on this
+    hardware — so a cold thirty-garment grid spent about three seconds encoding
+    inside the requests somebody was waiting on. The cut-out already runs as a
+    background job and already holds the file, so this costs the user nothing.
+
+    Best effort: a thumbnail that fails to render is regenerated on demand
+    exactly as before, so nothing here is allowed to raise.
+    """
+    root = _ROOTS.get(root_key)
+    if root is None:
+        return 0
+    try:
+        rel = source.resolve().relative_to(root.resolve()).as_posix()
+    except (ValueError, OSError):
+        return 0
+    made = 0
+    for width in PREWARM_WIDTHS:
+        dst = _thumb_path(root_key, rel, width)
+        # The same freshness rule the serving path uses (line ~166), not a bare
+        # "does it exist": a cut-out is rewritten by redo-bg, by accept-after-
+        # reject and by a crop, and the thumbnail sitting at that canonical name
+        # is then stale. Skipping it because the file exists would leave the
+        # slow on-demand re-render for exactly the cases pre-warming is for.
+        if dst.is_file() and dst.stat().st_mtime >= source.stat().st_mtime:
+            continue
+        try:
+            _render(source, dst, width)
+            made += 1
+        except Exception as e:  # noqa: BLE001 - a missing thumbnail is not an error
+            log.info("could not pre-render %s at %s: %s", rel, width, e)
+    return made
+
+
 def _render(src: Path, dst: Path, width: int) -> None:
     """Resize preserving aspect ratio and alpha. WebP for both, so a cut-out
     keeps its transparency and a photo still compresses well."""

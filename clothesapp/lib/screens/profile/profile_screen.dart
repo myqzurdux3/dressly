@@ -6,6 +6,7 @@ import '../../models/outfit.dart';
 import '../../models/stats.dart';
 import '../../widgets/app_image.dart';
 import '../cloth/cloth_detail_screen.dart';
+import '../cloth/dormant_screen.dart';
 import '../outfit/outfit_result_dialog.dart';
 import '../settings/settings_screen.dart';
 
@@ -102,6 +103,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         value: '${s.clothWearsTotal}',
                         sub: tr(context, 'profile.daysLogged')),
                   ],
+                ),
+                const SizedBox(height: 16),
+                // Sits right under "wardrobe worn": the percentage says how much
+                // of the wardrobe is in use, this is the way into the rest.
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ListTile(
+                    leading: const Icon(Icons.hourglass_empty),
+                    title: Text(tr(context, 'profile.dormant')),
+                    subtitle: Text(tr(context, 'profile.dormantHint')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const DormantScreen()));
+                      // Wearing or removing something in there changes the
+                      // counts above.
+                      _reload();
+                    },
+                  ),
                 ),
                 const SizedBox(height: 24),
                 _sectionTitle(tr(context, 'profile.mostWornOutfit')),

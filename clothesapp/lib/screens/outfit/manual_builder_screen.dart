@@ -7,6 +7,7 @@ import '../../app.dart';
 import '../../config/api_config.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
+import '../../models/layering.dart';
 import '../../models/outfit.dart';
 import 'algo_sheet.dart';
 import 'cloth_picker_screen.dart';
@@ -41,14 +42,19 @@ class _Item {
   double scale;
   double rotation; // radians
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({int? z}) => {
         'cloth_id': clothId,
         'x': x,
         'y': y,
         'scale': scale,
         'rotation': rotation,
+        // Stacking order, written out rather than left implicit in the array
+        // order, so a layout stays readable and re-orderable outside this
+        // screen. The canvas paints _items in order and z mirrors that.
+        if (z != null) 'z': z,
       };
 }
+
 
 /// Canvas background: a solid colour or a two-colour vertical gradient.
 class _Bg {
@@ -152,8 +158,20 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     if (layout != null) {
       _bg = _Bg.fromJson((layout['background'] as Map?)?.cast<String, dynamic>() ??
           {'type': 'solid', 'color': '#FFFFFF'});
-      for (final raw in (layout['items'] as List? ?? [])) {
-        final m = (raw as Map).cast<String, dynamic>();
+      // A saved layout is the user's own arrangement, stacking included: keep
+      // it exactly. 'z' is read when present (it is what this screen writes);
+      // older layouts carry the order in the array itself.
+      final raws = (layout['items'] as List? ?? [])
+          .map((raw) => (raw as Map).cast<String, dynamic>())
+          .toList();
+      final indexed = [
+        for (var i = 0; i < raws.length; i++) (raws[i], i),
+      ]..sort((a, b) {
+          final za = (a.$1['z'] as num?)?.toInt() ?? a.$2;
+          final zb = (b.$1['z'] as num?)?.toInt() ?? b.$2;
+          return za.compareTo(zb);
+        });
+      for (final (m, _) in indexed) {
         final id = m['cloth_id'] as int;
         final url = _cutoutUrl(id);
         if (url == null) continue;
@@ -215,18 +233,34 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     }
   }
 
+  String _categoryOf(int clothId) => _clothById[clothId]?.category ?? '';
+
   void _addClothIds(Iterable<int> ids) {
     final present = _items.map((e) => e.clothId).toSet();
-    var n = 0;
     for (final id in ids) {
       if (present.contains(id)) continue;
       final url = _cutoutUrl(id);
       if (url == null) continue;
-      // Stagger duplicates on the same row so they don't stack exactly.
-      final x = 0.5 + ((n.isEven ? 1 : -1) * 0.02 * n).clamp(-0.25, 0.25);
-      _items.add(_Item(clothId: id, url: url, x: x, y: _defaultY(id)));
+      final category = _categoryOf(id);
+      final zone = zoneOf(category);
+      final occupants = _items
+          .where((it) => zoneOf(_categoryOf(it.clothId)) == zone)
+          .length;
+      final item = _Item(
+        clothId: id,
+        url: url,
+        x: defaultX(occupants),
+        y: _defaultY(id),
+      );
+      // Inserted at its place in the stack rather than appended, so the canvas
+      // paints a jacket over the t-shirt whatever order they were picked in.
+      // Equal ranks keep insertion order, and dragging one to the front later
+      // still wins — that moves it in the list, which is what is saved.
+      final rank = layerRank(category);
+      final at = _items.indexWhere(
+          (it) => layerRank(_categoryOf(it.clothId)) > rank);
+      _items.insert(at < 0 ? _items.length : at, item);
       present.add(id);
-      n++;
     }
     _precache();
   }
@@ -337,7 +371,9 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       if (bytes == null) throw Exception('capture failed');
       final layout = {
         'background': _bg.toJson(),
-        'items': _items.map((e) => e.toJson()).toList(),
+        'items': [
+          for (var i = 0; i < _items.length; i++) _items[i].toJson(z: i),
+        ],
       };
       final saved = await svc.saveManualOutfit(
         png: bytes.buffer.asUint8List(),

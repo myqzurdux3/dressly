@@ -52,6 +52,15 @@ class ClothImage {
   /// somebody is waiting on to decide whether to keep it.
   final String enhancedPreviewUrl;
   final String? enhanceStatus; // null | 'processing' | 'ready' | 'failed'
+
+  /// Why the last attempt failed, in the server's words. "It keeps failing"
+  /// with no reason leaves nothing to act on.
+  final String? enhanceError;
+
+  /// Whether the AI prompt names what the owner typed about this garment
+  /// (brand, cut, colours, tags). Remembered per image, so a retry repeats the
+  /// same job.
+  final bool enhanceDescribe;
   final String enhanceMethod; // 'none' | 'auto' | 'ai' (applied to this photo)
   final String? enhancePendingMethod; // method of the pending candidate
   final String? enhanceTier; // AI tier of the pending candidate
@@ -73,11 +82,39 @@ class ClothImage {
     this.enhancedUrl = '',
     this.enhancedPreviewUrl = '',
     this.enhanceStatus,
+    this.enhanceError,
+    this.enhanceDescribe = true,
     this.enhanceMethod = 'none',
     this.enhancePendingMethod,
     this.enhanceTier,
     this.enhanceNextTier,
   });
+
+  /// One field changed, everything else kept. Used to reflect a toggle without
+  /// waiting on a round trip.
+  ClothImage copyWith({bool? enhanceDescribe}) => ClothImage(
+        id: id,
+        role: role,
+        sortOrder: sortOrder,
+        bgAccepted: bgAccepted,
+        cutoutStatus: cutoutStatus,
+        bgTolerance: bgTolerance,
+        originalUrl: originalUrl,
+        cutoutUrl: cutoutUrl,
+        thumbUrl: thumbUrl,
+        previewUrl: previewUrl,
+        originalPreviewUrl: originalPreviewUrl,
+        cutoutPreviewUrl: cutoutPreviewUrl,
+        enhancedUrl: enhancedUrl,
+        enhancedPreviewUrl: enhancedPreviewUrl,
+        enhanceStatus: enhanceStatus,
+        enhanceError: enhanceError,
+        enhanceDescribe: enhanceDescribe ?? this.enhanceDescribe,
+        enhanceMethod: enhanceMethod,
+        enhancePendingMethod: enhancePendingMethod,
+        enhanceTier: enhanceTier,
+        enhanceNextTier: enhanceNextTier,
+      );
 
   factory ClothImage.fromJson(Map<String, dynamic> json) => ClothImage(
         id: json['id'] as int,
@@ -95,6 +132,8 @@ class ClothImage {
         enhancedUrl: (json['enhanced_url'] ?? '') as String,
         enhancedPreviewUrl: (json['enhanced_preview_url'] ?? '') as String,
         enhanceStatus: json['enhance_status'] as String?,
+        enhanceError: json['enhance_error'] as String?,
+        enhanceDescribe: json['enhance_describe'] != false,
         enhanceMethod: (json['enhance_method'] ?? 'none') as String,
         enhancePendingMethod: json['enhance_pending_method'] as String?,
         enhanceTier: json['enhance_tier'] as String?,

@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional
@@ -29,6 +30,8 @@ from generator import (
     combo_key,
     explain as algo_explain,
     is_multi_angle,
+    layer_of,
+    layer_sorted,
     select as algo_select,
     why_empty as algo_why_empty,
 )
@@ -93,8 +96,12 @@ class AlgoRequest(BaseModel):
     random_model: bool = False
     random_model_gender: str = ""  # '' any | 'male' | 'female'
     # "any" | "hot" | "cold" — restricts the pool (and the random algo's
-    # completion logic) to light or warm outfits.
+    # completion logic) to light or warm outfits. "auto" asks the forecast for
+    # `weather_day` (default today) and resolves to hot or cold; with no
+    # location set, or no forecast to be had, it resolves to "any" — the
+    # behaviour there has always been.
     weather: str = "any"
+    weather_day: str = ""  # 'YYYY-MM-DD'; empty = today
     # Explicit category list — picks one cloth per requested category from the
     # pool (e.g. ["tshirt","jeans","sneakers"]). Overrides weather.
     categories: List[str] = []
@@ -416,6 +423,27 @@ def _join_prompt(*parts: str) -> str:
     return ". ".join(p.strip(". ").strip() for p in parts if p and p.strip())
 
 
+def _resolve_weather(conn, user_id: int, requested: str, day: str = "") -> str:
+    """Turn weather='auto' into 'hot' or 'cold' using the forecast.
+
+    Anything else is passed through untouched, and an 'auto' that cannot be
+    answered — no location, provider down, a day beyond the forecast — comes
+    back as 'any'. Refusing to generate because a weather API is unreachable
+    would be a poor trade for a feature whose whole job is saving one tap.
+    """
+    if (requested or "").strip().lower() != "auto":
+        return requested
+    import weather as weather_mod
+
+    row = conn.execute(
+        "SELECT weather_lat, weather_lon FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if not row or row["weather_lat"] is None:
+        return "any"
+    target = (day or "").strip() or date.today().isoformat()
+    return weather_mod.mode_for(row["weather_lat"], row["weather_lon"], target)
+
+
 def _norm_image_mode(mode) -> str:
     return "separate" if str(mode or "").strip().lower() == "separate" else "collage"
 
@@ -449,12 +477,26 @@ def _garment_image_paths(conn, render_ids: List[int], view: str, image_mode: str
 
 
 def _vto_inputs(conn, render_ids, view, image_mode, has_model, collage_prompt_fn):
-    """The VTO slot's inputs when the FLUX tiers use SEPARATE images: VTO only
-    accepts one garment, so it always needs a single labeled collage +
-    a collage-style prompt. Returns (garment_collage_path, vto_prompt), or
-    (None, None) in collage mode (the caller's collage/prompt already fit)."""
+    """The VTO slot's inputs: one garment collage, and its own prompt.
+
+    Two things make the try-on prompt different from the FLUX one, both from
+    the try-on guide (https://docs.bfl.ml/flux_tools/flux_vto):
+
+      * VTO accepts a single garment image, so in separate-image mode it needs
+        a collage of its own and a collage-style prompt rather than the
+        enumerated one;
+      * "to get higher quality results, we recommend to add a concise
+        description of the garments … a detailed description can significantly
+        improve the outcome". That is not a user preference, so the try-on
+        prompt describes the garments whether or not "describe items" is on —
+        which is why a prompt comes back in collage mode too, where the
+        caller's own prompt would otherwise have been reused unchanged.
+
+    Returns (garment_collage_path, vto_prompt); the path is None in collage
+    mode, where the caller's existing collage already is the garment image.
+    """
     if image_mode != "separate":
-        return None, None
+        return None, collage_prompt_fn()
     paths, _ = _garment_image_paths(conn, render_ids, view, "collage",
                                     person_reserved=has_model)
     garment = paths[0] if paths else None
@@ -511,28 +553,125 @@ def _garment_phrase(conn, cloth_ids: List[int]) -> str:
 # The FLUX try-on formula (from the model docs): image 1 is the person, image 2
 # is the garment reference (our labeled collage). Describing the garments —
 # especially fit + category — measurably improves the result.
-# Nudges the model to layer instead of stacking/duplicating tops, so an outfit
-# with several upper garments renders as one coherent look.
-_LAYER_HINT = ("Combine them into one coherent, well-fitted outfit with a single "
-               "visible top layer; do not duplicate or stack garments.")
+#
+# This used to read "…with a single visible top layer; do not duplicate or stack
+# garments", which asked for the opposite of what a jacket over a t-shirt is:
+# the model obliged, and hid whichever upper garment it felt like. Only the
+# duplication half was worth keeping — the layering is now stated explicitly by
+# _layering_clause, which names the order instead of forbidding the stack.
+# Phrased as what to DO, not what to avoid: FLUX.2 does not support negative
+# prompts, and its guide is explicit that "no X" should be rewritten as the
+# positive outcome. "Do not duplicate a garment" was asking the model to act on
+# a word it cannot act on; "exactly once" is the same instruction it can follow.
+# https://docs.bfl.ai/guides/prompting_guide_flux2
+_LAYER_HINT = ("Combine them into one coherent, well-fitted outfit, wearing "
+               "each garment exactly once and only the garments shown.")
+
+
+def _layer_ordered_ids(conn, cloth_ids: List[int]) -> List[int]:
+    """``cloth_ids`` reordered the way the clothes are worn, innermost first.
+
+    Everything downstream — the collage cells, the per-garment images, their
+    descriptions in the prompt — is built from this one list, so the order the
+    model is shown and the order it is told about cannot drift apart.
+    """
+    if not cloth_ids:
+        return []
+    ph = ",".join("?" * len(cloth_ids))
+    cats = {
+        r["id"]: (r["category"] or "")
+        for r in conn.execute(
+            f"SELECT id, category FROM clothes WHERE id IN ({ph})", list(cloth_ids)
+        ).fetchall()
+    }
+    return layer_sorted(cloth_ids, key=lambda cid: cats.get(cid, ""))
+
+
+# The layers that share the torso, and therefore the ones that hide each other
+# when the model gets to choose: t-shirt, hoodie, jacket.
+_UPPER_LAYERS = range(40, 63)
+
+
+def _layering_clause(conn, cloth_ids: List[int]) -> str:
+    """"Wear X under Y under Z" — spelled out, when it can be got wrong.
+
+    Reported: the jacket came out under the t-shirt. Nothing in the prompt said
+    which was on top, and the collage tiled them in whatever order the clothes
+    had been picked, so the answer changed from one render to the next.
+
+    Only upper-body garments need saying: shoes are never rendered over a coat.
+    One garment on the torso cannot be layered wrongly, so nothing is added.
+    """
+    if not cloth_ids:
+        return ""
+    # Re-sorted here rather than trusting the caller: this is also reached from
+    # the regenerate paths, which pass the outfit's stored cloth order.
+    ph = ",".join("?" * len(cloth_ids))
+    rows = {
+        r["id"]: r for r in conn.execute(
+            f"SELECT id, name, category FROM clothes WHERE id IN ({ph})",
+            list(cloth_ids),
+        ).fetchall()
+    }
+    ordered = layer_sorted([rows[cid] for cid in cloth_ids if cid in rows],
+                           key=lambda r: r["category"] or "")
+    upper = [r for r in ordered
+             if layer_of(r["category"] or "") in _UPPER_LAYERS]
+    if len(upper) < 2:
+        return ""
+
+    def _name(row) -> str:
+        kind = (row["category"] or "").strip().replace("-", " ")
+        return f"the {kind}" if kind else f"the {(row['name'] or 'garment').strip()}"
+
+    names = [_name(r) for r in upper]
+    # Also positive: "none of them is hidden" became "each ... stays visible".
+    return (f"Layer the upper garments in this order, closest to the body first: "
+            f"{', then '.join(names)} — {names[-1]} is worn over the others and "
+            f"stays fully visible, with each layer beneath it showing at the "
+            f"collar, cuffs and hem.")
 
 
 def _compose_prompt(conn, cloth_ids, *, user_prompt: str, has_model: bool,
                     is_back: bool, random_person: bool, describe: bool,
-                    image_mode: str = "collage") -> str:
+                    image_mode: str = "collage", add_detail: str = "") -> str:
+    """Assemble the render instruction.
+
+    Order is not cosmetic: "word order matters — FLUX.2 pays more attention to
+    what comes first", with the priority main subject -> key action -> critical
+    style -> essential context -> secondary details
+    (https://docs.bfl.ml/guides/prompting_guide_flux2). So:
+
+        the user's own text     (their explicit instruction leads)
+        the subject sentence    (the person / the outfit, and what it wears)
+        add_detail             (a pose or a mood: an action on that subject)
+        the layering clause     (a constraint on the garments)
+        the extra-reference hint
+
+    ``add_detail`` used to be merged into ``user_prompt`` and therefore landed
+    ahead of the subject sentence, pushing "the person of image 1, …" out of
+    the position the model weights most — a detail like "hands in pockets"
+    competing with the subject instead of qualifying it.
+    """
     parts: List[str] = []
     if user_prompt:
         parts.append(user_prompt)
 
+    # Which garment covers which, when more than one shares the torso.
+    layering = _layering_clause(conn, cloth_ids or [])
+
     if image_mode == "separate" and cloth_ids:
         # Each garment is its own reference image — enumerate what each shows so
         # the model doesn't confuse them. Image 1 is the person (when present).
+        # ``cloth_ids`` arrives already layer-ordered, so image N and the Nth
+        # description are the same garment.
         start = 2 if has_model else 1
         descs = _garment_descriptions(conn, cloth_ids)
         listing = "; ".join(f"image {start + i} is {d}" for i, d in enumerate(descs))
         if has_model:
-            pose = ("keeping exactly their body shape and pose, shown from behind"
-                    if is_back else "maintaining exactly their face and pose")
+            pose = ("keeping exactly their body shape, hairstyle and pose, shown "
+                    "from behind" if is_back
+                    else "keeping exactly their face, hairstyle, expression and pose")
             parts.append(
                 f"The person of image 1, {pose}, wearing the garments shown in the "
                 f"other images ({listing}). {_LAYER_HINT}")
@@ -546,14 +685,14 @@ def _compose_prompt(conn, cloth_ids, *, user_prompt: str, has_model: bool,
                 f"A clean, well-lit full-body photo of one complete outfit on a "
                 f"plain neutral background, combining the garments shown in the "
                 f"images ({listing}). {_LAYER_HINT}")
-        return _join_prompt(*parts)
+        return _join_prompt(*parts, add_detail, layering)
 
     # Collage mode (default): all garments tiled into one reference image.
     garments = _garment_phrase(conn, cloth_ids) if describe else "the garments"
     if has_model:
-        pose = ("keeping exactly their body shape and pose, shown from behind"
-                if is_back
-                else "maintaining exactly their face and pose")
+        pose = ("keeping exactly their body shape, hairstyle and pose, shown from "
+                "behind" if is_back
+                else "keeping exactly their face, hairstyle, expression and pose")
         parts.append(
             f"The person of image 1, {pose}, wearing {garments} of image 2.")
     elif random_person:
@@ -565,7 +704,9 @@ def _compose_prompt(conn, cloth_ids, *, user_prompt: str, has_model: bool,
         parts.append(
             f"A clean, well-lit full-body photo of {garments} arranged as one "
             f"complete outfit on a plain neutral background.")
-    return _join_prompt(*parts)
+    # Collage mode had no layering instruction at all: the cells were tiled in
+    # whatever order the clothes were picked and the model inferred the rest.
+    return _join_prompt(*parts, add_detail, layering)
 
 
 def _build_inputs(conn, req, user_id: int, model_id=None):
@@ -578,7 +719,13 @@ def _build_inputs(conn, req, user_id: int, model_id=None):
     view = getattr(req, "view", "front") or "front"
     cloth_ids = getattr(req, "cloth_ids", []) or []
     image_mode = _norm_image_mode(getattr(req, "image_mode", "collage"))
-    render_ids = _render_ids(cloth_ids, getattr(req, "render_cloth_ids", []) or [])
+    # Ordered the way the clothes are worn, once, here: the collage cells, the
+    # per-garment images and their descriptions in the prompt are all built from
+    # this list, so what the model is shown and what it is told cannot disagree.
+    # Only the render order changes — the outfit's stored cloth list keeps the
+    # order the user chose.
+    render_ids = _layer_ordered_ids(
+        conn, _render_ids(cloth_ids, getattr(req, "render_cloth_ids", []) or []))
     describe = getattr(req, "describe_clothes", False)
     random_model = getattr(req, "random_model", False)
     image_paths: List[str] = []
@@ -600,9 +747,11 @@ def _build_inputs(conn, req, user_id: int, model_id=None):
         image_mode=image_mode)
     vto_garment, vto_prompt = _vto_inputs(
         conn, render_ids, view, image_mode, has_model,
+        # describe=True regardless of the user's toggle: naming the garments is
+        # what the try-on guide says lifts its quality most.
         lambda: _compose_prompt(
             conn, render_ids, user_prompt=user_prompt, has_model=has_model,
-            is_back=is_back, random_person=random_person, describe=describe,
+            is_back=is_back, random_person=random_person, describe=True,
             image_mode="collage"))
     prompt, image_paths = _append_extra_refs(conn, render_ids, prompt, image_paths)
     return prompt, image_paths, person_path, vto_garment, vto_prompt
@@ -679,6 +828,11 @@ def _user_prompt_of(prompt: str) -> str:
     return p[: min(cuts)].strip(". ").strip()
 
 
+def _outfit_add_detail(row) -> str:
+    """The extra instruction stored on this outfit, if any."""
+    return (row["add_detail"] or "") if "add_detail" in row.keys() else ""
+
+
 def _outfit_describes(row) -> bool:
     return bool(row["describe_clothes"]) if "describe_clothes" in row.keys() else False
 
@@ -714,8 +868,10 @@ def _recompose_for_row(conn, row, *, cloth_ids=None, view=None, model_id=None,
     im = image_mode if image_mode is not None else _outfit_image_mode(row)
     random_person = mid is None and "realistic random fashion model" in (row["prompt"] or "")
     base = _user_prompt_of(row["prompt"])
-    if add_detail and add_detail.strip():
-        base = _join_prompt(base, add_detail.strip())
+    # A new detail replaces the stored one; no argument keeps what was there,
+    # which is what makes a plain "regenerate" repeat the same instruction.
+    detail = (add_detail if add_detail is not None
+              else _outfit_add_detail(row)) or ""
     return _compose_prompt(
         conn, render,
         user_prompt=base,
@@ -724,6 +880,9 @@ def _recompose_for_row(conn, row, *, cloth_ids=None, view=None, model_id=None,
         random_person=random_person,
         describe=d,
         image_mode=im,
+        # Passed through rather than glued onto the user's text: it belongs
+        # after the subject sentence, not in front of it.
+        add_detail=detail.strip(),
     )
 
 
@@ -799,6 +958,10 @@ def _outfit_order(sort: str) -> str:
 
 def _outfit_filters(favorite: bool, model: str) -> tuple[list, list]:
     where = ["o.user_id = ?", "NOT (o.view = 'back' AND o.linked_id IS NOT NULL)"]
+    # A planned day is an outfit nobody has rendered yet — it belongs to the
+    # week plan, not to the history of things that were actually made. Once it
+    # IS rendered it stops matching this and appears like anything else.
+    where.append("NOT (o.kind = 'plan' AND COALESCE(o.generated_path, '') = '')")
     if favorite:
         where.append("o.is_favorite = 1")
     if model == "with":
@@ -1054,11 +1217,13 @@ def regenerate(outfit_id: int, req: RegenerateRequest, background: BackgroundTas
                                        image_mode="collage", render_ids=render_ids))
         prompt, image_paths = _append_extra_refs(conn, render_ids, composed, image_paths)
         # Persist the recomposed prompt + choices so they stick to the outfit.
+        kept_detail = (req.add_detail if req.add_detail is not None
+                       else _outfit_add_detail(row)) or ""
         conn.execute(
             "UPDATE outfits SET status='processing', describe_clothes=?, prompt=?, "
-            "image_mode=?, render_cloth_ids=? WHERE id=?",
+            "image_mode=?, render_cloth_ids=?, add_detail=? WHERE id=?",
             (1 if describe else 0, composed, image_mode,
-             json.dumps(render_ids), outfit_id))
+             json.dumps(render_ids), kept_detail.strip(), outfit_id))
 
     target_tier = req.tier or next_outfit_tier(
         prev_tier, can_vto=row["model_id"] is not None) or "max"
@@ -1496,6 +1661,11 @@ def preview_algo(req: AlgoRequest, user=Depends(get_current_user)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "pick-by-tag needs a tag")
     count = max(1, min(int(req.count or 1), 8))
     from generator import GenerateRequest as GenReq
+    # Resolved once, not per draw: eight draws must not mean eight forecast
+    # lookups, and every proposal in one batch is for the same day.
+    with get_conn() as conn:
+        resolved_weather = _resolve_weather(
+            conn, user["id"], req.weather, req.weather_day)
     seen_keys = set()
     selections: List[List[dict]] = []
     labels = []
@@ -1503,7 +1673,8 @@ def preview_algo(req: AlgoRequest, user=Depends(get_current_user)):
     for _ in range(count * 4):
         picked = algo_select(GenReq(
             algo=req.algo, min_score=req.min_score, color=req.color,
-            brand=req.brand, tag=req.tag, user_id=user["id"], weather=req.weather,
+            brand=req.brand, tag=req.tag, user_id=user["id"],
+            weather=resolved_weather,
             categories=req.categories, locked_cloth_ids=req.locked_cloth_ids,
             fill_gaps=req.fill_gaps,
         ))
@@ -1531,6 +1702,9 @@ def preview_algo(req: AlgoRequest, user=Depends(get_current_user)):
     return {
         "algo": req.algo,
         "algo_label": labels[0] if labels else req.algo,
+        # What 'auto' actually became, so the app can say "auto -> cold" instead
+        # of leaving the user wondering which wardrobe it drew from.
+        "weather": resolved_weather,
         "selections": out,
     }
 
@@ -1552,9 +1726,13 @@ def generate_from_algo(req: AlgoRequest, background: BackgroundTasks,
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "pick-by-tag needs a tag")
 
     from generator import GenerateRequest as GenReq
+    with get_conn() as conn:
+        resolved_weather = _resolve_weather(
+            conn, user["id"], req.weather, req.weather_day)
     picked = algo_select(GenReq(
         algo=req.algo, min_score=req.min_score, color=req.color,
-        brand=req.brand, tag=req.tag, user_id=user["id"], weather=req.weather,
+        brand=req.brand, tag=req.tag, user_id=user["id"],
+        weather=resolved_weather,
         categories=req.categories, locked_cloth_ids=req.locked_cloth_ids,
         fill_gaps=req.fill_gaps,
     ))

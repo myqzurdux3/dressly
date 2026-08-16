@@ -25,7 +25,19 @@ MIN_PASSWORD_LENGTH = 6
 
 
 def _public_user(row) -> dict:
-    return {"id": row["id"], "email": row["email"], "created_at": row["created_at"]}
+    from auth import is_admin as _is_admin
+
+    user = {"id": row["id"], "email": row["email"],
+            "created_at": row["created_at"]}
+    # Included from the first response, not only from /auth/me: the app decides
+    # what to show the moment somebody signs in, and asking again for one
+    # boolean would be a second round trip on the login screen.
+    keys = row.keys() if hasattr(row, "keys") else ()
+    user["is_admin"] = _is_admin({
+        "email": user["email"],
+        "is_admin": row["is_admin"] if "is_admin" in keys else 0,
+    })
+    return user
 
 
 @router.post("/signup", dependencies=[Depends(auth_guard)])
@@ -43,7 +55,7 @@ def signup(creds: Credentials):
             (creds.email, hash_password(creds.password)),
         )
         user = conn.execute(
-            "SELECT id, email, created_at FROM users WHERE id = ?", (cur.lastrowid,)
+            "SELECT id, email, is_admin, created_at FROM users WHERE id = ?", (cur.lastrowid,)
         ).fetchone()
     token = issue_token(user["id"], user["email"])
     audit_record(_public_user(user), "auth.signup")
@@ -54,7 +66,7 @@ def signup(creds: Credentials):
 def login(creds: Credentials, request: Request):
     with get_conn() as conn:
         user = conn.execute(
-            "SELECT id, email, created_at, password_hash FROM users WHERE email = ?",
+            "SELECT id, email, is_admin, created_at, password_hash FROM users WHERE email = ?",
             (creds.email,),
         ).fetchone()
     if not user or not verify_password(creds.password, user["password_hash"]):
@@ -70,7 +82,12 @@ def login(creds: Credentials, request: Request):
 
 @router.get("/me")
 def me(user=Depends(get_current_user)):
-    return user
+    # ``is_admin`` here is the EFFECTIVE answer — the DB flag or the email
+    # allowlist — so the app never has to reimplement the rule to decide
+    # whether to show an admin-only screen.
+    from auth import is_admin as _is_admin
+
+    return {**user, "is_admin": _is_admin(user)}
 
 @router.post("/password", dependencies=[Depends(auth_guard)])
 def change_password(req: PasswordChange, request: Request,

@@ -9,18 +9,31 @@ from images import public_url_for
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 
-def _cloth_thumb(conn, cloth_id: int) -> str:
-    img = conn.execute(
-        "SELECT cutout_path, original_path, bg_accepted FROM cloth_images "
-        "WHERE cloth_id = ? "
-        "ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END, sort_order, id LIMIT 1",
-        (cloth_id,),
-    ).fetchone()
-    if not img:
-        return ""
-    path = (img["original_path"] if img["bg_accepted"] == "rejected"
-            else (img["cutout_path"] or img["original_path"]))
-    return public_url_for(path)
+def _cloth_thumbs(conn, cloth_ids) -> dict:
+    """cloth id -> its front photo's URL, in one query instead of one each.
+
+    The top-clothes list is capped at five, so this was five round trips rather
+    than fifty — but it is the same shape as the N+1 that was already fixed in
+    the wardrobe listing, and one query is not more code than five.
+    """
+    ids = [int(c) for c in cloth_ids]
+    if not ids:
+        return {}
+    ph = ",".join("?" * len(ids))
+    out = {}
+    for img in conn.execute(
+        f"SELECT cloth_id, cutout_path, original_path, bg_accepted "
+        f"FROM cloth_images WHERE cloth_id IN ({ph}) "
+        f"ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END DESC, "
+        f"sort_order DESC, id DESC",
+        ids,
+    ).fetchall():
+        # Ordered so the front photo is written last and wins, which reproduces
+        # the per-cloth "ORDER BY ... LIMIT 1" exactly.
+        path = (img["original_path"] if img["bg_accepted"] == "rejected"
+                else (img["cutout_path"] or img["original_path"]))
+        out[img["cloth_id"]] = public_url_for(path)
+    return out
 
 
 @router.get("/me")
@@ -74,9 +87,10 @@ def my_stats(user=Depends(get_current_user)):
             "ORDER BY n DESC, c.name COLLATE NOCASE ASC LIMIT 5",
             (uid,),
         ).fetchall()
+        thumbs = _cloth_thumbs(conn, [t["id"] for t in top])
         top_clothes = [{
             "id": t["id"], "name": t["name"], "brand": t["brand"] or "",
-            "times_worn": t["n"], "thumb_url": _cloth_thumb(conn, t["id"]),
+            "times_worn": t["n"], "thumb_url": thumbs.get(t["id"], ""),
         } for t in top]
 
     pct = round(100 * clothes_worn / clothes_count) if clothes_count else 0
