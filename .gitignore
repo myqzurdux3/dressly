@@ -2,7 +2,7 @@
 # note.txt holds the BFL API key in plain text. The file is kept on disk on
 # purpose (dev convenience) but must never enter the history.
 note.txt
-clothesapp/note.txt
+dressly/note.txt
 .env
 *.env
 
@@ -18,16 +18,16 @@ __pycache__/
 venv/
 
 # --- flutter / dart ------------------------------------------------------
-clothesapp/build/
-clothesapp/.dart_tool/
-clothesapp/.flutter-plugins
-clothesapp/.flutter-plugins-dependencies
-clothesapp/android/local.properties
-clothesapp/ios/Flutter/Generated.xcconfig
-clothesapp/ios/Flutter/flutter_export_environment.sh
-clothesapp/.idea/
-clothesapp/*.iml
-clothesapp/android/*.iml
+dressly/build/
+dressly/.dart_tool/
+dressly/.flutter-plugins
+dressly/.flutter-plugins-dependencies
+dressly/android/local.properties
+dressly/ios/Flutter/Generated.xcconfig
+dressly/ios/Flutter/flutter_export_environment.sh
+dressly/.idea/
+dressly/*.iml
+dressly/android/*.iml
 
 # --- os / editor ---------------------------------------------------------
 .DS_Store
