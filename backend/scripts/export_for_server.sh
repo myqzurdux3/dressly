@@ -79,7 +79,7 @@ On the server:
 
   ./run-prod.sh
 
-Then put the printed pin in clothesapp/lib/config/api_config.dart
+Then put the printed pin in dressly/lib/config/api_config.dart
 (apiCertSha256) and rebuild the app.
 
 Verify the hard links survived — the two numbers should differ by roughly 2x:

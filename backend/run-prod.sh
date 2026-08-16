@@ -203,7 +203,7 @@ Generate one:
   python scripts/make_cert.py --host <this server's public IP>
 
 then put the fingerprint it prints into apiCertSha256 in
-clothesapp/lib/config/api_config.dart and rebuild the app.
+dressly/lib/config/api_config.dart and rebuild the app.
 
 To run without TLS anyway (local testing only):
 

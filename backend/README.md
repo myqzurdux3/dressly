@@ -59,7 +59,7 @@ does. Only `*` is refused, which is why it has to be set at all.
 
 `scripts/make_cert.py` generates a self-signed certificate and prints its
 SHA-256 fingerprint. Put that fingerprint in `apiCertSha256` in
-`clothesapp/lib/config/api_config.dart`.
+`dressly/lib/config/api_config.dart`.
 
 The pin is what makes self-signed safe. A self-signed certificate is trusted by
 nothing, so a client either disables verification — worse than plain HTTP,
@@ -149,7 +149,7 @@ image in the app 404s at once. The script is idempotent.
 - Android emulator → `http://10.0.2.2:80`
 - Physical device → `http://<this machine's LAN IP>:80`
 
-Set this in `clothesapp/lib/config/api_config.dart`.
+Set this in `dressly/lib/config/api_config.dart`.
 
 ## Endpoints
 

@@ -111,7 +111,7 @@ def main() -> int:
     print(f"valid for: {', '.join(hosts)}")
     print(f"expires  : {(now + datetime.timedelta(days=args.days)).date()}")
     print()
-    print("SHA-256 pin (put this in clothesapp/lib/config/api_config.dart):")
+    print("SHA-256 pin (put this in dressly/lib/config/api_config.dart):")
     print(f"  {fingerprint}")
     print(f"  {pretty}")
     return 0
