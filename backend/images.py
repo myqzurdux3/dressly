@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 import logging
 import os
 import shutil
@@ -279,13 +280,26 @@ def link_bytes(data: bytes, dst: Path) -> Path:
             tmp = blob.with_name(blob.name + ".tmp")
             tmp.write_bytes(data)
             tmp.replace(blob)
-        dst.unlink(missing_ok=True)
-        os.link(blob, dst)
+        # Link to a temp sibling, then rename ONTO dst. Two reasons this is not
+        # `unlink` + `link`:
+        #   - between the unlink and the link, dst does not exist, and its URL
+        #     has already been handed to the client with a ?v= cache-buster;
+        #   - if the unlink fails and dst is still a hard link into the blob
+        #     store, the fallback below would write THROUGH it and rewrite the
+        #     shared inode — corrupting every other cloth linked to that blob,
+        #     and making the digest lie about its own content.
+        # os.replace never touches the old inode; it just moves the name.
+        tmp = dst.with_name(f"{dst.name}.{secrets.token_hex(4)}.tmp")
+        try:
+            os.link(blob, tmp)
+        except OSError as e:  # different filesystem, no link support, ...
+            log.debug("blob link failed (%s); writing a plain copy", e)
+            tmp.write_bytes(data)   # a fresh file, never a shared inode
+        os.replace(tmp, dst)
         return dst
-    except OSError as e:  # different filesystem, no link support, ...
-        log.debug("blob link failed (%s); writing a plain copy", e)
-        dst.write_bytes(data)
-        return dst
+    except OSError as e:
+        log.warning("could not store %s: %s", dst, e)
+        raise
 
 
 def gc_orphan_blobs() -> int:
