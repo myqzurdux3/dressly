@@ -27,7 +27,6 @@ class ProfileStats {
   final int clothesWornCount;
   final int clothesWornPct;
   final int outfitsGenerated;
-  final int outfitsCount;
   final int favoritesCount;
   final int outfitWearsTotal;
   final int clothWearsTotal;
@@ -40,7 +39,6 @@ class ProfileStats {
     required this.clothesWornCount,
     required this.clothesWornPct,
     required this.outfitsGenerated,
-    required this.outfitsCount,
     required this.favoritesCount,
     required this.outfitWearsTotal,
     required this.clothWearsTotal,
@@ -56,7 +54,6 @@ class ProfileStats {
       clothesWornCount: j['clothes_worn_count'] as int? ?? 0,
       clothesWornPct: j['clothes_worn_pct'] as int? ?? 0,
       outfitsGenerated: j['outfits_generated'] as int? ?? 0,
-      outfitsCount: j['outfits_count'] as int? ?? 0,
       favoritesCount: j['favorites_count'] as int? ?? 0,
       outfitWearsTotal: j['outfit_wears_total'] as int? ?? 0,
       clothWearsTotal: j['cloth_wears_total'] as int? ?? 0,

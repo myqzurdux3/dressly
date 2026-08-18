@@ -11,7 +11,6 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  cupertino_icons: ^1.0.6
   http: ^1.2.0
   file_picker: ^8.0.0
   shared_preferences: ^2.2.2
@@ -38,9 +37,9 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
-  # The logo is drawn (widgets/brand_logo.dart), not shipped as a bitmap, so
-  # assets/logo.jpg is no longer bundled. assets/icon*.png stay: they are read
-  # at build time by flutter_launcher_icons, not at runtime.
+  # The logo is drawn (widgets/brand_logo.dart), not shipped as a bitmap.
+  # assets/icon*.png stay: they are read at build time by
+  # flutter_launcher_icons, not at runtime.
   fonts:
     # Manrope, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
     # Used by the logo only.

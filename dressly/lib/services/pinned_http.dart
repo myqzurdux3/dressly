@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -108,11 +107,3 @@ void installCertificatePinning() {
     HttpOverrides.global = PinnedHttpOverrides();
   }
 }
-
-/// Base64 of the pin, handy for logging without dumping the whole certificate.
-String shortPin() => PinnedHttp.isPinned
-    ? base64Url.encode(
-        List<int>.generate(4, (i) => int.parse(
-            apiCertSha256.replaceAll(':', '').substring(i * 2, i * 2 + 2),
-            radix: 16)))
-    : 'none';
