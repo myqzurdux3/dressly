@@ -285,7 +285,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     final newVal = await _run('result.favoriteFailed', () => outfitsServiceOf(
         context).toggleFavorite(_outfit.id, isFavorite: !_outfit.isFavorite));
     if (newVal == null || !mounted) return;
-    setState(() => _outfit = outfitWithFavorite(_outfit, newVal));
+    setState(() => _outfit = _outfit.copyWith(isFavorite: newVal));
     widget.onChanged(_outfit);
     _toast(newVal ? 'Saved to favorites ✓' : 'Removed from favorites');
   }
@@ -294,7 +294,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     final newVal = await _run('result.failed', () => outfitsServiceOf(context)
         .setBlacklist(_outfit.id, blacklisted: !_outfit.isBlacklisted));
     if (newVal == null || !mounted) return;
-    setState(() => _outfit = outfitWithBlacklist(_outfit, newVal));
+    setState(() => _outfit = _outfit.copyWith(isBlacklisted: newVal));
     widget.onChanged(_outfit);
     _toastKey(newVal ? 'result.bannedToast' : 'result.allowedAgain');
   }
@@ -926,46 +926,6 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   }
 }
 
-/// Copy of [o] with only its favourite flag changed.
-///
-/// Every field has to be listed: an omitted one silently takes the
-/// constructor's default, and the defaults for `kind` and `layout` ('ai' and
-/// null) turned a manual outfit into an AI one — no longer openable in the
-/// builder — the moment its heart was tapped. Same for the resized URLs, whose
-/// default is the empty string.
-///
-/// Top-level rather than a method so the copy can be tested on its own.
-Outfit outfitWithFavorite(Outfit o, bool fav) => Outfit(
-      id: o.id, modelId: o.modelId, modelName: o.modelName,
-      clothIds: o.clothIds, cloths: o.cloths, prompt: o.prompt,
-      generatedUrl: o.generatedUrl, thumbUrl: o.thumbUrl,
-      previewUrl: o.previewUrl, status: o.status, isMock: o.isMock,
-      modelTier: o.modelTier, modelSlug: o.modelSlug, view: o.view,
-      linkedId: o.linkedId, wornToday: o.wornToday,
-      isFavorite: fav, nextTier: o.nextTier,
-      describeClothes: o.describeClothes, isBlacklisted: o.isBlacklisted,
-      imageMode: o.imageMode, renderClothIds: o.renderClothIds,
-      error: o.error,
-      createdAt: o.createdAt,
-      algoLabel: o.algoLabel, kind: o.kind, layout: o.layout,
-    );
-
-/// Copy of [o] with only its blacklist flag changed. See [outfitWithFavorite]
-/// for why every field is repeated.
-Outfit outfitWithBlacklist(Outfit o, bool banned) => Outfit(
-      id: o.id, modelId: o.modelId, modelName: o.modelName,
-      clothIds: o.clothIds, cloths: o.cloths, prompt: o.prompt,
-      generatedUrl: o.generatedUrl, thumbUrl: o.thumbUrl,
-      previewUrl: o.previewUrl, status: o.status, isMock: o.isMock,
-      modelTier: o.modelTier, modelSlug: o.modelSlug, view: o.view,
-      linkedId: o.linkedId, wornToday: o.wornToday,
-      isFavorite: o.isFavorite, nextTier: o.nextTier,
-      describeClothes: o.describeClothes, isBlacklisted: banned,
-      imageMode: o.imageMode, renderClothIds: o.renderClothIds,
-      error: o.error,
-      createdAt: o.createdAt,
-      algoLabel: o.algoLabel, kind: o.kind, layout: o.layout,
-    );
 
 /// Dialog that shows the algorithm's proposed selections (cloth picks only, no
 /// image) and asks the user to confirm before any outfit is rendered. Supports

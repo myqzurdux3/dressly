@@ -1,7 +1,6 @@
 import 'package:dressly/models/agenda.dart';
 import 'package:dressly/models/cloth.dart';
 import 'package:dressly/models/outfit.dart';
-import 'package:dressly/screens/outfit/outfit_result_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -187,9 +186,10 @@ void main() {
     });
 
     test('favoriting a manual outfit keeps its layout and resized copies', () {
-      // The copy is built field by field, so a forgotten field falls back to
-      // the constructor default — which used to turn a manual outfit into an
-      // 'ai' one with no layout, i.e. no longer editable in the builder.
+      // copyWith lists every field in one place. When each call site built the
+      // copy itself, a forgotten field fell back to the constructor default —
+      // which turned a manual outfit into an 'ai' one with no layout, i.e. no
+      // longer editable in the builder.
       final manual = Outfit.fromJson({
         'id': 12, 'cloth_ids': [1, 2], 'cloths': [], 'generated_url': '/g/12.png',
         'thumb_url': '/g/12_thumb.png', 'preview_url': '/g/12_preview.png',
@@ -197,7 +197,7 @@ void main() {
         'is_favorite': false, 'kind': 'manual', 'algo_label': 'Casual',
         'layout': {'background': 'plain', 'items': []},
       });
-      final faved = outfitWithFavorite(manual, true);
+      final faved = manual.copyWith(isFavorite: true);
       expect(faved.isFavorite, isTrue);
       expect(faved.kind, 'manual');
       expect(faved.isManual, isTrue);
@@ -216,7 +216,7 @@ void main() {
         'kind': 'manual', 'layout': {'background': 'plain'},
         'image_mode': 'separate', 'render_cloth_ids': [1],
       });
-      final banned = outfitWithBlacklist(manual, true);
+      final banned = manual.copyWith(isBlacklisted: true);
       expect(banned.isBlacklisted, isTrue);
       expect(banned.kind, 'manual');
       expect(banned.layout, {'background': 'plain'});
