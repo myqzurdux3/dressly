@@ -6,7 +6,6 @@ class DayWeather {
     required this.day,
     required this.mode,
     this.tempMax,
-    this.tempMin,
     this.code,
     this.place = '',
     this.reason = '',
@@ -23,7 +22,6 @@ class DayWeather {
   final String mode;
 
   final double? tempMax;
-  final double? tempMin;
   final int? code;
   final String place;
 
@@ -42,7 +40,6 @@ class DayWeather {
         day: (j['day'] ?? '') as String,
         mode: (j['mode'] ?? 'any') as String,
         tempMax: (j['temp_max'] as num?)?.toDouble(),
-        tempMin: (j['temp_min'] as num?)?.toDouble(),
         code: (j['code'] as num?)?.toInt(),
         place: (j['place'] ?? '') as String,
         reason: (j['reason'] ?? '') as String,

@@ -87,9 +87,6 @@ def _check_production_config() -> None:
 
 _check_production_config()
 
-# rembg model. "u2net" is the default and a good general-purpose choice.
-REMBG_MODEL = os.environ.get("CLOTHESAPP_REMBG_MODEL", "u2net")
-
 # --- rate limits ----------------------------------------------------------
 # Outfit generation and AI enhance are billed per call by bfl.ai, so a stuck
 # client must not be able to loop on them. Counted per user, in-process.

@@ -236,35 +236,6 @@ class OutfitsService {
 
   // --- generator algorithms ---
 
-  Future<Outfit> generateFromAlgo({
-    required String algo,
-    int? modelId,
-    String view = 'front',
-    String prompt = '',
-    String tier = 'flex',
-    int minScore = 0,
-    String color = '',
-    String brand = '',
-    bool randomModel = false,
-    String weather = 'any',
-    List<String> categories = const [],
-  }) async {
-    final data = await _api.post('/outfits/generate-from-algo', {
-      'algo': algo,
-      'model_id': modelId,
-      'random_model': randomModel,
-      'view': view,
-      'prompt': prompt,
-      'tier': tier,
-      'min_score': minScore,
-      'color': color,
-      'brand': brand,
-      'weather': weather,
-      'categories': categories,
-    });
-    return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
-  }
-
   /// Run an algorithm and return its proposed selections (cloth items) WITHOUT
   /// generating any image. The user confirms in the UI, then each selection is
   /// rendered via [generate].

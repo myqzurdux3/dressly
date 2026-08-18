@@ -176,11 +176,7 @@ const Map<String, Map<String, String>> _strings = {
     'builder.gradient': 'Gradient',
     'builder.toFront': 'Bring to front',
     'builder.empty': 'Add at least one item first',
-    'builder.algoFailed': 'Could not load algorithms',
     'builder.algoEmpty': 'No matching outfit',
-    'builder.pickColor': 'Colour',
-    'builder.pickBrand': 'Brand',
-    'builder.pickTag': 'Tag',
     'create.modelSection': 'Model (person)',
     'create.modelHint':
         'Pick a person or "No model" to generate an outfit-only image.',
@@ -353,7 +349,6 @@ const Map<String, Map<String, String>> _strings = {
     'detail.autoCleanupSub': 'Crop, lighting, straighten',
     'detail.aiEnhance': 'AI enhance',
     'detail.aiEnhanceSub': 'Remove wrinkles, flatten',
-    'detail.retry': 'Retry',
     'detail.improvePhoto': 'Improve photo',
     // Outfit result dialog
     'result.loadFailed': 'Load failed',
@@ -400,13 +395,10 @@ const Map<String, Map<String, String>> _strings = {
     'result.reportedThanks': 'Reported to support — thank you',
     'result.reportFailed': 'Report failed',
     'result.generatedOutfit': 'Generated outfit',
-    'result.previewBadge': 'Preview',
     'result.front': 'FRONT',
     'result.back': 'BACK',
     'result.viewFront': 'View front',
     'result.viewBack': 'View back',
-    'result.safeRetry':
-        'Your outfit is safe — the clothes and model are kept. This is often temporary; try again.',
     'result.retryGeneration': 'Retry generation',
     'result.previewNote':
         'Preview image — set BFL_API_KEY on the backend for real renders.',
@@ -883,11 +875,7 @@ const Map<String, Map<String, String>> _strings = {
     'builder.gradient': 'Dégradé',
     'builder.toFront': 'Mettre au premier plan',
     'builder.empty': 'Ajoutez au moins un élément',
-    'builder.algoFailed': 'Impossible de charger les algorithmes',
     'builder.algoEmpty': 'Aucune tenue correspondante',
-    'builder.pickColor': 'Couleur',
-    'builder.pickBrand': 'Marque',
-    'builder.pickTag': 'Tag',
     'create.modelSection': 'Modèle (personne)',
     'create.modelHint':
         'Choisissez une personne ou « Aucun modèle » pour une image de la tenue seule.',
@@ -1059,7 +1047,6 @@ const Map<String, Map<String, String>> _strings = {
     'detail.autoCleanupSub': 'Recadrer, lumière, redresser',
     'detail.aiEnhance': 'Amélioration IA',
     'detail.aiEnhanceSub': 'Enlever les plis, aplatir',
-    'detail.retry': 'Réessayer',
     'detail.improvePhoto': 'Améliorer la photo',
     'result.loadFailed': 'Échec du chargement',
     'result.pickAtLeastOne': 'Choisissez au moins un habit',
@@ -1107,13 +1094,10 @@ const Map<String, Map<String, String>> _strings = {
     'result.reportedThanks': 'Signalé au support — merci',
     'result.reportFailed': 'Échec du signalement',
     'result.generatedOutfit': 'Tenue générée',
-    'result.previewBadge': 'Aperçu',
     'result.front': 'AVANT',
     'result.back': 'ARRIÈRE',
     'result.viewFront': 'Voir l\'avant',
     'result.viewBack': 'Voir l\'arrière',
-    'result.safeRetry':
-        'Votre tenue est intacte — les habits et le modèle sont conservés. C\'est souvent temporaire ; réessayez.',
     'result.retryGeneration': 'Relancer la génération',
     'result.previewNote':
         'Image d\'aperçu — définissez BFL_API_KEY sur le backend pour de vrais rendus.',
