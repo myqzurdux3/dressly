@@ -326,10 +326,40 @@ def test_an_unsupported_model_is_refused_not_approximated():
     assert "not supported" in r.stderr
 
 
-def test_the_model_is_shared_with_rembgs_download():
-    """Same path, so moving off rembg does not re-download 176 MB."""
+@pytest.mark.parametrize("env", [
+    {},
+    {"XDG_DATA_HOME": "/tmp/xdg"},
+    {"U2NET_HOME": "~/models"},
+    {"U2NET_HOME": "/opt/models", "XDG_DATA_HOME": "/tmp/xdg"},
+])
+def test_the_model_is_shared_with_rembgs_download(monkeypatch, env):
+    """Same directory as rembg, so moving off it does not re-download 176 MB.
+
+    Asserted against rembg's own rule rather than a hardcoded path: the two
+    disagreed on XDG_DATA_HOME (rembg treats it as the parent of .u2net, this
+    module used it as the directory) and on "~" in either variable. Nothing
+    visibly broke, because ensure_model falls back to rembg and gets the right
+    path back — it just paid a 0.94 s rembg import on every single cut-out.
+
+    This does not need the model on disk, which is why it also runs in CI.
+    """
+    rembg_base = pytest.importorskip("rembg.sessions.base")
+    for name in ("U2NET_HOME", "XDG_DATA_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
     assert cutout.model_path().name == f"{cutout.MODEL_NAME}.onnx"
-    assert cutout.model_path().exists(), "model missing; run the server once"
+    assert str(cutout.model_path().parent) == rembg_base.BaseSession.u2net_home()
+
+
+def test_the_model_is_where_this_machine_already_downloaded_it():
+    """The check above proves the rule; this one proves it landed. Skipped on a
+    machine that has never run a cut-out — CI is one."""
+    path = cutout.model_path()
+    if not path.exists():
+        pytest.skip(f"no model at {path}; run the server once")
+    assert path.stat().st_size > 100 * 1024 * 1024, "truncated download"
 
 
 def test_the_launcher_names_a_thread_count_before_python_starts():

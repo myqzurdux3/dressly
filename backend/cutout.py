@@ -60,10 +60,19 @@ _STD = (0.229, 0.224, 0.225)
 
 def model_path() -> Path:
     """Where rembg keeps u2net.onnx. Sharing the location means switching to
-    this module does not re-download a 176 MB file."""
-    home = os.environ.get("U2NET_HOME") or os.environ.get("XDG_DATA_HOME")
-    base = Path(home) if home else Path.home() / ".u2net"
-    return base / f"{MODEL_NAME}.onnx"
+    this module does not re-download a 176 MB file.
+
+    This must reproduce rembg's own rule (BaseSession.u2net_home) exactly,
+    including the details: XDG_DATA_HOME names the PARENT of the .u2net
+    directory, not the directory itself, and both variables are expanded for
+    "~". Getting either wrong does not break cut-outs — ensure_model falls
+    back to rembg, which returns its real path — but it misses the cached file
+    on every call, so each cut-out re-imports rembg for 0.94 s, which is the
+    one cost this module exists to avoid.
+    """
+    base = os.environ.get("U2NET_HOME") or os.path.join(
+        os.environ.get("XDG_DATA_HOME", "~"), ".u2net")
+    return Path(os.path.expanduser(base)) / f"{MODEL_NAME}.onnx"
 
 
 def ensure_model() -> Path:
