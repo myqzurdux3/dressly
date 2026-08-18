@@ -298,6 +298,7 @@ def generate_outfit(
     vto_prompt: Optional[str] = None,
     width: int = OUT_W,
     height: int = OUT_H,
+    deadline_s: Optional[float] = None,
 ) -> tuple[bytes, str, str]:
     """Generate an outfit image, preferring VTO then cascading through FLUX.
 
@@ -336,7 +337,17 @@ def generate_outfit(
                    if can_vto else None)
 
     errors: list[str] = []
+    # Same budget rule as generate(): four tiers, each able to spend the submit
+    # plus the poll timeout, is roughly eight minutes of somebody watching a
+    # spinner. The deadline does not abort a tier already in flight — it stops
+    # STARTING another one once the budget is spent.
+    started = time.monotonic()
     for tier in tiers:
+        if deadline_s is not None and tier != tiers[0] \
+                and time.monotonic() - started >= deadline_s:
+            errors.append(
+                f"gave up before {tier}: {deadline_s:.0f}s budget spent")
+            break
         try:
             if tier == VTO_TIER:
                 payload = _submit_vto(vto_prompt or prompt, person_b64, garment_b64)

@@ -1,4 +1,6 @@
 import json
+import logging
+import tempfile
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +22,7 @@ from bfl import (
     make_labeled_collage,
     next_outfit_tier,
 )
-from config import OUTFITS_DIR
+from config import GENERATE_DEADLINE_S, OUTFITS_DIR
 from db import get_conn
 from routes_thumbs import thumb_url_for
 import imagesign
@@ -38,6 +40,7 @@ from generator import (
 from images import public_url_for  # noqa: F401  (shared helper, kept for parity)
 
 router = APIRouter(prefix="/outfits", tags=["outfits"])
+log = logging.getLogger(__name__)
 
 
 class GenerateRequest(BaseModel):
@@ -896,6 +899,27 @@ def _fresh_start_tier(req_tier: Optional[str], person_path: Optional[str]) -> st
     return "flex"
 
 
+def _drop_temp_collages(paths) -> None:
+    """Delete the throwaway collages make_labeled_collage wrote to /tmp.
+
+    It returns a NamedTemporaryFile(delete=False) path, and nothing used to
+    remove it: one ~1 MB PNG per generation (two in separate-image mode) piled
+    up in /tmp until the machine was rebooted. Only files that match that
+    helper's own naming, inside the system temp dir, are touched — never a
+    stored garment photo.
+    """
+    tmp_root = Path(tempfile.gettempdir()).resolve()
+    for p in {str(x) for x in paths if x}:
+        path = Path(p)
+        if not path.name.endswith("_collage.png"):
+            continue
+        try:
+            if path.resolve().parent == tmp_root:
+                path.unlink(missing_ok=True)
+        except OSError as e:  # pragma: no cover - best effort cleanup
+            log.debug("could not remove temp collage %s: %s", p, e)
+
+
 def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
                     start_tier: str, person_path: Optional[str] = None,
                     vto_garment_path: Optional[str] = None,
@@ -915,33 +939,49 @@ def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
         conn.execute("UPDATE outfits SET worker_pid = ? WHERE id = ?",
                      (worker_id(), outfit_id))
     try:
-        image_bytes, tier_used, slug = bfl_generate_outfit(
-            prompt, image_paths, start_tier=start_tier,
-            person_path=person_path if garment_path else None,
-            garment_path=garment_path,
-            vto_prompt=vto_prompt or prompt,
-        )
-    except BflError as e:
-        with get_conn() as conn:
-            conn.execute("UPDATE outfits SET status='failed', error=?, "
-                         "worker_pid=NULL WHERE id=?", (str(e), outfit_id))
-        return
-    except Exception as e:
-        with get_conn() as conn:
-            conn.execute("UPDATE outfits SET status='failed', error=?, "
-                         "worker_pid=NULL WHERE id=?",
-                         (f"unexpected: {type(e).__name__}: {e}", outfit_id))
-        return
-    OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTFITS_DIR / f"{outfit_id}.png"
-    out_path.write_bytes(image_bytes)
-    is_mock = 1 if slug == "mock" else 0
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE outfits SET generated_path=?, status='done', is_mock=?, "
-            "model_tier=?, model_slug=?, error='', worker_pid=NULL WHERE id=?",
-            (str(out_path), is_mock, tier_used, slug, outfit_id),
-        )
+        try:
+            image_bytes, tier_used, slug = bfl_generate_outfit(
+                prompt, image_paths, start_tier=start_tier,
+                person_path=person_path if garment_path else None,
+                garment_path=garment_path,
+                vto_prompt=vto_prompt or prompt,
+                deadline_s=GENERATE_DEADLINE_S,
+            )
+        except BflError as e:
+            with get_conn() as conn:
+                conn.execute("UPDATE outfits SET status='failed', error=?, "
+                             "worker_pid=NULL WHERE id=?", (str(e), outfit_id))
+            return
+        except Exception as e:
+            with get_conn() as conn:
+                conn.execute("UPDATE outfits SET status='failed', error=?, "
+                             "worker_pid=NULL WHERE id=?",
+                             (f"unexpected: {type(e).__name__}: {e}", outfit_id))
+            return
+        # Writing the render and marking the row done are inside the same
+        # failure handling as the call itself: a full disk used to escape into
+        # the BackgroundTasks runner and leave the row 'processing' forever,
+        # with the app polling a spinner that could never end.
+        try:
+            OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
+            out_path = OUTFITS_DIR / f"{outfit_id}.png"
+            out_path.write_bytes(image_bytes)
+            is_mock = 1 if slug == "mock" else 0
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE outfits SET generated_path=?, status='done', is_mock=?, "
+                    "model_tier=?, model_slug=?, error='', worker_pid=NULL WHERE id=?",
+                    (str(out_path), is_mock, tier_used, slug, outfit_id),
+                )
+        except Exception as e:
+            log.exception("could not store outfit %s", outfit_id)
+            with get_conn() as conn:
+                conn.execute("UPDATE outfits SET status='failed', error=?, "
+                             "worker_pid=NULL WHERE id=?",
+                             (f"could not store the image: {e}", outfit_id))
+            return
+    finally:
+        _drop_temp_collages(image_paths + [garment_path])
 
 
 # Times an outfit was worn = number of confirmed ('worn') agenda entries for it.
