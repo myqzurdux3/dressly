@@ -105,12 +105,17 @@ class _FilterSheetState extends State<FilterSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            Text(tr(context, 'filter.sortBy')),
             DropdownButtonFormField<String>(
               // Key on the value so the Reset button (which changes these
               // fields externally) rebuilds the field with the new initialValue.
               key: ValueKey('sort-$_sort'),
               initialValue: _sort,
+              // Outlined with a label, like every other field in this sheet.
+              // It was the one control left underlined, with its name floating
+              // above it as a separate line.
+              decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: tr(context, 'filter.sortBy')),
               items: [
                 DropdownMenuItem(
                     value: 'newest', child: Text(tr(context, 'filter.sortNewest'))),

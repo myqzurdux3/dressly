@@ -83,6 +83,20 @@ void main() {
       }
     });
 
+    testWidgets('a badge over the photo stays readable in $name',
+        (tester) async {
+      await tester
+          .pumpWidget(_app(brightness, ClothCard(cloth: _cloth(), onTap: () {})));
+      await tester.pump();
+
+      // The rating badge sits on a fixed black54 disc over the photo. It has to
+      // keep its own light colour: following the theme turned it dark-on-dark
+      // and the number simply vanished in light mode.
+      const scrim = Color(0xFF3F3F3F); // black54 over a mid-tone photo
+      expect(_contrast(_colorOf(tester, '2'), scrim), greaterThan(4.5),
+          reason: 'the rating badge is unreadable on its own scrim in $name');
+    });
+
     testWidgets('an unrated star is visible in $name', (tester) async {
       await tester.pumpWidget(_app(
           brightness, StarRating(score: 0, onChanged: (_) {}),

@@ -216,7 +216,8 @@ class _Thumb extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                   color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-              child: Text(label, style: const TextStyle(fontSize: 12)),
+              child: Text(label,
+                  style: const TextStyle(fontSize: 12, color: Colors.white)),
             ),
           ),
         ]),
