@@ -58,21 +58,44 @@ _MEAN = (0.485, 0.456, 0.406)
 _STD = (0.229, 0.224, 0.225)
 
 
-def model_path() -> Path:
-    """Where rembg keeps u2net.onnx. Sharing the location means switching to
-    this module does not re-download a 176 MB file.
+# Where rembg keeps its models, by version. It was ~/.u2net up to 2.0.x and
+# ~/.rembg after; both are checked rather than guessed, because the version
+# installed decides and requirements.txt does not pin one.
+_MODEL_DIRS = (".u2net", ".rembg")
 
-    This must reproduce rembg's own rule (BaseSession.u2net_home) exactly,
-    including the details: XDG_DATA_HOME names the PARENT of the .u2net
-    directory, not the directory itself, and both variables are expanded for
-    "~". Getting either wrong does not break cut-outs — ensure_model falls
-    back to rembg, which returns its real path — but it misses the cached file
-    on every call, so each cut-out re-imports rembg for 0.94 s, which is the
-    one cost this module exists to avoid.
+
+def model_dirs() -> list[Path]:
+    """Every directory a rembg version might hold the model in, likeliest first.
+
+    U2NET_HOME, when set, is the whole answer — every version honours it.
+    Otherwise the directory sits under XDG_DATA_HOME if that is set, and under
+    the home directory if it is not, and its name depends on the rembg version:
+    ".u2net" historically, ".rembg" (or "rembg" beneath XDG_DATA_HOME) since.
     """
-    base = os.environ.get("U2NET_HOME") or os.path.join(
-        os.environ.get("XDG_DATA_HOME", "~"), ".u2net")
-    return Path(os.path.expanduser(base)) / f"{MODEL_NAME}.onnx"
+    if home := os.environ.get("U2NET_HOME"):
+        return [Path(os.path.expanduser(home))]
+    xdg = os.environ.get("XDG_DATA_HOME")
+    if xdg:
+        base = Path(os.path.expanduser(xdg))
+        return [base / name for name in (*_MODEL_DIRS, "rembg")]
+    base = Path.home()
+    return [base / name for name in _MODEL_DIRS]
+
+
+def model_path() -> Path:
+    """Where u2net.onnx already is, or where the first candidate would put it.
+
+    Sharing rembg's location means switching to this module does not
+    re-download 176 MB. Getting it wrong does not break cut-outs — ensure_model
+    falls back to rembg, which returns its real path — it just misses the cache
+    on every call, so each cut-out re-imports rembg for 0.94 s, which is the one
+    cost this module exists to avoid.
+    """
+    candidates = [d / f"{MODEL_NAME}.onnx" for d in model_dirs()]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
 
 
 def ensure_model() -> Path:

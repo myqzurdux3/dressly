@@ -333,15 +333,18 @@ def test_an_unsupported_model_is_refused_not_approximated():
     {"U2NET_HOME": "/opt/models", "XDG_DATA_HOME": "/tmp/xdg"},
 ])
 def test_the_model_is_shared_with_rembgs_download(monkeypatch, env):
-    """Same directory as rembg, so moving off it does not re-download 176 MB.
+    """The directory rembg downloads into is one this module looks in.
 
-    Asserted against rembg's own rule rather than a hardcoded path: the two
-    disagreed on XDG_DATA_HOME (rembg treats it as the parent of .u2net, this
-    module used it as the directory) and on "~" in either variable. Nothing
-    visibly broke, because ensure_model falls back to rembg and gets the right
-    path back — it just paid a 0.94 s rembg import on every single cut-out.
+    Asserted against rembg's own rule rather than a hardcoded path, because the
+    rule is not stable: up to 2.0.x it was ~/.u2net, after that ~/.rembg, and
+    requirements.txt pins no version — so the first machine to install a newer
+    rembg would silently stop finding the cached model. Membership, not
+    equality: which candidate is right depends on the version installed here.
 
-    This does not need the model on disk, which is why it also runs in CI.
+    Missing it costs no correctness (ensure_model falls back to rembg and gets
+    the real path) but a 0.94 s rembg import on every single cut-out.
+
+    Needs no model on disk, which is why it also runs in CI.
     """
     rembg_base = pytest.importorskip("rembg.sessions.base")
     for name in ("U2NET_HOME", "XDG_DATA_HOME"):
@@ -350,7 +353,26 @@ def test_the_model_is_shared_with_rembgs_download(monkeypatch, env):
         monkeypatch.setenv(name, value)
 
     assert cutout.model_path().name == f"{cutout.MODEL_NAME}.onnx"
-    assert str(cutout.model_path().parent) == rembg_base.BaseSession.u2net_home()
+    assert rembg_base.BaseSession.u2net_home() in [
+        str(d) for d in cutout.model_dirs()]
+
+
+def test_an_already_downloaded_model_wins_over_the_default(tmp_path,
+                                                           monkeypatch):
+    """With two candidate directories, the one holding the file is the answer —
+    otherwise a machine whose rembg downloaded to the other name would re-import
+    rembg on every cut-out to be told where its own file is."""
+    monkeypatch.delenv("U2NET_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    # Nothing downloaded yet: the historical directory is the default.
+    assert cutout.model_path() == tmp_path / ".u2net" / "u2net.onnx"
+
+    second = tmp_path / ".rembg"
+    second.mkdir()
+    (second / "u2net.onnx").write_bytes(b"not really a model")
+    assert cutout.model_path() == second / "u2net.onnx"
 
 
 def test_the_model_is_where_this_machine_already_downloaded_it():
