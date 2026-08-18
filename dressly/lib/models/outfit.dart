@@ -112,6 +112,50 @@ class Outfit {
     this.layout,
   });
 
+  /// Copy with a few fields changed.
+  ///
+  /// Written because the two call sites that toggled a flag rebuilt the object
+  /// field by field and each forgot five of them: the constructor defaults took
+  /// over, so favouriting a MANUAL outfit turned it into an 'ai' one with no
+  /// layout — no longer editable in the builder — and dropped both resized
+  /// URLs. One list to keep correct instead of one per call site.
+  Outfit copyWith({
+    bool? isFavorite,
+    bool? isBlacklisted,
+    bool? wornToday,
+    String? status,
+    String? error,
+  }) =>
+      Outfit(
+        id: id,
+        modelId: modelId,
+        modelName: modelName,
+        clothIds: clothIds,
+        cloths: cloths,
+        prompt: prompt,
+        generatedUrl: generatedUrl,
+        thumbUrl: thumbUrl,
+        previewUrl: previewUrl,
+        status: status ?? this.status,
+        isMock: isMock,
+        modelTier: modelTier,
+        modelSlug: modelSlug,
+        view: view,
+        linkedId: linkedId,
+        isFavorite: isFavorite ?? this.isFavorite,
+        wornToday: wornToday ?? this.wornToday,
+        nextTier: nextTier,
+        describeClothes: describeClothes,
+        imageMode: imageMode,
+        renderClothIds: renderClothIds,
+        isBlacklisted: isBlacklisted ?? this.isBlacklisted,
+        error: error ?? this.error,
+        createdAt: createdAt,
+        algoLabel: algoLabel,
+        kind: kind,
+        layout: layout,
+      );
+
   factory Outfit.fromJson(Map<String, dynamic> json) {
     final clothsRaw = (json['cloths'] as List?) ?? [];
     return Outfit(
