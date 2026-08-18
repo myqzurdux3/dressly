@@ -35,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // and must be popped to reveal the now-Collection home).
       Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }

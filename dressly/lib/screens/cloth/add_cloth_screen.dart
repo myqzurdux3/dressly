@@ -101,7 +101,8 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
 
   Future<void> _pickImage() async {
     final path = await _pickFilePath();
-    if (path != null) setState(() => _newImages.add(path));
+    if (!mounted || path == null) return;   // the picker outlives this screen
+    setState(() => _newImages.add(path));
   }
 
   // ---- Edit-mode live image management (server-backed) ----
@@ -161,7 +162,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     if (_imgBusy) return;
     final svc = clothesServiceOf(context);
     final path = await _pickFilePath();
-    if (path == null) return;
+    if (!mounted || path == null) return;   // the picker outlives this screen
     setState(() => _imgBusy = true);
     try {
       final updated =
@@ -180,7 +181,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     if (_imgBusy) return;
     final svc = clothesServiceOf(context);
     final path = await _pickFilePath();
-    if (path == null) return;
+    if (!mounted || path == null) return;   // the picker outlives this screen
     setState(() => _imgBusy = true);
     try {
       final updated = await svc.addImage(widget.initial!.id, File(path));

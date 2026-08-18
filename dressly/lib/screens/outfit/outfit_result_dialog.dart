@@ -285,7 +285,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     final newVal = await _run('result.favoriteFailed', () => outfitsServiceOf(
         context).toggleFavorite(_outfit.id, isFavorite: !_outfit.isFavorite));
     if (newVal == null || !mounted) return;
-    setState(() => _outfit = _withFavorite(_outfit, newVal));
+    setState(() => _outfit = outfitWithFavorite(_outfit, newVal));
     widget.onChanged(_outfit);
     _toast(newVal ? 'Saved to favorites ✓' : 'Removed from favorites');
   }
@@ -294,7 +294,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     final newVal = await _run('result.failed', () => outfitsServiceOf(context)
         .setBlacklist(_outfit.id, blacklisted: !_outfit.isBlacklisted));
     if (newVal == null || !mounted) return;
-    setState(() => _outfit = _withBlacklist(_outfit, newVal));
+    setState(() => _outfit = outfitWithBlacklist(_outfit, newVal));
     widget.onChanged(_outfit);
     _toastKey(newVal ? 'result.bannedToast' : 'result.allowedAgain');
   }
@@ -304,29 +304,36 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   Future<void> _regenerateWithDetail() async {
     if (_busy) return;
     final ctrl = TextEditingController();
-    final detail = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr(context, 'result.addDetailTitle')),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLines: 2,
-          decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-            hintText: tr(context, 'result.addDetailHint'),
+    final String? detail;
+    // The controller belongs to the dialog, not to this state, so it has to be
+    // disposed once the dialog is gone — otherwise every "add detail" leaks one.
+    try {
+      detail = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr(context, 'result.addDetailTitle')),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 2,
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              hintText: tr(context, 'result.addDetailHint'),
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(tr(context, 'common.cancel'))),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                child: Text(tr(context, 'result.regenerate'))),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(tr(context, 'common.cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: Text(tr(context, 'result.regenerate'))),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (detail == null || detail.isEmpty || !mounted) return;
     await _runUpdating('result.regenerateFailed',
         () => outfitsServiceOf(context).regenerate(
@@ -917,32 +924,49 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       ),
     );
   }
-
-  Outfit _withFavorite(Outfit o, bool fav) => Outfit(
-        id: o.id, modelId: o.modelId, modelName: o.modelName,
-        clothIds: o.clothIds, cloths: o.cloths, prompt: o.prompt,
-        generatedUrl: o.generatedUrl, status: o.status, isMock: o.isMock,
-        modelTier: o.modelTier, modelSlug: o.modelSlug, view: o.view,
-        linkedId: o.linkedId, wornToday: o.wornToday,
-        isFavorite: fav, nextTier: o.nextTier,
-        describeClothes: o.describeClothes, isBlacklisted: o.isBlacklisted,
-        imageMode: o.imageMode, renderClothIds: o.renderClothIds,
-        error: o.error,
-        createdAt: o.createdAt,
-      );
-
-  Outfit _withBlacklist(Outfit o, bool banned) => Outfit(
-        id: o.id, modelId: o.modelId, modelName: o.modelName,
-        clothIds: o.clothIds, cloths: o.cloths, prompt: o.prompt,
-        generatedUrl: o.generatedUrl, status: o.status, isMock: o.isMock,
-        modelTier: o.modelTier, modelSlug: o.modelSlug, view: o.view,
-        linkedId: o.linkedId, wornToday: o.wornToday,
-        isFavorite: o.isFavorite, nextTier: o.nextTier,
-        describeClothes: o.describeClothes, isBlacklisted: banned,
-        error: o.error,
-        createdAt: o.createdAt,
-      );
 }
+
+/// Copy of [o] with only its favourite flag changed.
+///
+/// Every field has to be listed: an omitted one silently takes the
+/// constructor's default, and the defaults for `kind` and `layout` ('ai' and
+/// null) turned a manual outfit into an AI one — no longer openable in the
+/// builder — the moment its heart was tapped. Same for the resized URLs, whose
+/// default is the empty string.
+///
+/// Top-level rather than a method so the copy can be tested on its own.
+Outfit outfitWithFavorite(Outfit o, bool fav) => Outfit(
+      id: o.id, modelId: o.modelId, modelName: o.modelName,
+      clothIds: o.clothIds, cloths: o.cloths, prompt: o.prompt,
+      generatedUrl: o.generatedUrl, thumbUrl: o.thumbUrl,
+      previewUrl: o.previewUrl, status: o.status, isMock: o.isMock,
+      modelTier: o.modelTier, modelSlug: o.modelSlug, view: o.view,
+      linkedId: o.linkedId, wornToday: o.wornToday,
+      isFavorite: fav, nextTier: o.nextTier,
+      describeClothes: o.describeClothes, isBlacklisted: o.isBlacklisted,
+      imageMode: o.imageMode, renderClothIds: o.renderClothIds,
+      error: o.error,
+      createdAt: o.createdAt,
+      algoLabel: o.algoLabel, kind: o.kind, layout: o.layout,
+    );
+
+/// Copy of [o] with only its blacklist flag changed. See [outfitWithFavorite]
+/// for why every field is repeated.
+Outfit outfitWithBlacklist(Outfit o, bool banned) => Outfit(
+      id: o.id, modelId: o.modelId, modelName: o.modelName,
+      clothIds: o.clothIds, cloths: o.cloths, prompt: o.prompt,
+      generatedUrl: o.generatedUrl, thumbUrl: o.thumbUrl,
+      previewUrl: o.previewUrl, status: o.status, isMock: o.isMock,
+      modelTier: o.modelTier, modelSlug: o.modelSlug, view: o.view,
+      linkedId: o.linkedId, wornToday: o.wornToday,
+      isFavorite: o.isFavorite, nextTier: o.nextTier,
+      describeClothes: o.describeClothes, isBlacklisted: banned,
+      imageMode: o.imageMode, renderClothIds: o.renderClothIds,
+      error: o.error,
+      createdAt: o.createdAt,
+      algoLabel: o.algoLabel, kind: o.kind, layout: o.layout,
+    );
+
 /// Dialog that shows the algorithm's proposed selections (cloth picks only, no
 /// image) and asks the user to confirm before any outfit is rendered. Supports
 /// "Reshuffle" (re-run the algorithm for fresh picks) and "Generate" (render
