@@ -1,0 +1,35 @@
+name: Bug
+description: Something behaves differently than it should
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options: [App (Flutter), Backend (API), Both, Not sure]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+      placeholder: |
+        1. Opened a garment and tapped "improve photo"
+        2. Expected the enhanced image; got "failed" after ~3 min
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        Server side, the relevant lines of backend/data/logs/dressly.log
+        (they carry no tokens). App side, a screenshot. Paste the exact error
+        text rather than describing it.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Commit hash of the running backend, and the APK build date.
