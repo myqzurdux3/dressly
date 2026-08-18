@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_text.dart';
 import '../models/cloth.dart';
 import 'app_image.dart';
+import '../theme/tones.dart';
 
 /// Grid tile: the selected cutout shown large (full garment, not cropped),
 /// with a small thumbnail of the other side in the corner. Tapping that
@@ -229,7 +230,7 @@ class _ClothCardState extends State<ClothCard> {
                             size: 18,
                             color: cloth.isFavorite
                                 ? Colors.redAccent
-                                : Colors.white54,
+                                : secondaryText(context),
                           ),
                         ),
                       ),
@@ -241,7 +242,8 @@ class _ClothCardState extends State<ClothCard> {
                         cloth.brand,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: Colors.white60),
+                        style: TextStyle(
+                            fontSize: 12, color: secondaryText(context)),
                       ),
                     ),
                   if (cloth.colors.isNotEmpty)
@@ -268,7 +270,8 @@ class _ClothCardState extends State<ClothCard> {
                         children: cloth.customTags
                             .take(3)
                             .map((t) => Text('#$t',
-                                style: const TextStyle(fontSize: 11, color: Colors.white54)))
+                                style: TextStyle(
+                                    fontSize: 11, color: faintText(context))))
                             .toList(),
                       ),
                     ),

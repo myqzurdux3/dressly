@@ -9,6 +9,7 @@ import '../cloth/cloth_detail_screen.dart';
 import '../cloth/dormant_screen.dart';
 import '../outfit/outfit_result_dialog.dart';
 import '../settings/settings_screen.dart';
+import '../../theme/tones.dart';
 
 /// A quick overview of the user's wardrobe: counts + wear stats, the most-worn
 /// outfit, and the clothes worn most often.
@@ -190,7 +191,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ].join(' · '),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: TextStyle(color: secondaryText(context), fontSize: 12),
                   ),
                 ],
               ),
@@ -256,7 +257,7 @@ class _StatTile extends StatelessWidget {
                 child: Text(label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                    style: TextStyle(fontSize: 12, color: secondaryText(context))),
               ),
             ]),
             const SizedBox(height: 6),

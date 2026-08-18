@@ -128,11 +128,18 @@ class OutfitHistoryCard extends StatelessWidget {
             bottom: 0,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              // The scrim has to stay dark for the whole height of the text,
+              // not fade out halfway up it: a two-line caption ran off the top
+              // of the old gradient and finished as grey letters on a white
+              // studio background. And the colour below is fixed white for the
+              // same reason the scrim is black — it sits on a photo, not on the
+              // page, so it must not follow the theme.
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black87, Colors.transparent]),
+                    stops: [0.0, 0.75, 1.0],
+                    colors: [Colors.black87, Colors.black54, Colors.transparent]),
               ),
               child: Text(
                 failed
@@ -145,7 +152,7 @@ class OutfitHistoryCard extends StatelessWidget {
                       ].join(' · '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11),
+                style: const TextStyle(fontSize: 11, color: Colors.white),
               ),
             ),
           ),

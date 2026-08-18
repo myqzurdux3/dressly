@@ -7,6 +7,7 @@ import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../widgets/app_image.dart';
 import 'algo_sheet.dart';
+import '../../theme/tones.dart';
 
 class AlgoPreviewDialog extends StatefulWidget {
   const AlgoPreviewDialog({
@@ -97,8 +98,8 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                       Text(
                           tr(context, 'algo.proposed')
                               .replaceFirst('{n}', '$n'),
-                          style:
-                              const TextStyle(color: Colors.white70, fontSize: 12)),
+                          style: TextStyle(
+                              color: secondaryText(context), fontSize: 12)),
                     ],
                   ),
                 ),
@@ -233,7 +234,7 @@ class _AlgoSelectionCard extends StatelessWidget {
                       ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white60, fontSize: 11),
+                      style: TextStyle(color: secondaryText(context), fontSize: 11),
                     ),
                   ],
                 ),

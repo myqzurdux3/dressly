@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../l10n/app_text.dart';
 import 'app_image.dart';
+import '../theme/tones.dart';
 
 /// Shared review UI for cloth photos: a crop-decision dialog that *shows* both
 /// versions, an enhance-choice dialog (Auto/AI), an enhanced-preview dialog,
@@ -16,7 +17,7 @@ Widget _labeledImage(BuildContext context, String label, String url,
         style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: tint ?? Colors.white70)),
+            color: tint ?? secondaryText(context))),
     const SizedBox(height: 6),
     GestureDetector(
       // Tap to view fullscreen with pinch-zoom.
@@ -129,7 +130,8 @@ class _CropDecisionDialogState extends State<_CropDecisionDialog> {
             const SizedBox(height: 10),
             Row(children: [
               Text(tr(context, 'review.strength'),
-                  style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                  style:
+                      TextStyle(fontSize: 12, color: secondaryText(context))),
               const SizedBox(width: 8),
               Expanded(
                 child: SegmentedButton<String>(
