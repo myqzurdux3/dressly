@@ -314,7 +314,10 @@ class _AgendaCard extends StatelessWidget {
                 width: 64,
                 height: 64,
                 color: Colors.blueGrey.shade900,
-                child: o == null
+                // A planned day holds clothes and no image until you render it:
+                // the tile showed a broken-image glyph, which reads as an error
+                // rather than as "not generated yet".
+                child: o == null || !o.hasRender
                     ? const Icon(Icons.checkroom, color: Colors.white38)
                     // A 64 px tile: the grid-sized copy, not the full render.
                     : AppImage(url: outfitThumbUrl(o),

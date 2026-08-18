@@ -507,6 +507,11 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   @override
   Widget build(BuildContext context) {
     final failed = _outfit.status == 'failed';
+    // A planned outfit (written by the week planner) carries the clothes for a
+    // day and no image. Every image action below — download, share, back view,
+    // "try a better model" — needs one to exist, and the dialog used to offer
+    // them all over a broken-image placeholder with no way to render.
+    final rendered = _outfit.hasRender;
     final hasNext = _outfit.nextTier != null;
     final nextTierLabel = const {
       'vto': 'Try-On',
@@ -523,7 +528,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
         padding: const EdgeInsets.all(12),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
-            Text(tr(context, 'result.generatedOutfit'),
+            Text(
+                tr(context,
+                    rendered ? 'result.generatedOutfit' : 'result.plannedOutfit'),
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const Spacer(),
             IconButton(
@@ -598,6 +605,36 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                             child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.refresh),
                     label: Text(tr(context, 'result.retryGeneration')),
+                  ),
+                ),
+              ]),
+            )
+          else if (!rendered)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              decoration: BoxDecoration(
+                color: subtleFill(context),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(children: [
+                Icon(Icons.checkroom, size: 48, color: faintText(context)),
+                const SizedBox(height: 8),
+                Text(tr(context, 'result.noRenderYet'),
+                    textAlign: TextAlign.center,
+                    style:
+                        TextStyle(color: secondaryText(context), fontSize: 12)),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _busy ? null : _regenerate,
+                    icon: _busy
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_awesome),
+                    label: Text(tr(context, 'result.generateImage')),
                   ),
                 ),
               ]),
@@ -774,7 +811,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               style: TextStyle(color: secondaryText(context), fontSize: 12)),
           const SizedBox(height: 12),
           // Image actions: download, favorite.
-          if (!failed)
+          if (!failed && rendered)
             Row(children: [
               Expanded(
                 child: FilledButton.icon(
@@ -790,7 +827,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                   icon: Icon(_outfit.isFavorite
                       ? Icons.favorite
                       : Icons.favorite_border),
-                  label: Text(_outfit.isFavorite ? 'Saved' : 'Save'),
+                  label: Text(tr(context,
+                      _outfit.isFavorite ? 'result.saved' : 'result.save')),
                 ),
               ),
               const SizedBox(width: 8),
@@ -830,7 +868,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
           ],
           const SizedBox(height: 8),
           // Cascade + back-view actions.
-          if (hasNext)
+          if (hasNext && rendered)
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -844,13 +882,14 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                 label: Text('${tr(context, 'result.tryBetterModel')} ($nextTierLabel)'),
               ),
             )
-          else if (!failed)
+          else if (!failed && rendered)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(tr(context, 'result.bestModel'),
-                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  style:
+                      TextStyle(color: secondaryText(context), fontSize: 12)),
             ),
-          if (!failed && _outfit.view == 'front' &&
+          if (!failed && rendered && _outfit.view == 'front' &&
               _outfit.linkedId == null) ...[
             const SizedBox(height: 8),
             SizedBox(
@@ -867,7 +906,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               ),
             ),
           ],
-          if (!failed) ...[
+          if (!failed && rendered) ...[
             const SizedBox(height: 8),
             // Re-render with an extra instruction (pose, angle, setting…).
             SizedBox(
