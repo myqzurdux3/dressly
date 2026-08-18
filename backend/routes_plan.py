@@ -75,9 +75,9 @@ class ApplyRequest(BaseModel):
 def _days(start_day: str, count: int) -> List[str]:
     try:
         start = date.fromisoformat(start_day) if start_day else date.today()
-    except ValueError:
+    except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            f"'{start_day}' is not a date (YYYY-MM-DD)")
+                            f"'{start_day}' is not a date (YYYY-MM-DD)") from e
     count = max(1, min(int(count or 7), MAX_DAYS))
     return [(start + timedelta(days=i)).isoformat() for i in range(count)]
 
@@ -304,9 +304,9 @@ def apply_plan(req: ApplyRequest, user=Depends(get_current_user)):
         for day in days:
             try:
                 date.fromisoformat(day)
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                    f"'{day}' is not a date (YYYY-MM-DD)")
+                                    f"'{day}' is not a date (YYYY-MM-DD)") from e
             # Somebody else's clothes cannot end up in this user's plan.
             ids = [int(c) for c in req.days[day] if int(c) in owned]
             if not ids:

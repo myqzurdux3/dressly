@@ -42,9 +42,10 @@ def photo(tmp_path_factory):
 
 
 def _rss_mb() -> int:
-    for line in open("/proc/self/status"):
-        if line.startswith("VmRSS"):
-            return int(line.split()[1]) // 1024
+    with open("/proc/self/status") as status:
+        for line in status:
+            if line.startswith("VmRSS"):
+                return int(line.split()[1]) // 1024
     return 0
 
 

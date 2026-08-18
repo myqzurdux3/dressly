@@ -1,0 +1,48 @@
+# Linter configuration. Deliberately NOT a formatter: reformatting 12 000 lines
+# would bury the next real diff in noise, and nothing here is misformatted.
+#
+# The rule set is chosen for defects, not taste: undefined names, unused
+# imports, likely bugs, and simplifications that remove a branch rather than
+# just shorten a line.
+
+target-version = "py311"
+line-length = 100
+exclude = ["data", ".pytest_cache", "__pycache__"]
+
+[lint]
+select = ["E9", "F", "B", "SIM", "UP"]
+
+ignore = [
+    # FastAPI's whole dependency system is `x = Depends(...)` / `File(...)` in a
+    # default argument. 83 hits, every one of them the framework's idiom.
+    "B008",
+
+    # `"col" in row.keys()` on a sqlite3.Row is REQUIRED, not redundant: Row has
+    # no __contains__ over its keys, so `"col" in row` tests the VALUES. Taking
+    # this rule's advice would silently change what those 27 checks mean.
+    "SIM118",
+
+    # `contextlib.suppress(...)` instead of try/except/pass. The try/except
+    # blocks here carry comments explaining what is being ignored and why;
+    # folding them into a one-liner hides that.
+    "SIM105",
+
+    # Typing modernisation the runtime does not need and that would churn
+    # signatures across every route module.
+    "UP006", "UP007", "UP035", "UP045",
+
+    # Style-only, on code that is not misformatted: collapsible ifs, ternaries,
+    # Yoda comparisons, datetime.UTC spelling, .encode("utf-8"). Changing 13
+    # lines for these would bury the next real diff.
+    "SIM102", "SIM108", "SIM110", "SIM300", "UP012", "UP017",
+]
+
+[lint.per-file-ignores]
+# Tests may assert on falsehood and build throwaway zips.
+"tests/*" = ["B011", "B905"]
+
+# Both open a NamedTemporaryFile(delete=False) on purpose — the file has to
+# outlive the block so its path can be handed to the image API — and both
+# already delete it in a finally. A context manager would defeat the point.
+"bfl.py" = ["SIM115"]
+"enhance.py" = ["SIM115"]

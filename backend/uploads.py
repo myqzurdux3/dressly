@@ -103,5 +103,6 @@ def verify_image(data: bytes) -> None:
     try:
         with Image.open(io.BytesIO(data)) as im:
             im.verify()
-    except Exception:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid image")
+    except Exception as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Not a valid image") from e
