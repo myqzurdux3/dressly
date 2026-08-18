@@ -1189,12 +1189,19 @@ def reject_image(
 
         # Drop the (bad) cutout file and point cutout_path at the original so
         # the image displayed everywhere is the unprocessed photo.
-        try:
-            from pathlib import Path
+        #
+        # Only when it IS a cut-out. cutout_path aliases original_path while the
+        # cut-out is still 'processing' (_encode_only) and after a previous
+        # reject (the UPDATE below sets the alias) — unlinking there deleted the
+        # user's only copy of the photo.
+        if img["cutout_path"] != img["original_path"]:
+            try:
+                from pathlib import Path
 
-            Path(img["cutout_path"]).unlink(missing_ok=True)
-        except Exception:
-            pass
+                Path(img["cutout_path"]).unlink(missing_ok=True)
+            except OSError as e:
+                log.warning("could not remove rejected cutout %s: %s",
+                            img["cutout_path"], e)
         conn.execute(
             "UPDATE cloth_images SET bg_accepted = 'rejected', cutout_path = original_path "
             "WHERE id = ?",

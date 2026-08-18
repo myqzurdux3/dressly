@@ -248,7 +248,15 @@ def reject_image(model_id: int, image_id: int, user=Depends(get_current_user)):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
         from pathlib import Path
 
-        Path(img["cutout_path"]).unlink(missing_ok=True)
+        # Models keep their original background, so cutout_path points AT the
+        # original (create_model, above). Unlinking it unconditionally deleted
+        # the model's only photo; only a real, separate cut-out may go.
+        if img["cutout_path"] != img["original_path"]:
+            try:
+                Path(img["cutout_path"]).unlink(missing_ok=True)
+            except OSError as e:
+                log.warning("could not remove rejected cutout %s: %s",
+                            img["cutout_path"], e)
         conn.execute(
             "UPDATE model_images SET bg_accepted = 'rejected', cutout_path = original_path WHERE id = ?",
             (image_id,),
