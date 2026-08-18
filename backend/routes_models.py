@@ -8,7 +8,7 @@ import logging
 from auth import get_current_user
 from db import get_conn
 from routes_thumbs import thumb_url_for
-from uploads import read_capped
+from uploads import UploadBudget, check_count, read_capped
 from images import (
     IMAGES_DIR,
     canonical_cutout_path,
@@ -141,6 +141,8 @@ async def create_model(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Front and back pictures are required"
         )
+    check_count(images)
+    budget = UploadBudget()
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO models (user_id, name, gender) VALUES (?, ?, ?)",
@@ -154,7 +156,7 @@ async def create_model(
             if ext not in ("jpg", "jpeg", "png", "webp"):
                 ext = "jpg"
             original = mdir / f"{role}_{idx}.{ext}"
-            data = await read_capped(upload)
+            data = await read_capped(upload, budget=budget)
             if not data:
                 continue
             original.write_bytes(data)

@@ -15,14 +15,21 @@ import os
 from fastapi import HTTPException, UploadFile, status
 from PIL import Image
 
-# One photo. 25 MB is far above a 12-megapixel JPEG (~6 MB) and above a
-# lossless PNG export from a phone, while staying small enough that a full
-# request (MAX_UPLOAD_FILES x this) cannot exhaust the box.
-MAX_UPLOAD_BYTES = int(os.environ.get("CLOTHESAPP_UPLOAD_MAX_BYTES", 25 * 1024 * 1024))
+# One photo. 64 MB is many times a 12-megapixel JPEG (~6 MB) or a lossless PNG
+# export from a phone — generous on purpose, since the owner is the only user.
+MAX_UPLOAD_BYTES = int(os.environ.get("CLOTHESAPP_UPLOAD_MAX_BYTES", 64 * 1024 * 1024))
 
 # Parts per request. A garment takes front + back + extras; a model takes two
-# or three. Ten is generous; the point is that the list is not unbounded.
-MAX_UPLOAD_FILES = int(os.environ.get("CLOTHESAPP_UPLOAD_MAX_FILES", "10"))
+# or three. Thirty leaves room for a multi-angle shoot; the point is only that
+# the list is not unbounded.
+MAX_UPLOAD_FILES = int(os.environ.get("CLOTHESAPP_UPLOAD_MAX_FILES", "30"))
+
+# What actually protects the box: every part of a request is buffered in RAM
+# before anything is written, so the per-file cap alone would allow
+# MAX_UPLOAD_FILES x MAX_UPLOAD_BYTES (~2 GB) in one request on a machine
+# running three workers. This bounds the whole request instead.
+MAX_UPLOAD_TOTAL_BYTES = int(
+    os.environ.get("CLOTHESAPP_UPLOAD_MAX_TOTAL_BYTES", 256 * 1024 * 1024))
 
 _CHUNK = 1 << 20  # 1 MB
 
@@ -36,7 +43,29 @@ def check_count(uploads) -> None:
         )
 
 
-async def read_capped(upload: UploadFile, *, max_bytes: int = 0) -> bytes:
+class UploadBudget:
+    """Running total for one request, so several parts cannot add up to a box.
+
+    Pass the same instance to every read_capped call of a request; it refuses
+    (413) as soon as the parts read so far exceed MAX_UPLOAD_TOTAL_BYTES.
+    """
+
+    def __init__(self, total_bytes: int = 0):
+        self.limit = total_bytes or MAX_UPLOAD_TOTAL_BYTES
+        self.used = 0
+
+    def take(self, n: int) -> None:
+        self.used += n
+        if self.used > self.limit:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                f"Upload too large in total (max {self.limit // (1024 * 1024)} MB "
+                "per request)",
+            )
+
+
+async def read_capped(upload: UploadFile, *, max_bytes: int = 0,
+                      budget: "UploadBudget | None" = None) -> bytes:
     """Read one upload, aborting as soon as it exceeds `max_bytes`.
 
     Reads in chunks so an oversized body is refused after ~1 MB rather than
@@ -53,6 +82,8 @@ async def read_capped(upload: UploadFile, *, max_bytes: int = 0) -> bytes:
         if not chunk:
             break
         total += len(chunk)
+        if budget is not None:
+            budget.take(len(chunk))
         if total > max_bytes:
             raise HTTPException(
                 status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

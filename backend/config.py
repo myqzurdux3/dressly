@@ -91,9 +91,14 @@ _check_production_config()
 # Outfit generation and AI enhance are billed per call by bfl.ai, so a stuck
 # client must not be able to loop on them. Counted per user, in-process.
 # Set a limit to 0 to disable that bucket.
-GENERATION_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_GEN_RATE_LIMIT", "30"))
+#
+# Deliberately high: the owner is the only user, so these exist to stop a
+# runaway loop (a retry storm, a stuck client polling generate), not to ration
+# a legitimate afternoon of trying outfits. Anything a human does by hand stays
+# far below them.
+GENERATION_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_GEN_RATE_LIMIT", "600"))
 GENERATION_RATE_WINDOW_S = int(os.environ.get("CLOTHESAPP_GEN_RATE_WINDOW_S", "3600"))
-ENHANCE_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_ENHANCE_RATE_LIMIT", "40"))
+ENHANCE_RATE_LIMIT = int(os.environ.get("CLOTHESAPP_ENHANCE_RATE_LIMIT", "600"))
 ENHANCE_RATE_WINDOW_S = int(os.environ.get("CLOTHESAPP_ENHANCE_RATE_WINDOW_S", "3600"))
 
 # Sign-in and sign-up, counted per IP because there is no user yet. Without
