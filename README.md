@@ -11,7 +11,7 @@ background and renders outfits with the FLUX image API, and a Flutter app to wea
 [![CI](https://github.com/myqzurdux3/dressly/actions/workflows/ci.yml/badge.svg)](https://github.com/myqzurdux3/dressly/actions/workflows/ci.yml)
 ![Backend](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-0b7285)
 ![App](https://img.shields.io/badge/app-Flutter-1c211f)
-![Tests](https://img.shields.io/badge/tests-546%20backend%20%2B%20220%20app-2f9e44)
+![Tests](https://img.shields.io/badge/tests-773%20backend%20%2B%20243%20app-2f9e44)
 
 </div>
 
@@ -49,7 +49,7 @@ Without a `BFL_API_KEY` the render calls return placeholder images, so everythin
 be tried offline.
 
 > **Updating an installed app:** use `adb install -r`, not `flutter install` — the latter
-> uninstalls first and wipes your session. See [DEPLOIEMENT.txt](DEPLOIEMENT.txt).
+> uninstalls first and wipes your session.
 
 ## Configuration
 
@@ -61,8 +61,8 @@ set. Full table: [backend/README.md](backend/README.md#configuration) — start 
 ## Tests
 
 ```bash
-cd backend  && python3 -m pytest          # 546 tests, ~6 min
-cd dressly  && flutter test               # 220 tests, ~10 s
+cd backend  && python3 -m pytest          # 773 tests, ~4 min
+cd dressly  && flutter test               # 243 tests, ~10 s
 cd dressly  && dart analyze lib test      # must be clean
 ```
 
@@ -74,8 +74,8 @@ No test touches the network: the weather, balance and image-API calls are stubbe
 ```
 backend/     FastAPI app, SQLite schema + migrations, image pipeline, FLUX client
 dressly/     Flutter app (lib/services, lib/state, lib/screens, lib/widgets)
-DEPLOIEMENT.txt   step-by-step production deployment (French)
-AUDIT.md          findings and fixes from the last codebase audit
+.env.example      every setting, with what it costs to get it wrong
+SECURITY.md       how to report a problem, and the settings that decide exposure
 ```
 
 ## Contributing
@@ -86,4 +86,5 @@ about *why* rather than *what*.
 
 ## License
 
-None. All rights reserved — the code is published to be read, not reused.
+All rights reserved — see [LICENSE](LICENSE). The code is published to be read,
+not reused: ask if you want to do anything else with it.

@@ -1,3 +1,11 @@
+# --- operational notes about MY server, not about the code ----------------
+# Both hold things a public repository should not carry: DEPLOIEMENT.txt names
+# the origin host, its user and the sudo steps to reach it (the origin address
+# is what Cloudflare exists to hide), and AUDIT.md is an inventory of the live
+# deployment's weak points. Kept on disk, out of the history.
+DEPLOIEMENT.txt
+AUDIT.md
+
 # --- secrets -------------------------------------------------------------
 # note.txt holds the BFL API key in plain text. The file is kept on disk on
 # purpose (dev convenience) but must never enter the history.

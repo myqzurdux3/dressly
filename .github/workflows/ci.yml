@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only by default: a public repository runs this workflow for pull requests
+# from strangers, and nothing here needs to write to the repo.
+permissions:
+  contents: read
+
 concurrency:
   # A new push supersedes the run in flight for the same branch.
   group: ${{ github.workflow }}-${{ github.ref }}
