@@ -218,3 +218,12 @@ BFL_AUTH_SCHEME = os.environ.get("BFL_AUTH_SCHEME", "")  # "" or "Bearer"
 # longest honest run, not inside it.
 ENHANCE_DEADLINE_S = float(os.environ.get("CLOTHESAPP_ENHANCE_DEADLINE_S", "90"))
 ENHANCE_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_ENHANCE_TIMEOUT_S", "180"))
+
+
+# --- image safety ---------------------------------------------------------
+# Pillow only *warns* below ~89 megapixels and raises above ~178. A file in
+# that band passes upload and then costs 4 bytes/pixel the moment anything
+# converts it to RGBA (thumbnails do) — hundreds of MB of RSS per request.
+# ORIGINAL_MAX_PX is 4000, so a legitimate photo is at most ~16 MP; 40 leaves
+# room for panoramas without leaving the door open.
+MAX_IMAGE_MEGAPIXELS = float(os.environ.get("CLOTHESAPP_MAX_IMAGE_MP", "40"))

@@ -52,6 +52,14 @@ from accesslog import AccessLogMiddleware
 from routes_thumbs import CachedStaticFiles
 from routes_thumbs import router as thumbs_router
 
+# Bound decompression bombs process-wide, before any route can decode one.
+# Pillow's own default only warns until ~89 MP.
+from PIL import Image as _PILImage
+from config import MAX_IMAGE_MEGAPIXELS as _MAX_MP
+
+_PILImage.MAX_IMAGE_PIXELS = int(_MAX_MP * 1_000_000)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Schema creation + migrations + recovery of anything a previous process
