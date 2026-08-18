@@ -82,6 +82,15 @@ class Outfit {
 
   bool get isManual => kind == 'manual';
 
+  /// Written by the week planner: it holds the clothes for a day and has never
+  /// been rendered. The server creates these with an empty generated_path.
+  bool get isPlanned => kind == 'plan';
+
+  /// Whether an image exists for this outfit. A planned outfit — and a failed
+  /// one — has none, and every image action (download, share, back view) is
+  /// meaningless until it does.
+  bool get hasRender => generatedUrl.isNotEmpty;
+
   Outfit({
     required this.id,
     required this.modelId,
