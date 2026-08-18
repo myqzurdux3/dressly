@@ -93,6 +93,48 @@ void main() {
       await list.refresh();
       expect(list.items.length, 10);
     });
+
+    test('a prepended item does not push the next page past a row', () async {
+      final src = _FakeSource(100);
+      final list = PagedList<int>(fetchPage: src.fetch, pageSize: 10);
+
+      await list.refresh();
+      list.prepend(-1); // created locally; the server knows nothing about it
+
+      await list.loadMore();
+
+      expect(src.calls[1], (limit: 10, offset: 10),
+          reason: 'the server has still only handed over 10 rows');
+      expect(list.items, [-1, ...List.generate(20, (i) => i)],
+          reason: 'row 10 must not be skipped');
+    });
+
+    test('a removed item does not make the next page repeat a row', () async {
+      final src = _FakeSource(100);
+      final list = PagedList<int>(fetchPage: src.fetch, pageSize: 10);
+
+      await list.refresh();
+      list.removeItem((v) => v == 0);
+
+      await list.loadMore();
+
+      expect(src.calls[1], (limit: 10, offset: 10));
+      expect(list.items, List.generate(20, (i) => i).sublist(1),
+          reason: 'row 9 must not arrive twice');
+    });
+
+    test('refresh puts the cursor back to zero after local edits', () async {
+      final src = _FakeSource(100);
+      final list = PagedList<int>(fetchPage: src.fetch, pageSize: 10);
+
+      await list.refresh();
+      list.prepend(-1);
+      await list.refresh();
+      await list.loadMore();
+
+      expect(src.calls.last, (limit: 10, offset: 10));
+      expect(list.items, List.generate(20, (i) => i));
+    });
   });
 
   group('PagedList staleness', () {
@@ -149,6 +191,38 @@ void main() {
 
       expect(list.items, [1, 2], reason: 'must not blank the grid on error');
       expect(list.error, isA<StateError>());
+    });
+
+    test('a failed page stops the pager instead of retrying on every tick',
+        () async {
+      var calls = 0;
+      final list = PagedList<int>(
+        pageSize: 2,
+        fetchPage: ({required limit, required offset}) async {
+          if (calls++ == 0) return [1, 2];
+          throw StateError('boom');
+        },
+      );
+
+      await list.refresh();
+      await list.loadMore();
+
+      expect(list.hasMore, isFalse,
+          reason: 'the grid spins and re-fires loadMore while hasMore is true');
+
+      await list.loadMore();
+      expect(calls, 2, reason: 'must not hammer an endpoint that just failed');
+    });
+
+    test('a failed refresh stops the pager too', () async {
+      final list = PagedList<int>(
+        fetchPage: ({required limit, required offset}) =>
+            Future.error(StateError('boom')),
+      );
+
+      await list.refresh();
+
+      expect(list.hasMore, isFalse);
     });
   });
 

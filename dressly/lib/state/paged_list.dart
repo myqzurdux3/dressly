@@ -24,6 +24,11 @@ class PagedList<T> extends ChangeNotifier {
   bool _loading = false;
   bool _hasMore = true;
   Object? _error;
+  // How many rows the server has actually handed over. Kept apart from
+  // `_items.length` because prepend() and removeItem() change the local list
+  // without the server knowing: paging off the list length made the next page
+  // skip a row after an insert and repeat one after a delete.
+  int _serverOffset = 0;
   // Guards against a stale in-flight request overwriting a newer one when the
   // user retypes a search while the previous query is still running.
   int _generation = 0;
@@ -39,6 +44,7 @@ class PagedList<T> extends ChangeNotifier {
     _generation++;
     _hasMore = true;
     _error = null;
+    _serverOffset = 0;
     await _load(generation: _generation, replace: true);
   }
 
@@ -54,11 +60,15 @@ class PagedList<T> extends ChangeNotifier {
     if (replace) _error = null;
     notifyListeners();
     try {
-      final offset = replace ? 0 : _items.length;
+      final offset = replace ? 0 : _serverOffset;
       final page = await fetchPage(limit: pageSize, offset: offset);
       if (generation != _generation) return; // superseded by a newer refresh
-      if (replace) _items.clear();
+      if (replace) {
+        _items.clear();
+        _serverOffset = 0;
+      }
       _items.addAll(page);
+      _serverOffset += page.length;
       // A short page means the server has nothing left to give.
       _hasMore = page.length >= pageSize;
       _error = null;
@@ -66,6 +76,11 @@ class PagedList<T> extends ChangeNotifier {
       if (generation != _generation) return;
       _error = e;
       if (replace) _items.clear();
+      // Stop paging until the user retries. The grid shows its trailing
+      // spinner while hasMore is true and its scroll listener calls loadMore
+      // on every tick, so leaving it set spins forever and re-hits an endpoint
+      // that just failed.
+      _hasMore = false;
     } finally {
       if (generation == _generation) {
         _loading = false;

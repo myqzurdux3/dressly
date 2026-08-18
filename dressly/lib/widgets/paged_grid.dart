@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_text.dart';
 import '../state/paged_list.dart';
 
 /// Grid backed by a [PagedList]: pull-to-refresh, infinite scroll, and a
@@ -70,6 +71,25 @@ class _PagedGridState<T> extends State<PagedGrid<T>> {
 
         if (items.isEmpty && widget.controller.isLoading) {
           return const Center(child: CircularProgressIndicator());
+        }
+        // Before the empty state: a failed refresh clears the items too, and
+        // "you own no clothes" is the wrong thing to tell someone during an
+        // outage — it reads as data loss rather than a network problem. A
+        // failed *next* page keeps the rows already on screen instead.
+        if (items.isEmpty && widget.controller.error != null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(tr(context, 'common.loadFailed')),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () => widget.controller.refresh(),
+                  child: Text(tr(context, 'common.retry')),
+                ),
+              ],
+            ),
+          );
         }
         if (items.isEmpty) {
           final empty = widget.emptyBuilder?.call(context) ??

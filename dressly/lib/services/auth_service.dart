@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import '../models/user.dart';
+import 'api_client.dart';
 import 'pinned_http.dart';
 
 const _kTokenKey = 'auth_token';
@@ -93,10 +94,13 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> _get(String path, String token) async {
-    final resp = await http.get(
+    // Same pool and same deadline as _post and as ApiClient. me() runs at
+    // startup to restore the session, so a bare http.get with no timeout meant
+    // one stalled socket held the launch screen open indefinitely.
+    final resp = await PinnedHttp.api.get(
       Uri.parse(apiUrl(path)),
       headers: {'Authorization': 'Bearer $token'},
-    );
+    ).timeout(ApiClient.timeoutFor(path));
     return _decode(resp);
   }
 

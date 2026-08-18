@@ -15,8 +15,11 @@ String outfitPreviewUrl(Outfit o) =>
     o.previewUrl.isEmpty ? outfitImageUrl(o) : _bust(o, o.previewUrl);
 
 String _bust(Outfit o, String path) {
+  // No path means no image. apiUrl('') is the site root, and handing that to
+  // AppImage sailed straight past its url.isEmpty guard — an outfit with no
+  // render fetched the homepage HTML through the image pipeline.
+  if (path.isEmpty) return '';
   final base = apiUrl(path);
-  if (path.isEmpty) return base;
   final bust = '${o.id}-${o.modelTier}-${o.view}-${o.status}-${o.isMock ? 1 : 0}';
   final sep = base.contains('?') ? '&' : '?';
   return '$base${sep}b=$bust';
