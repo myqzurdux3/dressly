@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
@@ -45,13 +46,28 @@ class PinnedHttp {
   /// every connection and leave JSON requests queued behind them. With a single
   /// pool of six, six images in flight froze the entire app until one finished
   /// — for a stalled image, that meant the full timeout.
-  static final http.Client api = create(maxConnections: 4);
+  static http.Client get api => _testClient ?? _api;
+  static final http.Client _api = create(maxConnections: 4);
 
   /// Client for image downloads. Its own pool, so a stalled image can delay
   /// other images and nothing else.
   ///
   /// Eight matches the download queue's concurrency without serialising it.
-  static final http.Client images = create(maxConnections: 8);
+  static http.Client get images => _testClient ?? _images;
+  static final http.Client _images = create(maxConnections: 8);
+
+  static http.Client? _testClient;
+
+  /// Substitutes both clients, so a widget test can drive whole screens
+  /// without a socket. The screens build their services through
+  /// `clothesServiceOf(context)` and friends, which reach these two getters —
+  /// this is the only seam that covers every one of them, including
+  /// AuthService, which does not take an ApiClient at all.
+  ///
+  /// Pass null to restore. Not wired to anything in the app: [_testClient] is
+  /// only ever set from a test.
+  @visibleForTesting
+  static void setClientForTesting(http.Client? client) => _testClient = client;
 
   /// Build a client with its own connection pool.
   ///
