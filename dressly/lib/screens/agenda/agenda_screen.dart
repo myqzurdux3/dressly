@@ -44,22 +44,20 @@ class _AgendaScreenState extends State<AgendaScreen> {
     _toast(err == null ? msg : '$msg: $err');
   }
 
-  static String _fmtDay(String iso) {
+  /// Same treatment as the week planner (week_plan_screen._dayLabel): the
+  /// platform's own formatter gives localised weekday and month names, instead
+  /// of the English lists that used to be hard-coded here.
+  static String _fmtDay(BuildContext context, String iso) {
     final d = DateTime.tryParse(iso);
     if (d == null) return iso;
     final today = DateTime.now();
     final t0 = DateTime(today.year, today.month, today.day);
     final d0 = DateTime(d.year, d.month, d.day);
     final diff = d0.difference(t0).inDays;
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    final label = '${weekdays[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
-    if (diff == 0) return 'Today · $label';
-    if (diff == 1) return 'Tomorrow · $label';
-    if (diff == -1) return 'Yesterday · $label';
+    final label = MaterialLocalizations.of(context).formatMediumDate(d);
+    if (diff == 0) return '${tr(context, 'plan.today')} · $label';
+    if (diff == 1) return '${tr(context, 'plan.tomorrow')} · $label';
+    if (diff == -1) return '${tr(context, 'agenda.yesterday')} · $label';
     return label;
   }
 
@@ -160,7 +158,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
       if (e.day != lastDay) {
         out.add(Padding(
           padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-          child: Text(_fmtDay(e.day),
+          child: Text(_fmtDay(context, e.day),
               style:
                   const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         ));
@@ -250,11 +248,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 ),
                 const SizedBox(height: 8),
                 if (upcoming.isNotEmpty) ...[
-                  _sectionTitle('Upcoming'),
+                  _sectionTitle(tr(context, 'agenda.upcoming')),
                   ..._dayGroups(upcoming),
                 ],
                 if (past.isNotEmpty) ...[
-                  _sectionTitle('Previously worn'),
+                  _sectionTitle(tr(context, 'agenda.previouslyWorn')),
                   ..._dayGroups(past),
                 ],
               ],
@@ -312,7 +310,7 @@ class _AgendaCard extends StatelessWidget {
                   entry.title.isNotEmpty
                       ? entry.title
                       : (o == null
-                          ? 'Planned day'
+                          ? tr(context, 'agenda.plannedDay')
                           : [
                               if (o.modelName != null) o.modelName!,
                               if (o.cloths.isNotEmpty)

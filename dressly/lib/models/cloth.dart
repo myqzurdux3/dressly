@@ -415,16 +415,31 @@ int bodyOrder(String category) {
 }
 
 /// Human label for the shared slot of two conflicting categories (for messages).
-String outfitSlotLabel(String category) {
+///
+/// Takes a context because it is spliced into a translated sentence: it used to
+/// return English words ("pair of shoes") in the middle of a French one. Same
+/// shape as cutLabel/dominanceLabel above.
+String outfitSlotLabel(BuildContext context, String category) {
   final s = outfitSlots(category);
-  if (s.contains('top') && s.contains('bottom')) return 'full outfit';
-  if (s.contains('top')) return 'top';
-  if (s.contains('mid')) return 'sweater/hoodie';
-  if (s.contains('outer')) return 'jacket/coat';
-  if (s.contains('bottom')) return 'bottom';
-  if (s.contains('feet')) return 'pair of shoes';
-  if (s.contains('headwear')) return 'hat';
-  return categoryLabel(category).toLowerCase();
+  String key;
+  if (s.contains('top') && s.contains('bottom')) {
+    key = 'slot.fullOutfit';
+  } else if (s.contains('top')) {
+    key = 'slot.top';
+  } else if (s.contains('mid')) {
+    key = 'slot.mid';
+  } else if (s.contains('outer')) {
+    key = 'slot.outer';
+  } else if (s.contains('bottom')) {
+    key = 'slot.bottom';
+  } else if (s.contains('feet')) {
+    key = 'slot.feet';
+  } else if (s.contains('headwear')) {
+    key = 'slot.headwear';
+  } else {
+    return categoryLabel(category).toLowerCase();
+  }
+  return tr(context, key);
 }
 
 /// Common clothing brands used to auto-detect a brand from a cloth's name.

@@ -227,7 +227,7 @@ class _ClothPickerScreenState extends State<ClothPickerScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                           content: Text(
                               '${tr(context, 'picker.alreadyPicked')} "${clash.name}" '
-                              '(${outfitSlotLabel(c.category)}) — ${tr(context, 'picker.removeFirst')}'),
+                              '(${outfitSlotLabel(context, c.category)}) — ${tr(context, 'picker.removeFirst')}'),
                         ));
                         return;
                       }
