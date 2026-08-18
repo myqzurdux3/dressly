@@ -658,6 +658,23 @@ def _log_state() -> None:
 _WAL_SET: set = set()
 
 
+def clamp_page(limit, offset):
+    """Bound a client-supplied page. Returns (limit, offset).
+
+    `limit=None` keeps its meaning — "everything" — but capped at
+    MAX_PAGE_SIZE; the previous code accepted any integer, so one request could
+    ask for a million rows. `limit=0` used to mean an empty page, which is
+    never what a caller wants; it now means "unset", like omitting it.
+    """
+    from config import MAX_PAGE_SIZE
+
+    if limit is None or int(limit) <= 0:
+        limit = MAX_PAGE_SIZE
+    limit = min(int(limit), MAX_PAGE_SIZE)
+    offset = max(0, int(offset or 0))
+    return limit, offset
+
+
 @contextmanager
 def get_conn():
     conn = sqlite3.connect(DB_PATH, timeout=10)

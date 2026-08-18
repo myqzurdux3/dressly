@@ -32,6 +32,7 @@ security-relevant variables are set properly:
 | `CLOTHESAPP_UPLOAD_MAX_FILES` | `30` per request | optional |
 | `CLOTHESAPP_UPLOAD_MAX_TOTAL_BYTES` | `268435456` (256 MB) per request | optional |
 | `CLOTHESAPP_MAX_IMAGE_MP` | `40` megapixels | optional |
+| `CLOTHESAPP_MAX_PAGE_SIZE` | `5000` rows per listing | optional |
 | `CLOTHESAPP_GENERATE_DEADLINE_S` | `150` | optional |
 | `CLOTHESAPP_ORIGINAL_MAX_PX` | `4000` | optional |
 | `CLOTHESAPP_CUTOUT_LOSSLESS` | `1` | optional (0 = lossy WebP, ~30% faster uploads) |
