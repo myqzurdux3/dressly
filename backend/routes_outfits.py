@@ -23,7 +23,7 @@ from bfl import (
     next_outfit_tier,
 )
 from config import GENERATE_DEADLINE_S, OUTFITS_DIR
-from db import get_conn
+from db import clamp_page, get_conn
 from routes_thumbs import thumb_url_for
 import imagesign
 from ratelimit import generation_guard, worker_id
@@ -371,12 +371,18 @@ def public_url_for_outfit(path: str) -> str:
 
 
 def _validate_inputs(conn, req, user_id: int) -> None:
-    for cid in req.cloth_ids:
-        owned = conn.execute(
-            "SELECT 1 FROM clothes WHERE id = ? AND user_id = ?", (cid, user_id)
-        ).fetchone()
-        if not owned:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cloth {cid} not found")
+    ids = [int(i) for i in req.cloth_ids]
+    if ids:
+        # One query, then compare the sets — _owned_cloth_ids already does this
+        # elsewhere. The loop cost one round trip per garment.
+        ph = ",".join("?" for _ in ids)
+        owned = {r["id"] for r in conn.execute(
+            f"SELECT id FROM clothes WHERE user_id = ? AND id IN ({ph})",
+            [user_id] + ids)}
+        for cid in ids:
+            if cid not in owned:
+                raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                    f"Cloth {cid} not found")
     # random_model: a concrete model is picked later, so no model_id to validate.
     if not getattr(req, "random_model", False):
         if getattr(req, "model_id", None) is not None:
@@ -506,23 +512,44 @@ def _vto_inputs(conn, render_ids, view, image_mode, has_model, collage_prompt_fn
     return garment, collage_prompt_fn()
 
 
+def _garment_rows(conn, cloth_ids: List[int]) -> dict:
+    """{id: row} for the fields every prompt helper needs, in ONE query.
+
+    _garment_descriptions, _garment_phrase and _extra_reference_paths each ran
+    a SELECT per garment, and _compose_prompt is called at least twice per
+    generation (once for FLUX, once for the try-on prompt) — so the same rows
+    were read 2xN times per render.
+    """
+    ids = [int(i) for i in cloth_ids]
+    if not ids:
+        return {}
+    ph = ",".join("?" for _ in ids)
+    return {r["id"]: r for r in conn.execute(
+        f"SELECT id, name, brand, category FROM clothes WHERE id IN ({ph})", ids)}
+
+
+def _garment_label(row) -> str:
+    """'the Nike hoodie (sweatshirt)' — the phrasing both prompt helpers used."""
+    name = (row["name"] or "").strip()
+    brand = (row["brand"] or "").strip()
+    kind = (row["category"] or "").strip().replace("-", " ")
+    label = " ".join(w for w in (brand, name) if w)
+    if kind and kind.lower() not in label.lower():
+        label = f"{label} ({kind})" if label else kind
+    return label
+
+
 def _garment_descriptions(conn, cloth_ids: List[int]) -> List[str]:
     """Per-cloth short descriptions ('the Nike hoodie'), aligned with cloth_ids,
     for the 'separate images' prompt so the model knows what each image shows."""
+    rows = _garment_rows(conn, cloth_ids)
     out: List[str] = []
     for cid in cloth_ids:
-        row = conn.execute(
-            "SELECT name, brand, category FROM clothes WHERE id = ?", (cid,)
-        ).fetchone()
+        row = rows.get(int(cid))
         if not row:
             out.append("a garment")
             continue
-        name = (row["name"] or "").strip()
-        brand = (row["brand"] or "").strip()
-        kind = (row["category"] or "").strip().replace("-", " ")
-        label = " ".join(w for w in (brand, name) if w)
-        if kind and kind.lower() not in label.lower():
-            label = f"{label} ({kind})" if label else kind
+        label = _garment_label(row)
         out.append(f"the {label}" if label else "a garment")
     return out
 
@@ -531,19 +558,13 @@ def _garment_phrase(conn, cloth_ids: List[int]) -> str:
     """A concise garment description — brand, name and type — phrased to drop
     into the FLUX try-on formula (e.g. "the Nike oversized hoodie, the blue
     jeans and the white sneakers"). Falls back to "the garments"."""
+    rows = _garment_rows(conn, cloth_ids)
     items: List[str] = []
     for cid in cloth_ids:
-        row = conn.execute(
-            "SELECT name, brand, category FROM clothes WHERE id = ?", (cid,)
-        ).fetchone()
+        row = rows.get(int(cid))
         if not row:
             continue
-        name = (row["name"] or "").strip()
-        brand = (row["brand"] or "").strip()
-        kind = (row["category"] or "").strip().replace("-", " ")
-        label = " ".join(w for w in (brand, name) if w)
-        if kind and kind.lower() not in label.lower():
-            label = f"{label} ({kind})" if label else kind
+        label = _garment_label(row)
         if label:
             items.append(f"the {label}")
     if not items:
@@ -776,19 +797,29 @@ def _extra_reference_paths(conn, cloth_ids: List[int], budget: int) -> List[str]
     total never exceeds the model's input-image limit."""
     if budget <= 0:
         return []
+    ids = [int(i) for i in cloth_ids]
+    if not ids:
+        return []
+    # Two queries for the whole outfit instead of two PER garment, on a path
+    # every generate/regenerate takes.
+    ph = ",".join("?" for _ in ids)
+    cats = {r["id"]: (r["category"] or "") for r in conn.execute(
+        f"SELECT id, category FROM clothes WHERE id IN ({ph})", ids)}
+    multi = [i for i in ids if is_multi_angle(cats.get(i, ""))]
+    if not multi:
+        return []
+    ph2 = ",".join("?" for _ in multi)
+    by_cloth: dict = {i: [] for i in multi}
+    for r in conn.execute(
+        "SELECT cloth_id, original_path, cutout_path, bg_accepted "
+        f"FROM cloth_images WHERE cloth_id IN ({ph2}) ORDER BY sort_order, id",
+        multi,
+    ):
+        by_cloth[r["cloth_id"]].append(r)
+
     paths: List[str] = []
-    for cid in cloth_ids:
-        cat = conn.execute(
-            "SELECT category FROM clothes WHERE id = ?", (cid,)
-        ).fetchone()
-        if not cat or not is_multi_angle(cat["category"] or ""):
-            continue
-        rows = conn.execute(
-            "SELECT original_path, cutout_path, bg_accepted FROM cloth_images "
-            "WHERE cloth_id = ? ORDER BY sort_order, id",
-            (cid,),
-        ).fetchall()
-        for r in rows[1:]:  # skip the primary (in the collage already)
+    for cid in multi:                      # caller order, as before
+        for r in by_cloth[cid][1:]:        # skip the primary (in the collage)
             if len(paths) >= budget:
                 return paths
             paths.append(_image_file_path(r))
@@ -1026,9 +1057,10 @@ def list_outfits(
     sql = (f"SELECT o.* FROM outfits o WHERE {' AND '.join(where)} "
            f"ORDER BY {_outfit_order(sort)}")
     args: list = [user["id"]]
-    if limit is not None:
-        sql += " LIMIT ? OFFSET ?"
-        args += [max(0, int(limit)), max(0, int(offset))]
+    # Always bounded, like the wardrobe listing (see db.clamp_page).
+    lim, off = clamp_page(limit, offset)
+    sql += " LIMIT ? OFFSET ?"
+    args += [lim, off]
     with get_conn() as conn:
         rows = conn.execute(sql, args).fetchall()
         return _hydrate_many(conn, rows)
@@ -1554,20 +1586,22 @@ def _today_iso() -> str:
 def _mark_clothes_worn(conn, cloth_ids: List[int], user_id: int, day: str) -> int:
     """Set last_worn_at=day on every owned cloth and record the wear (deduped
     per day) so each cloth's detail can show a wear history. Returns count."""
-    n = 0
-    for cid in cloth_ids:
-        cur = conn.execute(
-            "UPDATE clothes SET last_worn_at = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE id = ? AND user_id = ?",
-            (day, cid, user_id),
-        )
-        if cur.rowcount:
-            conn.execute(
-                "INSERT OR IGNORE INTO cloth_wears (user_id, cloth_id, day) "
-                "VALUES (?, ?, ?)",
-                (user_id, cid, day),
-            )
-        n += cur.rowcount
+    ids = [int(i) for i in cloth_ids]
+    if not ids:
+        return 0
+    ph = ",".join("?" for _ in ids)
+    # Two statements instead of two per garment. The INSERT selects from the
+    # rows the UPDATE actually touched, so a cloth belonging to somebody else
+    # still gets no wear recorded.
+    cur = conn.execute(
+        f"UPDATE clothes SET last_worn_at = ?, updated_at = CURRENT_TIMESTAMP "
+        f"WHERE user_id = ? AND id IN ({ph})",
+        [day, user_id] + ids)
+    n = cur.rowcount
+    conn.execute(
+        f"INSERT OR IGNORE INTO cloth_wears (user_id, cloth_id, day) "
+        f"SELECT ?, id, ? FROM clothes WHERE user_id = ? AND id IN ({ph})",
+        [user_id, day, user_id] + ids)
     return n
 
 

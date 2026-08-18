@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from audit import record as audit_record
 from auth import get_current_user
 from bfl import next_tier
-from db import get_conn
+from db import clamp_page, get_conn
 from generator import (KNOWN_CATEGORIES, has_cut, is_multi_angle,
                        normalize_category)
 from config import STAGING_DIR
@@ -500,9 +500,11 @@ def list_clothes(
          "category": category, "tag": tag, "sort": sort, "min_score": min_score,
          "favorite": favorite},
     )
-    if limit is not None:
-        sql += " LIMIT ? OFFSET ?"
-        args += [max(0, int(limit)), max(0, int(offset))]
+    # Always bounded: "no limit" is a ceiling, not an invitation to build a
+    # response of arbitrary size (see db.clamp_page).
+    lim, off = clamp_page(limit, offset)
+    sql += " LIMIT ? OFFSET ?"
+    args += [lim, off]
     with get_conn() as conn:
         rows = conn.execute(sql, args).fetchall()
         return _hydrate_many(conn, rows)
@@ -579,9 +581,11 @@ def dormant_clothes(
         "ORDER BY dormant_days DESC, c.name COLLATE NOCASE ASC"
     )
     args: list = list(filter_args)
-    if limit is not None:
-        sql += " LIMIT ? OFFSET ?"
-        args += [max(0, int(limit)), max(0, int(offset))]
+    # Always bounded: "no limit" is a ceiling, not an invitation to build a
+    # response of arbitrary size (see db.clamp_page).
+    lim, off = clamp_page(limit, offset)
+    sql += " LIMIT ? OFFSET ?"
+    args += [lim, off]
 
     with get_conn() as conn:
         rows = conn.execute(sql, args).fetchall()

@@ -243,3 +243,10 @@ GENERATE_DEADLINE_S = float(os.environ.get("CLOTHESAPP_GENERATE_DEADLINE_S", "15
 # queue behind each other. Past this, the job is not slow, it is gone: its
 # process died and nothing will ever finish it.
 CUTOUT_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_CUTOUT_TIMEOUT_S", "600"))
+
+# Page-size ceiling for the list endpoints. Single-user server, so this is not
+# rationing: it exists so a bug (or a client looping with limit=1e9) cannot ask
+# the server to build one enormous response and hold it in RAM. 5000 rows is
+# more than ten times the current wardrobe, and the app never asks for more
+# than a screenful at a time.
+MAX_PAGE_SIZE = int(os.environ.get("CLOTHESAPP_MAX_PAGE_SIZE", "5000"))
