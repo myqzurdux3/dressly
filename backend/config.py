@@ -238,3 +238,8 @@ MAX_IMAGE_MEGAPIXELS = float(os.environ.get("CLOTHESAPP_MAX_IMAGE_MP", "40"))
 # tiers x (upload + poll) is ~8 minutes otherwise, with the app polling a
 # spinner the whole time.
 GENERATE_DEADLINE_S = float(os.environ.get("CLOTHESAPP_GENERATE_DEADLINE_S", "150"))
+
+# Background removal is ~5 s a photo on the deployment box, and several can
+# queue behind each other. Past this, the job is not slow, it is gone: its
+# process died and nothing will ever finish it.
+CUTOUT_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_CUTOUT_TIMEOUT_S", "600"))

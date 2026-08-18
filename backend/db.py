@@ -512,6 +512,48 @@ def _enhance_describe(conn) -> None:
         conn.execute("ALTER TABLE cloth_images ADD COLUMN enhance_describe INTEGER")
 
 
+@migration
+def _cutout_started_at(conn) -> None:
+    """When the background removal for this image started.
+
+    Same reason as enhance_started_at: without a start time there is no way to
+    tell a job that is still working from one whose process died, so a crashed
+    cut-out stayed 'processing' for good. NULL on existing rows reads as
+    "unknown", which the sweep treats as stale.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cloth_images)")}
+    if "cutout_started_at" not in cols:
+        conn.execute("ALTER TABLE cloth_images ADD COLUMN cutout_started_at TEXT")
+
+
+def fail_stale_cutouts(conn, timeout_s: float) -> int:
+    """Mark abandoned background removals as failed. Returns how many.
+
+    Mirrors fail_stale_enhancements: called at startup and again whenever a
+    cloth is read, so the app learns on its next poll instead of at the next
+    restart. The image keeps pointing at its original photo, so the card shows
+    the untouched picture rather than nothing.
+    """
+    rows = conn.execute(
+        "SELECT id, original_path FROM cloth_images "
+        "WHERE cutout_status = 'processing' AND ("
+        "  cutout_started_at IS NULL"
+        "  OR (julianday('now') - julianday(cutout_started_at)) * 86400.0 > ?"
+        ")",
+        (float(timeout_s),),
+    ).fetchall()
+    if not rows:
+        return 0
+    for r in rows:
+        conn.execute(
+            "UPDATE cloth_images SET cutout_status = 'failed', cutout_path = ? "
+            "WHERE id = ?",
+            (r["original_path"], r["id"]),
+        )
+    log.warning("marked %s stalled cut-out(s) as failed", len(rows))
+    return len(rows)
+
+
 def fail_stale_enhancements(conn, timeout_s: float) -> int:
     """Mark long-running enhancements as failed. Returns how many.
 
