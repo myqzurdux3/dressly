@@ -25,7 +25,10 @@ class ModelChip extends StatelessWidget {
         Container(
           decoration: BoxDecoration(
             border: Border.all(
-                color: selected ? Colors.white : Colors.transparent, width: 3),
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
+                width: 3),
             borderRadius: BorderRadius.circular(12),
             color: Colors.blueGrey.shade900,
           ),

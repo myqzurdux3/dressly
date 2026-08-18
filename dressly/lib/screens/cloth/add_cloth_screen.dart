@@ -16,6 +16,7 @@ import '../../widgets/image_review.dart';
 import '../../widgets/image_slot.dart';
 import 'cloth_detail_screen.dart';
 import 'photo_edit_screen.dart';
+import '../../theme/tones.dart';
 
 /// Reused for both adding a new cloth and editing an existing one. When
 /// [initial] is non-null the form is pre-populated and saving PUTs instead of
@@ -699,7 +700,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
                 IconButton(
                   icon: Icon(
                     i <= _score ? Icons.star : Icons.star_border,
-                    color: i <= _score ? Colors.amber : Colors.white38,
+                    color: i <= _score ? Colors.amber : faintText(context),
                     size: 32,
                   ),
                   onPressed: () => setState(() => _score = _score == i ? 0 : i),

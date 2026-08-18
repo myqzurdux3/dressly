@@ -15,6 +15,7 @@ import '../../widgets/paged_grid.dart';
 import '../cloth/add_cloth_screen.dart';
 import '../cloth/cloth_detail_screen.dart';
 import '../settings/settings_screen.dart';
+import '../../theme/tones.dart';
 
 class CollectionScreen extends StatefulWidget {
   const CollectionScreen({super.key});
@@ -234,6 +235,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
           child: PagedGrid<Cloth>(
             controller: _clothes,
             onRefresh: _refresh,
+            // Room for the extended "add clothes" button: at the default
+            // padding it covers the last row's name, rating and colours, and
+            // no amount of scrolling reveals them.
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 96),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 8,
@@ -245,9 +250,14 @@ class _CollectionScreenState extends State<CollectionScreen> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '$count ${trPlural(context, 'wardrobe.item', count)}'
+                  // "60 articles" was the number LOADED, not the number owned:
+                  // the wardrobe held 129 and the rest arrived on scroll. The
+                  // total is not known until the last page lands, so say so
+                  // rather than state a number that is wrong.
+                  '$count${_clothes.hasMore ? '+' : ''} '
+                  '${trPlural(context, 'wardrobe.item', count)}'
                   '${_filter.isEmpty ? '' : ' ${tr(context, 'wardrobe.matchFilters')}'}',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  style: TextStyle(color: secondaryText(context), fontSize: 12),
                 ),
               ),
             ),

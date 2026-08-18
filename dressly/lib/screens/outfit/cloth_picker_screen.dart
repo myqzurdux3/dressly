@@ -7,6 +7,7 @@ import '../../models/cloth.dart';
 import '../../services/clothes_service.dart';
 import '../../widgets/app_image.dart';
 import '../../widgets/filter_sheet.dart';
+import '../../theme/tones.dart';
 
 /// Full-screen multi-select cloth picker, opened from the outfit screen.
 /// Mirrors the collection screen's search + sort/filter, but each tile has a
@@ -302,8 +303,8 @@ class _PickTile extends StatelessWidget {
                         Text(categoryName(context, cloth.category),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 10, color: Colors.white54)),
+                            style: TextStyle(
+                                fontSize: 10, color: secondaryText(context))),
                     ],
                   ),
                 ),

@@ -7,6 +7,7 @@ import '../../models/outfit.dart';
 import '../../widgets/app_image.dart';
 import '../outfit/outfit_result_dialog.dart';
 import 'week_plan_screen.dart';
+import '../../theme/tones.dart';
 
 /// Plan which outfit to wear on which day. Each entry can reference a generated
 /// outfit; marking it worn stamps last_worn_at on that outfit's clothes (which
@@ -143,11 +144,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
   Widget _sectionTitle(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
         child: Text(t.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1,
-                color: Colors.white54)),
+                color: secondaryText(context))),
       );
 
   /// Renders entries grouped by day, with a day header before each new day.
@@ -214,7 +215,16 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   Text(tr(context, 'agenda.emptyHint'),
                       style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 16),
-                  FilledButton.tonalIcon(
+                  // The hint above names "schedule an outfit", so that is what
+                  // the button under it must do. It used to open the week
+                  // planner instead — a different action, under a label the
+                  // sentence had just told the reader to look for.
+                  FilledButton.icon(
+                    onPressed: _schedule,
+                    icon: const Icon(Icons.event),
+                    label: Text(tr(context, 'agenda.scheduleOutfit')),
+                  ),
+                  TextButton.icon(
                     onPressed: _openWeekPlanner,
                     icon: const Icon(Icons.auto_awesome_motion_outlined),
                     label: Text(tr(context, 'plan.title')),

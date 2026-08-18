@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_text.dart';
+import '../theme/tones.dart';
 
 /// Tap-to-rate stars. Pass the current score (0..5); 0 = unrated. Calls
 /// onChanged when the user picks a new value (0 when tapping the current
@@ -24,7 +25,7 @@ class StarRating extends StatelessWidget {
             tooltip: '$i / 5',
             icon: Icon(
               i <= score ? Icons.star : Icons.star_border,
-              color: i <= score ? Colors.amber : Colors.white38,
+              color: i <= score ? Colors.amber : faintText(context),
             ),
             onPressed: () => onChanged(i == score ? 0 : i),
           ),

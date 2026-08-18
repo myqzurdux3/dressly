@@ -10,6 +10,7 @@ import '../../widgets/image_review.dart';
 import '../../widgets/star_rating.dart';
 import 'add_cloth_screen.dart';  // ClothFormScreen + AddClothScreen typedef
 import 'photo_edit_screen.dart';
+import '../../theme/tones.dart';
 
 /// Full view of one cloth: the structured info (category, cut, colors, tags)
 /// followed by a scrollable list of per-image cards. Each card lets the user
@@ -281,7 +282,8 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
                       fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               if (wears.days.isEmpty)
-                Text(tr(context, 'detail.notWornYet'), style: const TextStyle(color: Colors.grey))
+                Text(tr(context, 'detail.notWornYet'),
+                    style: TextStyle(color: secondaryText(context)))
               else
                 Flexible(
                   child: SingleChildScrollView(
@@ -439,8 +441,8 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(cloth.brand,
-                        style: const TextStyle(
-                            fontSize: 15, color: Colors.white70)),
+                        style: TextStyle(
+                            fontSize: 15, color: secondaryText(context))),
                   ),
                 const SizedBox(height: 12),
                 // User rating — used by the generator's min-score filter.
@@ -480,7 +482,7 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
                 const SizedBox(height: 12),
                 // Last worn — tap to see all days worn + count this year.
                 Row(children: [
-                  const Icon(Icons.history, size: 18, color: Colors.white54),
+                  Icon(Icons.history, size: 18, color: secondaryText(context)),
                   const SizedBox(width: 6),
                   Expanded(
                     child: InkWell(
@@ -489,8 +491,8 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
                         cloth.lastWornAt == null
                             ? tr(context, 'detail.neverWorn')
                             : '${tr(context, 'detail.lastWorn')} ${cloth.lastWornAt} · ${tr(context, 'detail.tapForHistory')}',
-                        style: const TextStyle(
-                            color: Colors.white70,
+                        style: TextStyle(
+                            color: secondaryText(context),
                             decoration: TextDecoration.underline),
                       ),
                     ),
@@ -636,7 +638,7 @@ class _ImageReviewCard extends StatelessWidget {
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(image.role.toUpperCase(),
+                child: Text(_roleLabel(context, image.role).toUpperCase(),
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.bold)),
               ),
@@ -683,7 +685,7 @@ class _ImageReviewCard extends StatelessWidget {
           // Background-removal strength — re-runs the cut-out at 3 tolerances.
           Row(children: [
             Text(tr(context, 'detail.cutoutStrength'),
-                style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                style: TextStyle(fontSize: 12, color: secondaryText(context))),
             const SizedBox(width: 10),
             Expanded(
               child: SegmentedButton<String>(
@@ -706,7 +708,7 @@ class _ImageReviewCard extends StatelessWidget {
           ]),
           const SizedBox(height: 2),
           Text(tr(context, 'detail.strengthHint'),
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              style: TextStyle(fontSize: 11, color: faintText(context))),
           const SizedBox(height: 12),
           if (busy)
             const Padding(
@@ -727,10 +729,10 @@ class _ImageReviewCard extends StatelessWidget {
                 accepted
                     ? tr(context, 'detail.usingCutout')
                     : tr(context, 'detail.usingOriginal'),
-                style: const TextStyle(color: Colors.white70),
+                style: TextStyle(color: secondaryText(context)),
               ),
               const Spacer(),
-              const Icon(Icons.lock_outline, size: 16, color: Colors.white38),
+              Icon(Icons.lock_outline, size: 16, color: faintText(context)),
             ])
           else
             Builder(builder: (ctx) {
@@ -771,13 +773,27 @@ class _ImageReviewCard extends StatelessWidget {
     );
   }
 
+  /// The badge over each photo. The role comes from the server as "front" /
+  /// "back" / "extra" and used to be printed raw, so a French app showed
+  /// "FRONT" — while the same photo's badge in the wardrobe grid said "DOS".
+  static String _roleLabel(BuildContext context, String role) {
+    switch (role) {
+      case 'front':
+        return tr(context, 'form.front');
+      case 'back':
+        return tr(context, 'form.back');
+      default:
+        return tr(context, 'form.photo');
+    }
+  }
+
   Widget _beforeAfterTile(BuildContext context, String label, String url, Color? tint) {
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Text(label,
           style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: tint ?? Colors.white70)),
+              color: tint ?? secondaryText(context))),
       const SizedBox(height: 4),
       GestureDetector(
         onTap: () => showImageFullscreen(context, imageUrl(url)),
@@ -815,7 +831,7 @@ class _ImageReviewCard extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Text(tr(context, 'detail.enhancing'),
-              style: const TextStyle(color: Colors.white70)),
+              style: TextStyle(color: secondaryText(context))),
         ),
         TextButton(
           onPressed: () => onEnhance(image.enhancePendingMethod ?? 'auto'),
@@ -894,7 +910,7 @@ class _ImageReviewCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 24),
             child: Text(image.enhanceError!,
-                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                style: TextStyle(color: secondaryText(context), fontSize: 11)),
           ),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
@@ -953,7 +969,7 @@ class _ImageReviewCard extends StatelessWidget {
           const SizedBox(width: 8),
           Flexible(
             child: Text(tr(context, 'detail.describeItem'),
-                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                style: TextStyle(color: secondaryText(context), fontSize: 12)),
           ),
         ]),
       ),
@@ -988,7 +1004,7 @@ class _ImageReviewCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.white38),
+          border: Border.all(color: hairline(context)),
           borderRadius: BorderRadius.circular(24),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1013,11 +1029,11 @@ class _Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white12,
+        color: subtleFill(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text('$label: $value',
-          style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          style: TextStyle(fontSize: 12, color: secondaryText(context))),
     );
   }
 }

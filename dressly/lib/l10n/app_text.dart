@@ -356,6 +356,9 @@ const Map<String, Map<String, String>> _strings = {
     'result.loadFailed': 'Load failed',
     'result.pickAtLeastOne': 'Pick at least one cloth',
     'result.generationFailed': 'Generation failed',
+    'result.outfitKept': 'Your outfit is safe — the clothes and model are kept. '
+        'This is often temporary; try again.',
+    'result.previewBadge': 'Preview',
     'result.selectionFailed': 'Selection failed',
     'result.someFailed': 'Some generations failed',
     'result.deleteFailed': 'Delete failed',
@@ -1070,6 +1073,9 @@ const Map<String, Map<String, String>> _strings = {
     'result.loadFailed': 'Échec du chargement',
     'result.pickAtLeastOne': 'Choisissez au moins un habit',
     'result.generationFailed': 'Échec de la génération',
+    'result.outfitKept': 'Votre tenue est intacte — les habits et le mannequin '
+        'sont conservés. C\'est souvent passager ; réessayez.',
+    'result.previewBadge': 'Aperçu',
     'result.selectionFailed': 'Échec de la sélection',
     'result.someFailed': 'Certaines générations ont échoué',
     'result.deleteFailed': 'Échec de la suppression',

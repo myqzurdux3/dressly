@@ -11,6 +11,7 @@ import '../../widgets/outfit_viewer.dart';
 import '../cloth/cloth_detail_screen.dart';
 import 'cloth_picker_screen.dart';
 import '../../widgets/app_image.dart';
+import '../../theme/tones.dart';
 
 class OutfitResultDialog extends StatefulWidget {
   const OutfitResultDialog({
@@ -534,11 +535,13 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.white12,
+                color: subtleFill(context),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                _outfit.isMock ? 'Preview' : _outfit.tierLabel,
+                _outfit.isMock
+                    ? tr(context, 'result.previewBadge')
+                    : _outfit.tierLabel,
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
               ),
             ),
@@ -575,10 +578,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                 Text(tr(context, 'result.generationFailed'),
                     style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text(
-                    'Your outfit is safe — the clothes and model are kept. '
-                    'This is often temporary; try again.',
-                    style: TextStyle(color: Colors.white70, fontSize: 12)),
+                Text(tr(context, 'result.outfitKept'),
+                    style: TextStyle(
+                        color: secondaryText(context), fontSize: 12)),
                 if (_outfit.error.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(_outfit.error,
@@ -769,7 +771,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               : _outfit.prompt,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              style: TextStyle(color: secondaryText(context), fontSize: 12)),
           const SizedBox(height: 12),
           // Image actions: download, favorite.
           if (!failed)
