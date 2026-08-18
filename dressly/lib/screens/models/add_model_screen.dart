@@ -201,8 +201,13 @@ class _Thumb extends StatelessWidget {
         child: Stack(children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(11),
+            // Decode at tile size: a camera capture is ~12 MP, which would
+            // otherwise sit in memory in full for a 130 px box.
             child: Image.file(File(path),
-                width: 130, height: 170, fit: BoxFit.cover),
+                width: 130, height: 170, fit: BoxFit.cover,
+                cacheWidth: (130 *
+                        (MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0))
+                    .round()),
           ),
           Positioned(
             top: 4,

@@ -296,7 +296,9 @@ class _AgendaCard extends StatelessWidget {
                 color: Colors.blueGrey.shade900,
                 child: o == null
                     ? const Icon(Icons.checkroom, color: Colors.white38)
-                    : AppImage(url: outfitImageUrl(o),
+                    // A 64 px tile: the grid-sized copy, not the full render.
+                    : AppImage(url: outfitThumbUrl(o),
+                        cacheKey: outfitThumbUrl(o),
                         fit: BoxFit.cover, memWidth: 128),
               ),
             ),
@@ -479,7 +481,9 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                               width: sel ? 3 : 1),
                         ),
                         clipBehavior: Clip.antiAlias,
-                        child: AppImage(url: outfitImageUrl(o),
+                        // Three per row: the grid-sized copy is plenty.
+                        child: AppImage(url: outfitThumbUrl(o),
+                            cacheKey: outfitThumbUrl(o),
                             fit: BoxFit.cover, memWidth: 160),
                       ),
                     );

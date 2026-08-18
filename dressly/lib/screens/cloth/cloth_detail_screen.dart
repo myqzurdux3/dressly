@@ -217,31 +217,40 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
     final reportedMsg = tr(context, 'detail.reported');
     final reportFailedMsg = tr(context, 'detail.reportFailed');
     final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(tr(context, 'detail.reportTitle')),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(
-            hintText: tr(context, 'detail.reportHint'),
-            border: const OutlineInputBorder(),
+    bool? ok;
+    var message = '';
+    // The controller lives only as long as the dialog; dispose it as soon as
+    // the dialog is gone, after reading what the user typed.
+    try {
+      ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(tr(context, 'detail.reportTitle')),
+          content: TextField(
+            controller: ctrl,
+            decoration: InputDecoration(
+              hintText: tr(context, 'detail.reportHint'),
+              border: const OutlineInputBorder(),
+            ),
+            maxLines: 2,
           ),
-          maxLines: 2,
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(tr(context, 'common.cancel'))),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(tr(context, 'detail.sendToAdmins'))),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr(context, 'common.cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(tr(context, 'detail.sendToAdmins'))),
-        ],
-      ),
-    );
+      );
+      message = ctrl.text.trim();
+    } finally {
+      ctrl.dispose();
+    }
     if (ok != true) return;
     try {
-      await svc.reportImage(widget.clothId, img.id, message: ctrl.text.trim());
+      await svc.reportImage(widget.clothId, img.id, message: message);
       messenger.showSnackBar(SnackBar(content: Text(reportedMsg)));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$reportFailedMsg: $e')));

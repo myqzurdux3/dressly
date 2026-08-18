@@ -48,8 +48,15 @@ class ImageSlot extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(11),
+                    // Decode at tile size: a camera capture is ~12 MP, which
+                    // would otherwise sit in memory in full for a 140 px box.
                     child: Image.file(File(path!), fit: BoxFit.cover,
-                        width: width, height: height),
+                        width: width, height: height,
+                        cacheWidth: (width *
+                                (MediaQuery.maybeOf(context)
+                                        ?.devicePixelRatio ??
+                                    1.0))
+                            .round()),
                   ),
                   Positioned(
                     top: 4,

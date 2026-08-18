@@ -121,6 +121,8 @@ class _OutfitScreenState extends State<OutfitScreen> {
         imageMode: _imageMode,
         renderClothIds: _renderClothIds,
       );
+      // A render takes tens of seconds; the user may well have left by now.
+      if (!mounted) return;
       _history.prepend(outfit);
       _showResult(outfit);
     } catch (e) {

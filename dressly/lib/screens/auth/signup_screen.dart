@@ -37,7 +37,7 @@ class _SignupScreenState extends State<SignupScreen> {
       // Without this, the pushed SignupScreen sits on top and "nothing happens".
       Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }

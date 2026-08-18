@@ -1,6 +1,7 @@
 import 'package:dressly/models/agenda.dart';
 import 'package:dressly/models/cloth.dart';
 import 'package:dressly/models/outfit.dart';
+import 'package:dressly/screens/outfit/outfit_result_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -154,6 +155,23 @@ void main() {
       expect(url.contains('b=5-flux-front-done'), isTrue);
     });
 
+    test('an outfit with no render yields an empty url, not the site root', () {
+      final o = Outfit.fromJson({
+        'id': 7,
+        'cloth_ids': [],
+        'cloths': [],
+        'generated_url': '',
+        'status': 'failed',
+        'model_tier': 'flex',
+        'view': 'front',
+      });
+      // AppImage skips the download only when the url is empty; anything else
+      // sends it to fetch the homepage through the image pipeline.
+      expect(outfitImageUrl(o), '');
+      expect(outfitThumbUrl(o), '');
+      expect(outfitPreviewUrl(o), '');
+    });
+
     test('withLinkedId links the front to its back without touching the rest', () {
       final front = Outfit.fromJson({
         'id': 5, 'cloth_ids': [1], 'cloths': [], 'generated_url': '/g/5.png',
@@ -166,6 +184,45 @@ void main() {
       expect(linked.id, 5);
       expect(linked.view, 'front');
       expect(linked.isFavorite, isTrue);
+    });
+
+    test('favoriting a manual outfit keeps its layout and resized copies', () {
+      // The copy is built field by field, so a forgotten field falls back to
+      // the constructor default — which used to turn a manual outfit into an
+      // 'ai' one with no layout, i.e. no longer editable in the builder.
+      final manual = Outfit.fromJson({
+        'id': 12, 'cloth_ids': [1, 2], 'cloths': [], 'generated_url': '/g/12.png',
+        'thumb_url': '/g/12_thumb.png', 'preview_url': '/g/12_preview.png',
+        'status': 'done', 'model_tier': 'flex', 'view': 'front',
+        'is_favorite': false, 'kind': 'manual', 'algo_label': 'Casual',
+        'layout': {'background': 'plain', 'items': []},
+      });
+      final faved = outfitWithFavorite(manual, true);
+      expect(faved.isFavorite, isTrue);
+      expect(faved.kind, 'manual');
+      expect(faved.isManual, isTrue);
+      expect(faved.layout, {'background': 'plain', 'items': []});
+      expect(faved.thumbUrl, '/g/12_thumb.png');
+      expect(faved.previewUrl, '/g/12_preview.png');
+      expect(faved.algoLabel, 'Casual');
+      expect(manual.isFavorite, isFalse); // original untouched
+    });
+
+    test('blacklisting keeps the render mode and the manual layout', () {
+      final manual = Outfit.fromJson({
+        'id': 13, 'cloth_ids': [1], 'cloths': [], 'generated_url': '/g/13.png',
+        'thumb_url': '/g/13_thumb.png', 'preview_url': '/g/13_preview.png',
+        'status': 'done', 'model_tier': 'flex', 'view': 'front',
+        'kind': 'manual', 'layout': {'background': 'plain'},
+        'image_mode': 'separate', 'render_cloth_ids': [1],
+      });
+      final banned = outfitWithBlacklist(manual, true);
+      expect(banned.isBlacklisted, isTrue);
+      expect(banned.kind, 'manual');
+      expect(banned.layout, {'background': 'plain'});
+      expect(banned.thumbUrl, '/g/13_thumb.png');
+      expect(banned.imageMode, 'separate');
+      expect(banned.renderClothIds, [1]);
     });
   });
 
