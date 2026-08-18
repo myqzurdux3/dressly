@@ -22,6 +22,11 @@ class AgendaScreen extends StatefulWidget {
 class _AgendaScreenState extends State<AgendaScreen> {
   Future<List<AgendaEntry>>? _future;
 
+  /// Whether the last load came back empty. The empty state offers the very
+  /// action the button does, so showing both puts "Planifier une tenue" on the
+  /// screen twice.
+  bool _empty = false;
+
   @override
   void initState() {
     super.initState();
@@ -30,7 +35,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
   void _reload() {
     setState(() {
-      _future = agendaServiceOf(context).list();
+      _future = agendaServiceOf(context).list().then((entries) {
+        if (mounted && _empty != entries.isEmpty) {
+          setState(() => _empty = entries.isEmpty);
+        }
+        return entries;
+      });
     });
   }
 
@@ -188,11 +198,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _schedule,
-        icon: const Icon(Icons.event),
-        label: Text(tr(context, 'agenda.scheduleOutfit')),
-      ),
+      floatingActionButton: _empty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _schedule,
+              icon: const Icon(Icons.event),
+              label: Text(tr(context, 'agenda.scheduleOutfit')),
+            ),
       body: FutureBuilder<List<AgendaEntry>>(
         future: _future,
         builder: (context, snap) {

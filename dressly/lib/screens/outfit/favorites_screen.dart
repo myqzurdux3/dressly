@@ -155,8 +155,14 @@ class _FavCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                   color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-              child: Text(outfit.view == 'back' ? tr(context, 'card.back') : tr(context, 'card.front'),
-                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+              child: Text(
+                  outfit.view == 'back'
+                      ? tr(context, 'card.back')
+                      : tr(context, 'card.front'),
+                  style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white)),
             ),
           ),
           Positioned(
@@ -180,7 +186,8 @@ class _FavCard extends StatelessWidget {
                 gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black87, Colors.transparent]),
+                    stops: [0.0, 0.75, 1.0],
+                    colors: [Colors.black87, Colors.black54, Colors.transparent]),
               ),
               child: Text(
                 [
@@ -190,7 +197,7 @@ class _FavCard extends StatelessWidget {
                 ].join(' · '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11),
+                style: const TextStyle(fontSize: 11, color: Colors.white),
               ),
             ),
           ),

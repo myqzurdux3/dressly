@@ -100,6 +100,20 @@ class _ModelReviewScreenState extends State<ModelReviewScreen> {
   }
 }
 
+/// The role comes from the server as "front" / "back" / "extra"; printing it
+/// raw put an English "FRONT" on a French screen. Same fix as the cloth detail
+/// screen, which had the same badge.
+String _roleLabel(BuildContext context, String role) {
+  switch (role) {
+    case 'front':
+      return tr(context, 'form.front');
+    case 'back':
+      return tr(context, 'form.back');
+    default:
+      return tr(context, 'form.photo');
+  }
+}
+
 class _ModelImageCard extends StatelessWidget {
   const _ModelImageCard({required this.image});
   final ModelImage image;
@@ -118,9 +132,11 @@ class _ModelImageCard extends StatelessWidget {
               color: Colors.black54,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(image.role.toUpperCase(),
-                style:
-                    const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            child: Text(_roleLabel(context, image.role).toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white)),
           ),
           const SizedBox(height: 8),
           Container(

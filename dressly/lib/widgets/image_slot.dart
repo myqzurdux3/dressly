@@ -67,7 +67,9 @@ class ImageSlot extends StatelessWidget {
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(label, style: const TextStyle(fontSize: 12)),
+                      child: Text(label,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.white)),
                     ),
                   ),
                 ],

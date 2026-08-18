@@ -132,7 +132,8 @@ class _ClothCardState extends State<ClothCard> {
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(
                                           fontSize: 8,
-                                          fontWeight: FontWeight.bold),
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white),
                                     ),
                                   ),
                                 ),
@@ -153,7 +154,8 @@ class _ClothCardState extends State<ClothCard> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text('+${cloth.images.length - 2}',
-                            style: const TextStyle(fontSize: 11)),
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.white)),
                       ),
                     ),
                   if (pendingReview)
@@ -193,7 +195,9 @@ class _ClothCardState extends State<ClothCard> {
                             const SizedBox(width: 2),
                             Text('${cloth.score}',
                                 style: const TextStyle(
-                                    fontSize: 10, fontWeight: FontWeight.bold)),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white)),
                           ]),
                         ),
                       ),

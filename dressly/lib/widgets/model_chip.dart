@@ -44,9 +44,11 @@ class ModelChip extends StatelessWidget {
         const SizedBox(height: 4),
         SizedBox(
           width: 80,
+          // Two lines: "Random model" and any model named with more than one
+          // word were cut to "Modèle aléat…" on a single line.
           child: Text(label,
               textAlign: TextAlign.center,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12)),
         ),

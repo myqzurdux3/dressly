@@ -460,7 +460,9 @@ class _OutfitScreenState extends State<OutfitScreen> {
               style: const TextStyle(color: Colors.grey, fontSize: 12)),
         const SizedBox(height: 8),
         SizedBox(
-          height: 130,
+          // 130 fitted a one-line label. The labels wrap to two lines now, so
+          // "Modèle aléatoire" reads in full instead of being cut mid-word.
+          height: 148,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
