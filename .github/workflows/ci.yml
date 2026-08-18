@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes the run in flight for the same branch.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # The deployment box runs 3.14; 3.11 is the floor the code is written to.
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # The first background removal downloads u2net (~170 MB). Cached, or every
+      # run pays for it again.
+      - name: Cache the rembg model
+        uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-${{ runner.os }}
+
+      - name: Tests
+        working-directory: backend
+        run: python -m pytest
+
+  app:
+    name: flutter app
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+          cache: true
+
+      - name: Install packages
+        working-directory: dressly
+        run: flutter pub get
+
+      # Analysis is a gate, not advice: the repo is kept at zero issues.
+      - name: Analyze
+        working-directory: dressly
+        run: dart analyze lib test
+
+      - name: Tests
+        working-directory: dressly
+        run: flutter test
+
+      # Catches what unit tests cannot: a broken asset path, a font declared but
+      # missing, a Gradle/AGP mismatch.
+      - name: Build APK
+        working-directory: dressly
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dressly-apk
+          path: dressly/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

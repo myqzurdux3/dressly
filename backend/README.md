@@ -1,4 +1,4 @@
-# Clothes App — Python backend
+# Dressly — Python backend
 
 FastAPI + SQLite + `rembg` (background removal). Auth via JWT + bcrypt.
 
