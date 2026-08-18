@@ -48,10 +48,42 @@ Future<int> _plural(WidgetTester tester, String locale, String baseKey,
   return count;
 }
 
-/// Every `tr(context, 'literal')` / `trOr(context, 'literal', ...)` in lib/.
-/// Interpolated keys are skipped — they are resolved from data at runtime.
+/// Every literal translation key used anywhere in lib/.
+///
+/// Three shapes, because the app uses three:
+///   tr(context, 'x')        — and trOr / trPlural
+///   tr(ctx, 'x')            — any BuildContext name, not just `context`.
+///                             Requiring the literal name `context` hid about
+///                             sixty keys from this test, including every one
+///                             in the dormant screen and the week planner.
+///   _toastKey('x') / _runUpdating('x', ...) — helpers whose FIRST argument is
+///                             a key, which never reached tr() textually.
+/// Interpolated keys are skipped — they are resolved from data at runtime, and
+/// trPlural keys are collected separately by [_pluralBasesUsedInApp]: what has
+/// to exist for them is `<key>.one` / `<key>.other`, not the bare key.
 Set<String> _literalKeysUsedInApp() {
-  final re = RegExp(r"""tr(?:Or)?\(\s*context\s*,\s*'([^'$]+)'""");
+  final patterns = [
+    RegExp(r"""tr(?:Or)?\(\s*\w+\s*,\s*'([^'$]+)'"""),
+    RegExp(r"""_(?:toastKey|runUpdating|run)\(\s*'([^'$]+)'"""),
+  ];
+  final keys = <String>{};
+  for (final f in Directory('lib').listSync(recursive: true)) {
+    if (f is! File || !f.path.endsWith('.dart')) continue;
+    if (f.path.endsWith('app_text.dart')) continue;
+    final src = f.readAsStringSync();
+    for (final re in patterns) {
+      for (final m in re.allMatches(src)) {
+        keys.add(m.group(1)!);
+      }
+    }
+  }
+  return keys;
+}
+
+/// Every `trPlural(ctx, 'base', n)` in lib/. The base itself is never a key;
+/// `base.one` and `base.other` are.
+Set<String> _pluralBasesUsedInApp() {
+  final re = RegExp(r"""trPlural\(\s*\w+\s*,\s*'([^'$]+)'""");
   final keys = <String>{};
   for (final f in Directory('lib').listSync(recursive: true)) {
     if (f is! File || !f.path.endsWith('.dart')) continue;
@@ -65,6 +97,17 @@ Set<String> _literalKeysUsedInApp() {
 
 void main() {
   final english = translationKeys('en');
+
+  test('every plural used in the app has both its forms', () {
+    final missing = <String>{};
+    for (final base in _pluralBasesUsedInApp()) {
+      for (final form in const ['one', 'other']) {
+        if (!english.contains('$base.$form')) missing.add('$base.$form');
+      }
+    }
+    expect(missing, isEmpty,
+        reason: 'trPlural used in lib/ without both forms: $missing');
+  });
 
   test('the app ships strings for exactly the locales it advertises', () {
     final advertised =
