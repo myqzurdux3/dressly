@@ -34,7 +34,13 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt ruff
+
+      # Defects only — the rule set and every exclusion are explained in
+      # backend/ruff.toml. Not a formatter: nothing here is misformatted.
+      - name: Lint
+        working-directory: backend
+        run: ruff check .
 
       # The first background removal downloads u2net (~170 MB). Cached, or every
       # run pays for it again.

@@ -8,6 +8,7 @@ is what uvicorn prints when it cannot bind port 80. It names no port, so it
 reads as a file-permission problem, and the next hour goes on chmod.
 """
 import os
+from pathlib import Path
 import shutil
 import subprocess
 
@@ -85,7 +86,7 @@ def test_the_check_asks_the_kernel_rather_than_guessing():
     A capability test cannot be written here without root, so this asserts the
     method instead: the script must open the socket, not inspect the binary.
     """
-    script = open(SCRIPT).read()
+    script = Path(SCRIPT).read_text()
     assert "getcap" not in script,         "back to predicting from file capabilities, which systemd does not use"
     assert "s.bind((host, port))" in script, "the port is no longer probed"
 

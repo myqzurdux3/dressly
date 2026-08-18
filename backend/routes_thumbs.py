@@ -54,8 +54,8 @@ def _safe_source(root_key: str, rel_path: str) -> Path:
     root = root.resolve()
     try:
         src = (root / rel_path).resolve()
-    except (OSError, ValueError):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
+    except (OSError, ValueError) as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found") from e
     if src != root and root not in src.parents:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
     resolved = resolve_legacy_extension(src)

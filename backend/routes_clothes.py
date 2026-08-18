@@ -579,7 +579,9 @@ def dormant_clothes(
     with get_conn() as conn:
         rows = conn.execute(sql, args).fetchall()
         items = _hydrate_many(conn, rows)
-        for item, row in zip(items, rows):
+        # strict: a hydrate that dropped a row would otherwise attach
+        # dormant_days to the WRONG garment, silently.
+        for item, row in zip(items, rows, strict=True):
             item["dormant_days"] = int(row["dormant_days"] or 0)
             item["dormant_since"] = row["dormant_since"]
             item["never_worn"] = bool(row["never_worn"])
@@ -670,7 +672,7 @@ async def create_cloth(
     check_count(images)
     budget = UploadBudget()
     payloads = []
-    for idx, (role, upload) in enumerate(zip(roles, images)):
+    for idx, (role, upload) in enumerate(zip(roles, images, strict=True)):
         data = await read_capped(upload, budget=budget)
         if data:
             verify_image(data)
@@ -963,7 +965,8 @@ def detect_cloth_colors(cloth_id: int, user=Depends(get_current_user)):
         colors = detect_colors(img["cutout_path"])
     except Exception as e:
         log.warning("color detection failed for cloth %s: %s", cloth_id, e)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not read the image")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Could not read the image") from e
     return {"colors": colors}
 
 

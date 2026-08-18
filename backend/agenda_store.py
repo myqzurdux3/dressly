@@ -51,8 +51,8 @@ def valid_day(value: str) -> str:
 
     try:
         return _date.fromisoformat(value.strip()).isoformat()
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as e:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"day must be YYYY-MM-DD, got {value!r}",
-        )
+        ) from e

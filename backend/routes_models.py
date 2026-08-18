@@ -151,7 +151,7 @@ async def create_model(
         model_id = cur.lastrowid
         mdir = _model_dir(model_id)
         roles = ["front", "back"] + ["extra"] * max(0, len(images) - 2)
-        for idx, (role, upload) in enumerate(zip(roles, images)):
+        for idx, (role, upload) in enumerate(zip(roles, images, strict=True)):
             ext = (upload.filename or "").lower().rsplit(".", 1)[-1] if upload.filename else "jpg"
             if ext not in ("jpg", "jpeg", "png", "webp"):
                 ext = "jpg"

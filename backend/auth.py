@@ -42,8 +42,11 @@ def issue_token(user_id: int, email: str) -> str:
 def _decode(token: str) -> dict:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALG])
-    except jwt.PyJWTError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+    except jwt.PyJWTError as e:
+        # `from e` keeps which JWT check failed (expired vs bad signature) in the
+        # traceback, while the client still gets one opaque 401.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED,
+                            "Invalid or expired token") from e
 
 
 def get_current_user(
