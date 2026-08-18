@@ -227,3 +227,9 @@ ENHANCE_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_ENHANCE_TIMEOUT_S", "180"))
 # ORIGINAL_MAX_PX is 4000, so a legitimate photo is at most ~16 MP; 40 leaves
 # room for panoramas without leaving the door open.
 MAX_IMAGE_MEGAPIXELS = float(os.environ.get("CLOTHESAPP_MAX_IMAGE_MP", "40"))
+
+# Outfit rendering shares the enhancement reasoning: the deadline stops the
+# cascade from STARTING another tier, it never aborts one in flight. Four
+# tiers x (upload + poll) is ~8 minutes otherwise, with the app polling a
+# spinner the whole time.
+GENERATE_DEADLINE_S = float(os.environ.get("CLOTHESAPP_GENERATE_DEADLINE_S", "150"))
