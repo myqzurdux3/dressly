@@ -158,32 +158,44 @@ Set this in `dressly/lib/config/api_config.dart`.
 
 ## Endpoints
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| POST | `/auth/signup` | – | `{email,password}` → `{token,user}` |
-| POST | `/auth/login` | – | `{email,password}` → `{token,user}` |
-| GET | `/auth/me` | ✓ | current user |
-| GET | `/clothes` | ✓ | list, with `sort/search/brand/color/cut/tag` query filters |
-| GET | `/clothes/{id}` | ✓ | one cloth (owner-scoped) |
-| POST | `/clothes` | ✓ | `multipart`: `name,brand,cut,category,colors(JSON),tags(JSON)` + `images[]` (first two = front/back) |
-| PUT | `/clothes/{id}` | ✓ | update fields/colors/tags |
-| DELETE | `/clothes/{id}` | ✓ | delete cloth + its image files |
-| GET | `/autocomplete/brands` | ✓ | distinct brands across **all users** |
-| GET | `/autocomplete/tags` | ✓ | distinct tags across **all users** |
-| GET | `/images/...` | – | static image files |
-| GET | `/health` | – | liveness |
+79 routes, so the authoritative list is the OpenAPI one: run the dev server and
+open <http://localhost/docs>. (They are served only when `CLOTHESAPP_ENV=dev` —
+a public server should not publish its own map.)
+
+| Prefix | Routes | What lives there |
+|---|---|---|
+| `/auth` | 4 | signup, login, `me`, password change |
+| `/clothes` | 24 | CRUD, images (add/replace/crop/redo background/enhance), wear, dormant list |
+| `/models` | 7 | the person photos an outfit is rendered on |
+| `/outfits` | 22 | generate, regenerate, manual builder, favourites, blacklist, history |
+| `/plan` | — | week planner (preview, apply) |
+| `/agenda` | 6 | what was worn or is planned, per day |
+| `/share` | 2 | public share links for one outfit |
+| `/stats`, `/weather`, `/autocomplete` | 7 | profile counters, forecast, brand/tag suggestions |
+| `/notifications` | 4 | admin-only: reports, audit trail |
+| `/thumb/{root}/{width}/{path}` | 1 | cached resized copies (see Notes) |
+| `/images/...`, `/generated/...` | – | static files, signed URLs |
+| `/health` | 1 | liveness |
+
+Everything except `/auth/signup`, `/auth/login`, `/health` and the static mounts
+requires `Authorization: Bearer <token>` and is scoped to the calling user.
 
 ### `POST /clothes` example
 
+Verified against the running server (`tests/test_readme_example.py` replays it):
+
 ```
-name        = "Black oversized hoodie"
-brand       = "Nike"
+name        = "Black oversized hoodie"   # stored lower-case
+brand       = "Nike"                     # stored upper-case
 cut         = oversize          # slim|normal|large|oversize
-category    = hoodie
+category    = hoodie            # lower-cased on write; unknown values are logged
 colors      = [{"color":"Black","dominance":"full"},{"color":"White","dominance":"little"}]
 tags        = ["street","basket"]
 images      = <front.jpg> <back.jpg> [<extra.jpg> ...]
 ```
+
+Two photos are required (front and back) except for shoes, bags and accessories,
+which take one. Each photo is capped at 64 MB, 30 per request, 256 MB in total.
 
 ## Notes
 

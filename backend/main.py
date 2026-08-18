@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from config import ALLOW_ORIGINS, IMAGES_DIR, LOGS_DIR, OUTFITS_DIR
+from config import ALLOW_ORIGINS, IMAGES_DIR, IS_DEV, LOGS_DIR, OUTFITS_DIR
 
 
 def _configure_logging() -> None:
@@ -95,7 +95,17 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Dressly API", version="1.0", lifespan=lifespan)
+# The interactive docs publish the whole API surface — every path, every field
+# name — to anyone who asks. Useful while developing, nothing a public server
+# should hand out, so they follow CLOTHESAPP_ENV.
+app = FastAPI(
+    title="Dressly API",
+    version="1.0",
+    lifespan=lifespan,
+    docs_url="/docs" if IS_DEV else None,
+    redoc_url="/redoc" if IS_DEV else None,
+    openapi_url="/openapi.json" if IS_DEV else None,
+)
 
 
 class JsonGzipMiddleware:
