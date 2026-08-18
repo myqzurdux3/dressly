@@ -1711,7 +1711,7 @@ def preview_algo(req: AlgoRequest, user=Depends(get_current_user)):
 
 @router.post("/generate-from-algo")
 def generate_from_algo(req: AlgoRequest, background: BackgroundTasks,
-                       user=Depends(get_current_user)):
+                       user=Depends(generation_guard)):
     """Pick clothes with a generator algorithm, then generate the outfit image.
     The algorithm guarantees no two of the same clothing category, and (when a
     min_score is set) only uses clothes the user rated at or above that score.
@@ -1806,6 +1806,9 @@ def generate_from_algo(req: AlgoRequest, background: BackgroundTasks,
 
     background.add_task(_run_generation, outfit_id, prompt, image_paths, start_tier,
                         person_path, vto_garment, vto_prompt)
+    audit_record(user, "outfit.generate",
+                 f"#{outfit_id} algo={req.algo} tier={start_tier} "
+                 f"clothes={len(cloth_ids)}")
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM outfits WHERE id = ?", (outfit_id,)).fetchone()
         out = _hydrate(conn, row)
