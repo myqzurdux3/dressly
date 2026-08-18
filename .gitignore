@@ -44,6 +44,12 @@ never_killed.json
 backend/certs/
 *.key
 *.pem
+# Cloudflare's dashboard hands the Origin CA pair out as .txt, which none of
+# the patterns above catch — and it lands in whatever directory you saved it to.
+Origin-Certificate.txt
+Private-Key.txt
+*-Certificate.txt
+*Private-Key*.txt
 
 # Deployment archive produced by scripts/export_for_server.sh (~430 MB).
 dressly-backend.tar*
