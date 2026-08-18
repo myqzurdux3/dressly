@@ -23,7 +23,8 @@ from audit import record as audit_record
 from auth import get_current_user
 from bfl import next_tier
 from db import get_conn
-from generator import has_cut, is_multi_angle
+from generator import (KNOWN_CATEGORIES, has_cut, is_multi_angle,
+                       normalize_category)
 from config import STAGING_DIR
 from ratelimit import enhance_guard
 from routes_thumbs import thumb_url_for
@@ -629,10 +630,17 @@ async def create_cloth(
     name = _norm_name(name)
     if not name:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name is required")
+    category = normalize_category(category)
+    if category and category not in KNOWN_CATEGORIES:
+        # Not fatal: an older client may know a category this server does not.
+        # But it lands in role "other", so it must be visible in the log rather
+        # than silently changing the photo rule and the layering.
+        log.warning("unknown category %r on create by user %s",
+                    category, user["id"])
     # Shoes / bags / accessories are photographed from arbitrary angles, so they
     # only need one photo; regular garments still need a front + back pair (used
     # to render front and back outfit views).
-    multi_angle = is_multi_angle(category.strip())
+    multi_angle = is_multi_angle(category)
     min_images = 1 if multi_angle else 2
     if len(images) < min_images:
         raise HTTPException(
@@ -642,7 +650,7 @@ async def create_cloth(
         )
     # Shoes / bags / accessories have no garment cut — store it empty. Otherwise
     # coerce an unrecognised value to 'normal'.
-    if not has_cut(category.strip()):
+    if not has_cut(category):
         cut = ""
     elif cut not in VALID_CUTS:
         cut = "normal"
@@ -689,7 +697,7 @@ async def create_cloth(
                     name,
                     _norm_brand(brand),
                     cut,
-                    category.strip(),
+                    category,
                     json.dumps(tag_list),
                 ),
             )
@@ -749,12 +757,23 @@ async def update_cloth(
         if brand is not None:
             fields.append("brand = ?")
             args.append(_norm_brand(brand))
-        if cut is not None:
-            # Force empty for no-cut categories (using the new category if it's
-            # part of this update, else the stored one).
-            eff_cat = (category or "").strip() or conn.execute(
+        if category is not None:
+            category = normalize_category(category)
+            if category and category not in KNOWN_CATEGORIES:
+                log.warning("unknown category %r on update by user %s",
+                            category, user["id"])
+        # The cut is derived from the category, so it has to be recomputed when
+        # EITHER changes. Recomputing only when the client also sent a cut left
+        # a stale cut="normal" on a garment moved to a no-cut category — a
+        # combination create_cloth refuses.
+        if cut is not None or category is not None:
+            eff_cat = category or conn.execute(
                 "SELECT category FROM clothes WHERE id = ?", (cloth_id,)
             ).fetchone()["category"]
+            if cut is None:
+                cut = conn.execute(
+                    "SELECT cut FROM clothes WHERE id = ?", (cloth_id,)
+                ).fetchone()["cut"]
             if not has_cut(eff_cat or ""):
                 cut = ""
             elif cut not in VALID_CUTS:
@@ -763,7 +782,7 @@ async def update_cloth(
             args.append(cut)
         if category is not None:
             fields.append("category = ?")
-            args.append(category.strip())
+            args.append(category)
         if tags is not None:
             fields.append("custom_tags = ?")
             args.append(json.dumps(_parse_list(tags)))
@@ -824,9 +843,9 @@ def wear_cloth(cloth_id: int, req: WearRequest, user=Depends(get_current_user)):
     """Record that the user wore this cloth on a given day (default today).
     Feeds the 'not worn recently' generator algorithm and logs a worn entry in
     the agenda for that day."""
-    from agenda_store import upsert_worn
+    from agenda_store import upsert_worn, valid_day
 
-    day = (req.day or "").strip() or _today()
+    day = valid_day((req.day or "").strip() or _today())
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id, name FROM clothes WHERE id = ? AND user_id = ?",

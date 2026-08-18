@@ -130,6 +130,25 @@ ALGOS = [
 ]
 
 
+# Every category the roles above know about. A value outside this set falls to
+# role "other", which silently changes the minimum-photo rule, the stored cut
+# and every weather/algorithm filter — so the write paths normalise case
+# against it and log what they do not recognise.
+KNOWN_CATEGORIES = (
+    TOP_CATS | OUTER_CATS | BOTTOM_CATS | ONEPIECE_CATS | FEET_CATS | ACCESSORY_CATS
+)
+
+
+def normalize_category(category: str) -> str:
+    """Lower-case and trim a category so role_of can match it.
+
+    role_of compares against exact lower-case strings, so "Sneakers" used to
+    land in role "other" — a garment that then needed two photos instead of
+    one and disappeared from the weather and layering rules.
+    """
+    return (category or "").strip().lower()
+
+
 def role_of(category: str) -> str:
     if category in TOP_CATS:
         return "top"
