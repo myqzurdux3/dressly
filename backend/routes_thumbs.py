@@ -10,6 +10,7 @@ know the filename. Adding auth here without adding it there would be theatre.
 """
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -181,22 +182,40 @@ def thumbnail(root_key: str, width: int, rel_path: str,
     )
 
 
+@lru_cache(maxsize=8192)
+def _rel_under_roots(file_path: str):
+    """(root key, relative posix path) for a stored file, or None.
+
+    Cached because the answer depends only on the path and the mount roots,
+    which are fixed for the process — while a wardrobe listing asks for the
+    SAME file at five widths, and the try/except relative_to loop was the bulk
+    of the URL-building cost (measured: 14 ms of a 16 ms hydrate for 60
+    garments). The mtime below is still read on every call, so cache-busting
+    stays correct.
+    """
+    p = Path(file_path)
+    for key, root in _ROOTS.items():
+        try:
+            return key, p.relative_to(root).as_posix()
+        except ValueError:
+            continue
+    return None
+
+
 def thumb_url_for(file_path: str, width: int = 400) -> str:
     """Public thumbnail URL for a stored absolute path. Empty when the file is
     outside the servable roots, so callers can fall back to the full image."""
     if not file_path:
         return ""
-    p = Path(file_path)
-    for key, root in _ROOTS.items():
-        try:
-            rel = p.relative_to(root)
-        except ValueError:
-            continue
-        rel_posix = rel.as_posix()
+    resolved = _rel_under_roots(file_path)
+    if resolved:
+        key, rel_posix = resolved
         url = f"/thumb/{key}/{width}/{rel_posix}"
         params = []
         try:
-            params.append(f"v={p.stat().st_mtime_ns}")
+            # os.stat on the string: constructing a Path here cost more than the
+            # syscall, and this runs five times per garment photo.
+            params.append(f"v={os.stat(file_path).st_mtime_ns}")
         except OSError:
             pass
         # Signed over the SOURCE path, the same string the static mount signs,

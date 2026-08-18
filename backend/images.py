@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -565,6 +566,19 @@ def remove_cloth_files(cloth_id: int) -> None:
         shutil.rmtree(d, ignore_errors=True)
 
 
+@lru_cache(maxsize=8192)
+def _rel_to_images(file_path: str) -> str:
+    """Path as it appears under the /images mount. Cached: the mapping is fixed
+    for the process, and one garment asks for it up to five times per listing."""
+    p = Path(file_path)
+    try:
+        rel = p.relative_to(IMAGES_DIR)
+    except ValueError:
+        # Already relative or outside: treat as-is.
+        rel = Path(p.name)
+    return rel.as_posix()
+
+
 def public_url_for(file_path: str) -> str:
     """Convert a stored absolute path into the public URL the client uses.
 
@@ -573,19 +587,12 @@ def public_url_for(file_path: str) -> str:
     Without this, the app's image cache keeps serving the old picture after a
     crop/enhance until a manual refresh.
     """
-    p = Path(file_path)
-    # Strip everything up to /images/, since the static mount lives at /images.
-    try:
-        rel = p.relative_to(IMAGES_DIR)
-    except ValueError:
-        # Already relative or outside: treat as-is.
-        rel = Path(p.name)
-    rel_posix = rel.as_posix()
+    rel_posix = _rel_to_images(file_path)
     url = f"/images/{rel_posix}"
     params = []
     try:
         # Nanosecond mtime so even a same-second rewrite changes the URL.
-        params.append(f"v={p.stat().st_mtime_ns}")
+        params.append(f"v={os.stat(file_path).st_mtime_ns}")
     except OSError:
         pass  # file missing — serve the bare URL
     # Authorises this exact path for a limited time; empty when signing is off.

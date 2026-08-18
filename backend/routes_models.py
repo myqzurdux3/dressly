@@ -27,13 +27,14 @@ def _model_dir(model_id: int):
     return d
 
 
-def _hydrate(conn, row) -> dict:
+def _hydrate(conn, row, images=None) -> dict:
     model_id = row["id"]
-    images = conn.execute(
-        "SELECT id, role, original_path, cutout_path, sort_order, bg_accepted "
-        "FROM model_images WHERE model_id = ? ORDER BY sort_order, id",
-        (model_id,),
-    ).fetchall()
+    if images is None:
+        images = conn.execute(
+            "SELECT id, role, original_path, cutout_path, sort_order, bg_accepted "
+            "FROM model_images WHERE model_id = ? ORDER BY sort_order, id",
+            (model_id,),
+        ).fetchall()
     return {
         "id": model_id,
         "user_id": row["user_id"],
@@ -68,6 +69,28 @@ def _hydrate(conn, row) -> dict:
     }
 
 
+def _hydrate_many(conn, rows) -> list:
+    """Hydrate a list of models with ONE image query instead of one each.
+
+    list_models used to call _hydrate per row, i.e. an N+1: the wardrobe's
+    model picker paid a query per model. routes_clothes._hydrate_many solved
+    the same problem for garments; this mirrors it.
+    """
+    rows = list(rows)
+    if not rows:
+        return []
+    ids = [r["id"] for r in rows]
+    ph = ",".join("?" for _ in ids)
+    by_model: dict = {i: [] for i in ids}
+    for im in conn.execute(
+        "SELECT id, model_id, role, original_path, cutout_path, sort_order, "
+        f"bg_accepted FROM model_images WHERE model_id IN ({ph}) "
+        "ORDER BY sort_order, id", ids,
+    ):
+        by_model[im["model_id"]].append(im)
+    return [_hydrate(conn, r, by_model.get(r["id"], [])) for r in rows]
+
+
 def _load_model(conn, model_id: int, user_id: int) -> dict:
     row = conn.execute(
         "SELECT * FROM models WHERE id = ? AND user_id = ?", (model_id, user_id)
@@ -92,7 +115,7 @@ def list_models(user=Depends(get_current_user), search: Optional[str] = None):
                 "SELECT * FROM models WHERE user_id = ? ORDER BY created_at DESC",
                 (user["id"],),
             ).fetchall()
-        return [_hydrate(conn, r) for r in rows]
+        return _hydrate_many(conn, rows)
 
 
 @router.get("/{model_id}")
