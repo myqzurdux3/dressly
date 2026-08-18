@@ -85,9 +85,9 @@ class OutfitHistoryCard extends StatelessWidget {
                   padding: const EdgeInsets.all(6),
                   constraints: const BoxConstraints(),
                   visualDensity: VisualDensity.compact,
-                  tooltip: outfit.isFavorite
-                      ? 'Remove from saved'
-                      : 'Save to favorites',
+                  tooltip: tr(context, outfit.isFavorite
+                      ? 'history.removeFromSaved'
+                      : 'history.saveToFavorites'),
                   icon: Icon(
                     outfit.isFavorite ? Icons.favorite : Icons.favorite_border,
                     color: outfit.isFavorite ? Colors.redAccent : Colors.white,
@@ -136,9 +136,9 @@ class OutfitHistoryCard extends StatelessWidget {
               ),
               child: Text(
                 failed
-                    ? 'Failed (${outfit.tierLabel})'
+                    ? '${tr(context, 'history.failed')} (${outfit.tierLabel})'
                     : [
-                        if (outfit.view == 'back') 'Back',
+                        if (outfit.view == 'back') tr(context, 'history.back'),
                         if (outfit.modelName != null) outfit.modelName!,
                         if (outfit.cloths.isNotEmpty)
                           outfit.cloths.map((c) => c.name).join(', '),
