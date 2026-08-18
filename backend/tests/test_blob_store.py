@@ -122,3 +122,38 @@ def test_dst_is_never_written_through_even_if_it_cannot_be_unlinked(
     assert second.read_bytes() == b"a different picture"
     assert first.read_bytes() == shared, "the other cloth's photo was rewritten"
     assert blob.read_bytes() == shared, "the blob no longer matches its digest"
+
+
+def test_two_uploads_of_the_same_photo_at_once_do_not_collide(tmp_path, monkeypatch):
+    """Same bytes -> same digest -> same blob path, from several threads.
+
+    The blob was written to a fixed `<name>.tmp` before being renamed into
+    place, so two simultaneous uploads of the same photo used the same temp
+    name: one renamed the other's file away and the loser died with
+    FileNotFoundError. Identical photos are not exotic — re-uploading the same
+    picture for the front and back of a garment does it.
+    """
+    import threading
+
+    monkeypatch.setattr(images, "BLOBS_DIR", tmp_path / "blobs")
+    data = b"one photo, many uploads"
+    errors: list = []
+    barrier = threading.Barrier(4)
+
+    def store(i):
+        try:
+            barrier.wait(timeout=10)
+            images.link_bytes(data, tmp_path / f"copy{i}.webp")
+        except Exception as e:  # noqa: BLE001 - the point of the test
+            errors.append(repr(e))
+
+    threads = [threading.Thread(target=store, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+
+    assert not errors, errors
+    for i in range(4):
+        assert (tmp_path / f"copy{i}.webp").read_bytes() == data
+    assert not list((tmp_path / "blobs").rglob("*.tmp"))

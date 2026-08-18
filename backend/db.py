@@ -182,17 +182,37 @@ def migration(fn):
 
 
 def _run_migrations(conn) -> None:
-    current = conn.execute("PRAGMA user_version").fetchone()[0]
-    target = len(MIGRATIONS)
-    if current >= target:
-        return
-    for version, fn in enumerate(MIGRATIONS, start=1):
-        if version <= current:
-            continue
-        log.info("applying migration v%s (%s)", version, fn.__name__)
-        fn(conn)
-        # user_version takes no bound parameters; the value is a loop counter.
-        conn.execute(f"PRAGMA user_version = {version}")
+    """Bring the schema up to date, once, even with several workers booting.
+
+    run-prod.sh starts three uvicorn workers and each calls create_tables().
+    sqlite3 opens no transaction for DDL or PRAGMA, so all three used to read
+    user_version, all three saw the same old number, and all three issued the
+    same ALTER TABLE — the losers dying with "duplicate column name" before
+    they could serve anything.
+
+    BEGIN IMMEDIATE takes the write lock up front: the first worker migrates,
+    the others block on it and then read the NEW user_version and skip. The
+    lock is held for the duration of the migrations, which is what we want —
+    they are milliseconds of ALTER TABLE, and nobody should be reading a
+    half-migrated schema anyway.
+    """
+    if conn.execute("PRAGMA user_version").fetchone()[0] >= len(MIGRATIONS):
+        return  # fast path: no lock, no write, the normal case on every boot
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        current = conn.execute("PRAGMA user_version").fetchone()[0]
+        for version, fn in enumerate(MIGRATIONS, start=1):
+            if version <= current:
+                continue
+            log.info("applying migration v%s (%s)", version, fn.__name__)
+            fn(conn)
+            # user_version takes no bound parameters; the value is a loop counter.
+            conn.execute(f"PRAGMA user_version = {version}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 @migration
@@ -646,11 +666,23 @@ def get_conn():
     # they are pure memory flags — no I/O. NORMAL sync is the safe+fast pair.
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA synchronous = NORMAL")
+    # Wait for a writer instead of failing on it. sqlite3.connect(timeout=...)
+    # covers most cases, but not every path that needs the write lock — and
+    # three workers booting together DO contend, on the migration lock.
+    conn.execute("PRAGMA busy_timeout = 30000")
     if DB_PATH not in _WAL_SET:
         # Durable across crashes and persisted in the header, so the uvicorn
         # reloader's fork keeps working.
-        conn.execute("PRAGMA journal_mode = WAL")
-        _WAL_SET.add(DB_PATH)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            _WAL_SET.add(DB_PATH)
+        except sqlite3.OperationalError as e:
+            # Switching journal mode needs a moment with no other writer, and
+            # at boot there IS one: the worker running the migrations. Since
+            # the mode lives in the file header, whoever wins sets it for
+            # everyone — so this connection carries on and the next one tries
+            # again. Before this, a worker could simply die at startup.
+            log.debug("journal_mode not set on this connection (%s)", e)
     try:
         yield conn
         conn.commit()
