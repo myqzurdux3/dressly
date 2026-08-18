@@ -22,6 +22,7 @@ end up in the same outfit.
 
 import json
 import random as _random
+from functools import lru_cache
 from typing import List, Optional
 
 from db import get_conn
@@ -194,6 +195,7 @@ def slots_of(category: str) -> frozenset:
     return frozenset({category})  # socks, underwear, bag — each its own slot
 
 
+@lru_cache(maxsize=1024)
 def _color_family(c: str) -> str:
     if c in NEUTRALS:
         return "neutral"
@@ -204,6 +206,10 @@ def _color_family(c: str) -> str:
     return "neutral"
 
 
+# Cached: the answer depends only on the two colour names, and the palette is a
+# dozen values — but the colour algorithm asks the same questions thousands of
+# times per draw.
+@lru_cache(maxsize=4096)
 def _pair_compatible(a: str, b: str) -> bool:
     if a == b:
         return True
@@ -609,26 +615,64 @@ def _algo_single_color(pool, locked=(), avoid=()):
     return _complete(_pick_one_per_role(_shuffle(themed)), themed)
 
 
+def _largest_compatible_set(with_color):
+    """Greedy: try each seed colour family, keep the largest compatible set.
+
+    Two things keep this off the O(n^2 * k^2) it used to be, measured at 148 ms
+    per draw on a 300-garment wardrobe (and a preview asks for up to 32 draws):
+
+    * Seeds are deduplicated by their COLOUR SIGNATURE. The result depends on
+      the seed's colours, not on which garment carried them, and two garments
+      with the same colours build sets of the same size — so trying "black +
+      white" three hundred times could only ever give the same answer.
+    * A candidate is checked against the colours already accepted, instead of
+      re-verifying every pair of the whole trial set from scratch. Everything
+      already in the set was checked when it went in; compatibility is
+      pairwise, so it cannot become false later.
+    """
+    seeds = {}
+    for c in with_color:
+        seeds.setdefault(frozenset(c["colors"]), c)
+
+    # A garment can carry colours that clash with EACH OTHER (navy + orange).
+    # The original algorithm handled that by accident: it re-checked the whole
+    # set on every candidate, so such a seed could never accept anything and
+    # ended up alone. Checking only the new colours is what makes this fast, so
+    # the case has to be excluded explicitly — otherwise a self-clashing seed
+    # accumulates a set that violates the very rule the algorithm exists for.
+    usable = [c for sig, c in seeds.items() if _colors_compatible(sorted(sig))]
+    if not usable:
+        return [next(iter(seeds.values()))]
+
+    best = []
+    for seed in usable:
+        colors = set(seed["colors"])
+        chosen = [seed]
+        for c in with_color:
+            if c["id"] == seed["id"]:
+                continue
+            fresh = [col for col in c["colors"] if col not in colors]
+            if not fresh:
+                chosen.append(c)          # adds no colour: always compatible
+                continue
+            if not _colors_compatible(fresh):
+                continue
+            if all(_pair_compatible(new_c, old_c)
+                   for new_c in fresh for old_c in colors):
+                chosen.append(c)
+                colors.update(fresh)
+        if len(chosen) > len(best):
+            best = chosen
+    return best
+
+
 def _algo_color_match(pool):
     if not pool:
         return []
     with_color = [c for c in pool if c["colors"]]
     if not with_color:
         return _algo_random(pool)
-    # Greedy: try each seed color family, keep the largest compatible set.
-    best = []
-    for seed in with_color:
-        chosen = [seed]
-        colors = list(seed["colors"])
-        for c in with_color:
-            if c["id"] == seed["id"]:
-                continue
-            trial = colors + [col for col in c["colors"] if col not in colors]
-            if _colors_compatible(trial):
-                chosen.append(c)
-                colors = trial
-        if len(chosen) > len(best):
-            best = chosen
+    best = _largest_compatible_set(with_color)
     return _complete(_pick_one_per_role(_shuffle(best)), best)
 
 
