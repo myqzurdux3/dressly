@@ -19,10 +19,17 @@ def brands(user=Depends(get_current_user)):
 
 @router.get("/tags")
 def tags(user=Depends(get_current_user)):
-    """Distinct custom tags across ALL users' clothes (global autocomplete)."""
+    """Distinct custom tags from the caller's own clothes.
+
+    Scoped to the user on purpose: unlike brands (a shared vocabulary of real
+    labels), custom tags are free text somebody wrote about their own wardrobe.
+    The unscoped query this replaced returned every account's tags to everyone.
+    """
     out: set[str] = set()
     with get_conn() as conn:
-        rows = conn.execute("SELECT custom_tags FROM clothes").fetchall()
+        rows = conn.execute(
+            "SELECT custom_tags FROM clothes WHERE user_id = ?", (user["id"],)
+        ).fetchall()
     for r in rows:
         try:
             import json
