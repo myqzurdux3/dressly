@@ -64,6 +64,8 @@ const Map<String, Map<String, String>> _strings = {
     'common.save': 'Save',
     'common.delete': 'Delete',
     'common.done': 'Done',
+    'common.retry': 'Retry',
+    'common.loadFailed': 'Could not load',
     // Profile
     'profile.title': 'Profile',
     'profile.settings': 'Settings',
@@ -766,6 +768,8 @@ const Map<String, Map<String, String>> _strings = {
     'common.save': 'Enregistrer',
     'common.delete': 'Supprimer',
     'common.done': 'Terminé',
+    'common.retry': 'Réessayer',
+    'common.loadFailed': 'Chargement impossible',
     'profile.title': 'Profil',
     'profile.settings': 'Réglages',
     'profile.clothes': 'Habits',

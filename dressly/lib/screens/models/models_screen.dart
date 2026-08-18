@@ -114,6 +114,12 @@ class _ModelsScreenState extends State<ModelsScreen> {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
+              // A failed request is not an empty wardrobe of models: say so,
+              // instead of showing the "nothing matches" state.
+              if (snap.hasError) {
+                return Center(
+                    child: Text('${tr(context, 'detail.error')}: ${snap.error}'));
+              }
               final items = snap.data ?? const [];
               if (items.isEmpty) {
                 return Center(

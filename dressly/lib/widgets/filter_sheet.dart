@@ -64,6 +64,10 @@ class _FilterSheetState extends State<FilterSheet> {
         category: _category,
         sort: _sort,
         minScore: _minScore,
+        // Carried through, not re-derived: favourites-only is toggled from the
+        // app bar heart, not from this sheet, so defaulting it to false made
+        // applying any filter silently turn the heart's mode off.
+        favorite: widget.filter.favorite,
       );
 
   @override

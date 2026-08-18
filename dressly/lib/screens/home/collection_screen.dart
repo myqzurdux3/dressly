@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
+import '../../services/api_client.dart';
 import '../../services/clothes_service.dart';
 import '../../state/paged_list.dart';
 import '../../widgets/brand_logo.dart';
@@ -115,7 +116,15 @@ class _CollectionScreenState extends State<CollectionScreen> {
         _clothes.replaceItem(
             (c) => c.id == cloth.id, cloth.copyWith(isFavorite: nowFavorite));
       }
-    } catch (_) {}
+    } catch (e) {
+      // The card keeps the state it already had — the server refused the
+      // change — but the user has to be told, or they believe it was saved.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${tr(context, 'result.favoriteFailed')}: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _confirmDelete(int id) async {
@@ -244,6 +253,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
             ),
             emptyBuilder: (context) => _EmptyWardrobe(filtered: !_filter.isEmpty),
             itemBuilder: (context, cloth) => ClothCard(
+              // Without a key the sliver matches cards by index, so re-sorting
+              // or filtering left a card showing the previous garment's back.
+              key: ValueKey(cloth.id),
               cloth: cloth,
               onTap: () async {
                 await Navigator.push(
@@ -259,8 +271,20 @@ class _CollectionScreenState extends State<CollectionScreen> {
                 try {
                   _clothes.replaceItem(
                       (c) => c.id == cloth.id, await _service.get(cloth.id));
-                } catch (_) {
-                  _clothes.removeItem((c) => c.id == cloth.id);
+                } catch (e) {
+                  // Only a 404 means the cloth is really gone. A timeout, a 500
+                  // or being offline used to drop the card from the grid too,
+                  // so a flaky connection silently emptied the wardrobe.
+                  if (e is ApiException && e.statusCode == 404) {
+                    _clothes.removeItem((c) => c.id == cloth.id);
+                  } else if (mounted) {
+                    // this.context, not the item builder's: it is the one the
+                    // mounted check above actually guards.
+                    ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
+                      content:
+                          Text('${tr(this.context, 'wardrobe.loadFailed')}: $e'),
+                    ));
+                  }
                 }
               },
               onLongPress: () => _confirmDelete(cloth.id),

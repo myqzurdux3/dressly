@@ -136,4 +136,29 @@ void main() {
 
     expect(refreshed, greaterThan(0));
   });
+
+  testWidgets('a failed load offers a retry, not the empty state',
+      (tester) async {
+    var offline = true;
+    final c = PagedList<int>(
+      pageSize: 10,
+      fetchPage: ({required limit, required offset}) async {
+        if (offline) throw StateError('offline');
+        return [1, 2, 3];
+      },
+    );
+    await tester.pumpWidget(_harness(c));
+    await c.refresh();
+    await tester.pumpAndSettle();
+
+    expect(find.text('nothing here'), findsNothing,
+        reason: 'an outage must not read as an empty wardrobe');
+    expect(find.text('Retry'), findsOneWidget);
+
+    offline = false;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('#1'), findsOneWidget);
+  });
 }
