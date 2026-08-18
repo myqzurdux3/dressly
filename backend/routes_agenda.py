@@ -103,9 +103,12 @@ def list_agenda(
 
 @router.post("")
 def create_agenda(req: AgendaCreate, user=Depends(get_current_user)):
+    from agenda_store import valid_day
+
     day = (req.day or "").strip()
     if not day:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A day is required")
+    day = valid_day(day)
     with get_conn() as conn:
         if req.outfit_id is not None:
             owned = conn.execute(
