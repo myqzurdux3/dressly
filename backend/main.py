@@ -70,11 +70,13 @@ async def lifespan(_app: FastAPI):
     # sweep; enhancements did not, so a restart during one left it 'processing'
     # for good and the app spun on it forever.
     try:
-        from config import ENHANCE_TIMEOUT_S
-        from db import fail_stale_enhancements, get_conn, reset_orphan_generations
+        from config import CUTOUT_TIMEOUT_S, ENHANCE_TIMEOUT_S
+        from db import (fail_stale_cutouts, fail_stale_enhancements, get_conn,
+                        reset_orphan_generations)
         with get_conn() as conn:
             reset_orphan_generations(conn)
             fail_stale_enhancements(conn, ENHANCE_TIMEOUT_S)
+            fail_stale_cutouts(conn, CUTOUT_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - never block startup on recovery
         logging.getLogger(__name__).warning("startup sweep failed: %s", exc)
     # Count every paid image job from here on.

@@ -228,13 +228,20 @@ def _sweep_stalled_enhancements(conn) -> None:
     somebody restarts the server. Cheap: an indexed scan of the rows that are
     'processing', which is normally none.
     """
-    from config import ENHANCE_TIMEOUT_S
-    from db import fail_stale_enhancements
+    from config import CUTOUT_TIMEOUT_S, ENHANCE_TIMEOUT_S
+    from db import fail_stale_cutouts, fail_stale_enhancements
 
     try:
         fail_stale_enhancements(conn, ENHANCE_TIMEOUT_S)
     except Exception as e:  # noqa: BLE001 - reading a cloth must not fail on this
         log.warning("stalled-enhancement sweep failed: %s", e)
+    try:
+        # Same treatment for background removal: its job can die the same way,
+        # and a cut-out stuck on 'processing' keeps cutout_path aliased to the
+        # original, which used to make rejecting the background destructive.
+        fail_stale_cutouts(conn, CUTOUT_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001
+        log.warning("stalled-cutout sweep failed: %s", e)
 
 
 def _load_cloth(conn, cloth_id: int, user_id: int) -> dict:
@@ -709,8 +716,8 @@ async def create_cloth(
                 cur = conn.execute(
                     "INSERT INTO cloth_images "
                     "(cloth_id, role, original_path, cutout_path, sort_order, "
-                    " cutout_status) "
-                    "VALUES (?, ?, ?, ?, ?, 'processing')",
+                    " cutout_status, cutout_started_at) "
+                    "VALUES (?, ?, ?, ?, ?, 'processing', datetime('now'))",
                     (cloth_id, s["role"], str(s["original"]), str(s["cutout"]),
                      s["sort_order"]),
                 )
