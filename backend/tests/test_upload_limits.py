@@ -89,3 +89,32 @@ def test_decompression_bombs_are_bounded():
 
     assert Image.MAX_IMAGE_PIXELS is not None
     assert Image.MAX_IMAGE_PIXELS <= 89_478_485, "Pillow's warn-only default"
+
+
+def test_the_whole_request_is_bounded_not_just_each_file(client, auth, monkeypatch):
+    """Per-file caps alone would allow MAX_FILES x MAX_BYTES in one request.
+
+    Every part is buffered in RAM before anything is written, so the running
+    total is what actually protects the box.
+    """
+    part = make_png()  # a real 100-byte PNG, so the content check passes
+    monkeypatch.setattr(uploads, "MAX_UPLOAD_BYTES", 10 * len(part))
+    monkeypatch.setattr(uploads, "MAX_UPLOAD_TOTAL_BYTES", 2 * len(part))
+
+    # Each part is well under the per-FILE cap; only the running total refuses.
+    r = client.post(
+        "/clothes", headers=auth,
+        data={"name": "Tee", "category": "tshirt"},
+        files=[("images", (f"{i}.png", part, "image/png")) for i in range(4)],
+    )
+    assert r.status_code == 413, r.status_code
+
+
+def test_the_shipped_ceilings_are_generous(monkeypatch):
+    """Single-user server: the caps exist to stop a runaway loop, not to ration."""
+    import config
+
+    assert uploads.MAX_UPLOAD_BYTES >= 32 * 1024 * 1024
+    assert uploads.MAX_UPLOAD_FILES >= 20
+    assert config.GENERATION_RATE_LIMIT >= 200
+    assert config.ENHANCE_RATE_LIMIT >= 200

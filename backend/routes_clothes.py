@@ -28,7 +28,7 @@ from generator import (KNOWN_CATEGORIES, has_cut, is_multi_angle,
 from config import STAGING_DIR
 from ratelimit import enhance_guard
 from routes_thumbs import thumb_url_for
-from uploads import check_count, read_capped, verify_image
+from uploads import UploadBudget, check_count, read_capped, verify_image
 from images import (
     canonical_cutout_path,
     cloth_dir,
@@ -668,9 +668,10 @@ async def create_cloth(
     # Drain the uploads first: reading the request body is the only part that
     # genuinely belongs on the event loop.
     check_count(images)
+    budget = UploadBudget()
     payloads = []
     for idx, (role, upload) in enumerate(zip(roles, images)):
-        data = await read_capped(upload)
+        data = await read_capped(upload, budget=budget)
         if data:
             verify_image(data)
             payloads.append((role, idx, data))

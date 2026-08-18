@@ -26,8 +26,13 @@ security-relevant variables are set properly:
 | `CLOTHESAPP_CORS` | `*` | yes — explicit comma-separated origins |
 | `CLOTHESAPP_DATA_DIR` | `backend/data` | optional |
 | `BFL_API_KEY` | unset → dry-run placeholders | optional |
-| `CLOTHESAPP_GEN_RATE_LIMIT` | `30` / hour / user | optional (0 disables) |
-| `CLOTHESAPP_ENHANCE_RATE_LIMIT` | `40` / hour / user | optional (0 disables) |
+| `CLOTHESAPP_GEN_RATE_LIMIT` | `600` / hour / user | optional (0 disables) |
+| `CLOTHESAPP_ENHANCE_RATE_LIMIT` | `600` / hour / user | optional (0 disables) |
+| `CLOTHESAPP_UPLOAD_MAX_BYTES` | `67108864` (64 MB) per photo | optional |
+| `CLOTHESAPP_UPLOAD_MAX_FILES` | `30` per request | optional |
+| `CLOTHESAPP_UPLOAD_MAX_TOTAL_BYTES` | `268435456` (256 MB) per request | optional |
+| `CLOTHESAPP_MAX_IMAGE_MP` | `40` megapixels | optional |
+| `CLOTHESAPP_GENERATE_DEADLINE_S` | `150` | optional |
 | `CLOTHESAPP_ORIGINAL_MAX_PX` | `4000` | optional |
 | `CLOTHESAPP_CUTOUT_LOSSLESS` | `1` | optional (0 = lossy WebP, ~30% faster uploads) |
 | `CLOTHESAPP_CUTOUT_MAX_PX` | `1600` | optional |
