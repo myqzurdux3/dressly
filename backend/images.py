@@ -277,9 +277,18 @@ def link_bytes(data: bytes, dst: Path) -> Path:
             blob.parent.mkdir(parents=True, exist_ok=True)
             # Write to a temp name then rename, so a crash mid-write can never
             # leave a truncated blob that later uploads would link against.
-            tmp = blob.with_name(blob.name + ".tmp")
+            # The name carries a random suffix: two uploads of the SAME photo
+            # at the same time produce the same digest, so a fixed name meant
+            # one process renaming the other's file out from under it and the
+            # loser crashing with FileNotFoundError.
+            tmp = blob.with_name(f"{blob.name}.{secrets.token_hex(4)}.tmp")
             tmp.write_bytes(data)
-            tmp.replace(blob)
+            try:
+                os.replace(tmp, blob)
+            except OSError:
+                tmp.unlink(missing_ok=True)   # somebody else got there first
+                if not blob.exists():
+                    raise
         # Link to a temp sibling, then rename ONTO dst. Two reasons this is not
         # `unlink` + `link`:
         #   - between the unlink and the link, dst does not exist, and its URL
