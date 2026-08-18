@@ -7,6 +7,7 @@ import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../services/clothes_service.dart';
 import '../../state/paged_list.dart';
+import '../../widgets/brand_logo.dart';
 import '../../widgets/cloth_card.dart';
 import '../../widgets/filter_sheet.dart';
 import '../../widgets/paged_grid.dart';
@@ -151,17 +152,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset('assets/logo.jpg',
-                  width: 30, height: 30, fit: BoxFit.cover),
-            ),
-            const SizedBox(width: 8),
-            const Text('Dressly'),
-          ],
+        title: const DresslyLockup(
+          tileSize: 34,
+          wordmarkSize: 21,
+          compact: true,
         ),
         actions: [
           IconButton(

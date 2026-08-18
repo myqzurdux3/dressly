@@ -33,10 +33,20 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon.png"
-  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_background: "#0D0F0F"
   adaptive_icon_foreground: "assets/icon_foreground.png"
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/logo.jpg
+  # The logo is drawn (widgets/brand_logo.dart), not shipped as a bitmap, so
+  # assets/logo.jpg is no longer bundled. assets/icon*.png stay: they are read
+  # at build time by flutter_launcher_icons, not at runtime.
+  fonts:
+    # Manrope, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
+    # Used by the logo only.
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Manrope-ExtraBold.ttf
+          weight: 800

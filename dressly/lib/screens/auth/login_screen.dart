@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
 import '../../state/session.dart';
+import '../../widgets/brand_logo.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -52,22 +53,8 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Image.asset(
-                      'assets/logo.jpg',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Dressly',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                const Center(
+                  child: DresslyLockup(tileSize: 84, wordmarkSize: 44),
                 ),
                 const SizedBox(height: 32),
                 TextField(
