@@ -68,3 +68,5 @@ do-not-read.txt
 usefull-commands.txt
 install.log
 backend/certs/
+
+.superpowers/
