@@ -71,7 +71,8 @@ void main() {
     await binding.traceAction(() async {
       await tester.tap(find.byType(WardrobeCard).first);
       await _frames(tester);
-      await tester.pageBack();
+      // System back: the detail screen draws its own back button.
+      await tester.binding.handlePopRoute();
       await _frames(tester);
     }, reportKey: 'cloth_detail_open');
 
