@@ -43,18 +43,17 @@ class _Item {
   double rotation; // radians
 
   Map<String, dynamic> toJson({int? z}) => {
-        'cloth_id': clothId,
-        'x': x,
-        'y': y,
-        'scale': scale,
-        'rotation': rotation,
-        // Stacking order, written out rather than left implicit in the array
-        // order, so a layout stays readable and re-orderable outside this
-        // screen. The canvas paints _items in order and z mirrors that.
-        if (z != null) 'z': z,
-      };
+    'cloth_id': clothId,
+    'x': x,
+    'y': y,
+    'scale': scale,
+    'rotation': rotation,
+    // Stacking order, written out rather than left implicit in the array
+    // order, so a layout stays readable and re-orderable outside this
+    // screen. The canvas paints _items in order and z mirrors that.
+    if (z != null) 'z': z,
+  };
 }
-
 
 /// Canvas background: a solid colour or a two-colour vertical gradient.
 class _Bg {
@@ -64,22 +63,23 @@ class _Bg {
   final Color? color2;
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'color': _hex(color),
-        if (color2 != null) 'color2': _hex(color2!),
-      };
+    'type': type,
+    'color': _hex(color),
+    if (color2 != null) 'color2': _hex(color2!),
+  };
 
   static _Bg fromJson(Map<String, dynamic> j) => _Bg(
-        type: (j['type'] ?? 'solid') as String,
-        color: _parseHex(j['color'] as String?) ?? Colors.white,
-        color2: _parseHex(j['color2'] as String?),
-      );
+    type: (j['type'] ?? 'solid') as String,
+    color: _parseHex(j['color'] as String?) ?? Colors.white,
+    color2: _parseHex(j['color2'] as String?),
+  );
 
   Gradient? get gradient => type == 'gradient' && color2 != null
       ? LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [color, color2!])
+          colors: [color, color2!],
+        )
       : null;
 }
 
@@ -95,11 +95,24 @@ Color? _parseHex(String? s) {
 }
 
 const List<Color> _kSwatches = [
-  Colors.white, Color(0xFFF2EDE4), Color(0xFFD9D9D9), Color(0xFF9E9E9E),
-  Color(0xFF4A4A4A), Colors.black, Color(0xFFEED9C4), Color(0xFFD7B899),
-  Color(0xFFF7C5CC), Color(0xFFF6A6B2), Color(0xFFF3D250), Color(0xFFF0A04B),
-  Color(0xFFA8D5BA), Color(0xFF6DBF9C), Color(0xFF9FB4E8), Color(0xFF5C7AEA),
-  Color(0xFFC9A7EB), Color(0xFF8E6BC4),
+  Colors.white,
+  Color(0xFFF2EDE4),
+  Color(0xFFD9D9D9),
+  Color(0xFF9E9E9E),
+  Color(0xFF4A4A4A),
+  Colors.black,
+  Color(0xFFEED9C4),
+  Color(0xFFD7B899),
+  Color(0xFFF7C5CC),
+  Color(0xFFF6A6B2),
+  Color(0xFFF3D250),
+  Color(0xFFF0A04B),
+  Color(0xFFA8D5BA),
+  Color(0xFF6DBF9C),
+  Color(0xFF9FB4E8),
+  Color(0xFF5C7AEA),
+  Color(0xFFC9A7EB),
+  Color(0xFF8E6BC4),
 ];
 
 const List<List<Color>> _kGradients = [
@@ -156,17 +169,18 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     // Restore an existing layout, else seed from initial cloth ids.
     final layout = widget.existing?.layout;
     if (layout != null) {
-      _bg = _Bg.fromJson((layout['background'] as Map?)?.cast<String, dynamic>() ??
-          {'type': 'solid', 'color': '#FFFFFF'});
+      _bg = _Bg.fromJson(
+        (layout['background'] as Map?)?.cast<String, dynamic>() ??
+            {'type': 'solid', 'color': '#FFFFFF'},
+      );
       // A saved layout is the user's own arrangement, stacking included: keep
       // it exactly. 'z' is read when present (it is what this screen writes);
       // older layouts carry the order in the array itself.
       final raws = (layout['items'] as List? ?? [])
           .map((raw) => (raw as Map).cast<String, dynamic>())
           .toList();
-      final indexed = [
-        for (var i = 0; i < raws.length; i++) (raws[i], i),
-      ]..sort((a, b) {
+      final indexed = [for (var i = 0; i < raws.length; i++) (raws[i], i)]
+        ..sort((a, b) {
           final za = (a.$1['z'] as num?)?.toInt() ?? a.$2;
           final zb = (b.$1['z'] as num?)?.toInt() ?? b.$2;
           return za.compareTo(zb);
@@ -175,14 +189,16 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
         final id = m['cloth_id'] as int;
         final url = _cutoutUrl(id);
         if (url == null) continue;
-        _items.add(_Item(
-          clothId: id,
-          url: url,
-          x: (m['x'] as num?)?.toDouble() ?? 0.5,
-          y: (m['y'] as num?)?.toDouble() ?? 0.5,
-          scale: (m['scale'] as num?)?.toDouble() ?? 1.0,
-          rotation: (m['rotation'] as num?)?.toDouble() ?? 0.0,
-        ));
+        _items.add(
+          _Item(
+            clothId: id,
+            url: url,
+            x: (m['x'] as num?)?.toDouble() ?? 0.5,
+            y: (m['y'] as num?)?.toDouble() ?? 0.5,
+            scale: (m['scale'] as num?)?.toDouble() ?? 1.0,
+            rotation: (m['rotation'] as num?)?.toDouble() ?? 0.0,
+          ),
+        );
       }
     } else if (widget.initialClothIds != null) {
       _addClothIds(widget.initialClothIds!);
@@ -258,7 +274,8 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       // still wins — that moves it in the list, which is what is saved.
       final rank = layerRank(category);
       final at = _items.indexWhere(
-          (it) => layerRank(_categoryOf(it.clothId)) > rank);
+        (it) => layerRank(_categoryOf(it.clothId)) > rank,
+      );
       _items.insert(at < 0 ? _items.length : at, item);
       present.add(id);
     }
@@ -290,8 +307,8 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       context: context,
       isScrollControlled: true,
       // A manual outfit is one canvas — no "how many outfits" count needed.
-      builder: (_) => AlgoSheet(
-          clothes: _clothById.values.toList(), showCount: false),
+      builder: (_) =>
+          AlgoSheet(clothes: _clothById.values.toList(), showCount: false),
     );
     if (pick == null || !mounted) return;
     _lastPick = pick; // remembered so "re-roll" can rerun it in one tap
@@ -361,8 +378,9 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     try {
       // Let the frame without selection handles paint before capturing.
       await WidgetsBinding.instance.endOfFrame;
-      final boundary = _canvasKey.currentContext!.findRenderObject()
-          as RenderRepaintBoundary;
+      final boundary =
+          _canvasKey.currentContext!.findRenderObject()
+              as RenderRepaintBoundary;
       // Rasterise to ~1080px on the long side regardless of screen size.
       final pr = 1080 / boundary.size.width;
       final image = await boundary.toImage(pixelRatio: pr.clamp(1.0, 4.0));
@@ -397,14 +415,15 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       _toast(trOr(context, 'builder.empty', 'Add at least one item'));
       return;
     }
-    Navigator.pop(context,
-        ManualBuilderResult.toAi(_items.map((e) => e.clothId).toList()));
+    Navigator.pop(
+      context,
+      ManualBuilderResult.toAi(_items.map((e) => e.clothId).toList()),
+    );
   }
 
   void _toast(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -412,9 +431,11 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     final editing = widget.existing != null;
     return Scaffold(
       appBar: AppBar(
-        title: Text(editing
-            ? trOr(context, 'builder.editTitle', 'Edit manual outfit')
-            : trOr(context, 'builder.title', 'Manual builder')),
+        title: Text(
+          editing
+              ? trOr(context, 'builder.editTitle', 'Edit manual outfit')
+              : trOr(context, 'builder.title', 'Manual builder'),
+        ),
         actions: [
           if (_selected != null) ...[
             IconButton(
@@ -437,8 +458,10 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : Text(tr(context, 'common.save')),
           ),
         ],
@@ -468,27 +491,29 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   }
 
   Widget _buildCanvas() {
-    return LayoutBuilder(builder: (context, c) {
-      final w = c.maxWidth, h = c.maxHeight;
-      final base = w * 0.42; // item box side at scale 1.0
-      return GestureDetector(
-        onTap: () => setState(() => _selected = null),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: _bg.gradient == null ? _bg.color : null,
-            gradient: _bg.gradient,
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth, h = c.maxHeight;
+        final base = w * 0.42; // item box side at scale 1.0
+        return GestureDetector(
+          onTap: () => setState(() => _selected = null),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: _bg.gradient == null ? _bg.color : null,
+              gradient: _bg.gradient,
+            ),
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                const Positioned.fill(child: SizedBox()),
+                for (var i = 0; i < _items.length; i++)
+                  _buildItem(i, w, h, base),
+              ],
+            ),
           ),
-          child: Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              const Positioned.fill(child: SizedBox()),
-              for (var i = 0; i < _items.length; i++)
-                _buildItem(i, w, h, base),
-            ],
-          ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   Widget _buildItem(int i, double w, double h, double base) {
@@ -523,8 +548,11 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             decoration: selected
                 ? BoxDecoration(
                     border: Border.all(
-                        color: Theme.of(context).colorScheme.primary, width: 2),
-                    borderRadius: BorderRadius.circular(6))
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                  )
                 : null,
             child: Image(
               image: appImageProvider(it.url),
@@ -546,26 +574,42 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _toolBtn(Icons.add_photo_alternate_outlined,
-                trOr(context, 'builder.addClothes', 'Clothes'), _addClothes),
-            _toolBtn(Icons.auto_awesome_outlined,
-                trOr(context, 'builder.useAlgo', 'Algorithm'), _runAlgorithm),
+            _toolBtn(
+              Icons.add_photo_alternate_outlined,
+              trOr(context, 'builder.addClothes', 'Clothes'),
+              _addClothes,
+            ),
+            _toolBtn(
+              Icons.auto_awesome_outlined,
+              trOr(context, 'builder.useAlgo', 'Algorithm'),
+              _runAlgorithm,
+            ),
             // Appears once an algorithm has run: one tap re-runs the same config
             // for a fresh outfit, so you can keep re-rolling and see each result.
             if (_lastPick != null)
-              _toolBtn(Icons.casino_outlined,
-                  trOr(context, 'builder.reshuffle', 'Re-roll'), _reshuffle,
-                  busy: _algoRunning),
-            _toolBtn(Icons.palette_outlined,
-                trOr(context, 'builder.background', 'Background'), _pickBackground),
+              _toolBtn(
+                Icons.casino_outlined,
+                trOr(context, 'builder.reshuffle', 'Re-roll'),
+                _reshuffle,
+                busy: _algoRunning,
+              ),
+            _toolBtn(
+              Icons.palette_outlined,
+              trOr(context, 'builder.background', 'Background'),
+              _pickBackground,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _toolBtn(IconData icon, String label, VoidCallback onTap,
-      {bool busy = false}) {
+  Widget _toolBtn(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    bool busy = false,
+  }) {
     return Expanded(
       child: InkWell(
         onTap: (_saving || busy) ? null : onTap,
@@ -577,8 +621,10 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             children: [
               busy
                   ? const SizedBox(
-                      width: 24, height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Icon(icon),
               const SizedBox(height: 4),
               Text(label, style: Theme.of(context).textTheme.labelSmall),
@@ -621,8 +667,10 @@ class _BackgroundSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(trOr(context, 'builder.solid', 'Solid colour'),
-                style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              trOr(context, 'builder.solid', 'Solid colour'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 10,
@@ -631,14 +679,16 @@ class _BackgroundSheet extends StatelessWidget {
                 for (final c in _kSwatches)
                   _Swatch(
                     color: c,
-                    onTap: () => Navigator.pop(
-                        context, _Bg(type: 'solid', color: c)),
+                    onTap: () =>
+                        Navigator.pop(context, _Bg(type: 'solid', color: c)),
                   ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(trOr(context, 'builder.gradient', 'Gradient'),
-                style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              trOr(context, 'builder.gradient', 'Gradient'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 10,
@@ -647,12 +697,14 @@ class _BackgroundSheet extends StatelessWidget {
                 for (final g in _kGradients)
                   _Swatch(
                     gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: g),
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: g,
+                    ),
                     onTap: () => Navigator.pop(
-                        context,
-                        _Bg(type: 'gradient', color: g[0], color2: g[1])),
+                      context,
+                      _Bg(type: 'gradient', color: g[0], color2: g[1]),
+                    ),
                   ),
               ],
             ),

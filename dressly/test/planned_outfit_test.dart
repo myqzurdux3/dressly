@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dressly/design/ds.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
@@ -48,6 +49,7 @@ void main() {
       value: session,
       child: MaterialApp(
         locale: const Locale('en'),
+        theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
         home: Scaffold(
           body: OutfitResultDialog(
               outfit: Outfit.fromJson(json), onChanged: (_) {}),
@@ -62,9 +64,9 @@ void main() {
   testWidgets('a planned day offers the render it is missing', (tester) async {
     await pump(tester, _outfit());
 
-    expect(find.text('Planned outfit'), findsOneWidget);
-    expect(find.text('Generated outfit'), findsNothing);
-    expect(find.widgetWithText(FilledButton, 'Generate the image'),
+    expect(find.text('PLANNED OUTFIT'), findsOneWidget);
+    expect(find.text('GENERATED OUTFIT'), findsNothing);
+    expect(find.widgetWithText(DsButton, 'Generate the image'),
         findsOneWidget);
     // Actions that need an image are not shown at all, rather than shown and
     // failing on a file that was never written.
@@ -77,17 +79,19 @@ void main() {
       (tester) async {
     await pump(tester, _outfit());
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Generate the image'));
+    await tester.tap(find.widgetWithText(DsButton, 'Generate the image'));
     await tester.pump();
 
-    expect(posted, ['POST /outfits/42/regenerate']);
+    // Reads first (the collage loads the garments' pictures), one write.
+    expect(posted.where((r) => !r.startsWith('GET ')),
+        ['POST /outfits/42/regenerate']);
   });
 
   testWidgets('a rendered outfit keeps every image action', (tester) async {
     await pump(tester, _outfit(generatedUrl: '/o/42.webp', kind: 'ai'));
 
-    expect(find.text('Generated outfit'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Generate the image'),
+    expect(find.text('GENERATED OUTFIT'), findsOneWidget);
+    expect(find.widgetWithText(DsButton, 'Generate the image'),
         findsNothing);
     expect(find.text('Download'), findsOneWidget);
   });

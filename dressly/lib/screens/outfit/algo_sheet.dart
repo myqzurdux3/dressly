@@ -14,10 +14,12 @@ class AlgoPick {
   final String brand;
   final String tag;
   final int count;
+
   /// 'any' | 'hot' | 'cold' | 'auto'. 'auto' lets the server read the
   /// forecast; it resolves to 'any' when there is no location or no forecast.
   final String weather;
-  final List<String> categories; // explicit category choices (overrides weather)
+  final List<String>
+  categories; // explicit category choices (overrides weather)
   final bool fillGaps; // fill missing roles (e.g. shoes) from any cloth
   AlgoPick({
     required this.algo,
@@ -67,8 +69,10 @@ class AlgoSheetState extends State<AlgoSheet> {
   /// pick-by-color / brand / tag define the outfit purely by that theme, so the
   /// weather + category presets don't apply to them.
   bool get _isPickTheme =>
-      _algo != null && (_algo!.needs == 'color' ||
-          _algo!.needs == 'brand' || _algo!.needs == 'tag');
+      _algo != null &&
+      (_algo!.needs == 'color' ||
+          _algo!.needs == 'brand' ||
+          _algo!.needs == 'tag');
 
   // A sensible ready-to-wear set per weather — one item per body slot. Picking
   // a weather pre-selects these so the user only has to tweak (e.g. add a cap).
@@ -125,9 +129,13 @@ class AlgoSheetState extends State<AlgoSheet> {
     if (_forecastLoading) {
       return Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Text(tr(context, 'algo.autoLoading'),
-            style: TextStyle(
-                fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+        child: Text(
+          tr(context, 'algo.autoLoading'),
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       );
     }
     final f = _forecast;
@@ -143,9 +151,11 @@ class AlgoSheetState extends State<AlgoSheet> {
             label: Text(tr(context, 'algo.autoNeedsPlace')),
             onPressed: () async {
               await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const WeatherLocationScreen()));
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const WeatherLocationScreen(),
+                ),
+              );
               if (mounted && _weather == 'auto') await _loadForecast();
             },
           ),
@@ -155,26 +165,33 @@ class AlgoSheetState extends State<AlgoSheet> {
     final label = f.isHot
         ? tr(context, 'algo.hot')
         : f.isCold
-            ? tr(context, 'algo.cold')
-            : tr(context, 'algo.any');
+        ? tr(context, 'algo.cold')
+        : tr(context, 'algo.any');
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Row(children: [
-        Icon(f.isHot ? Icons.wb_sunny_outlined : Icons.ac_unit,
-            size: 16, color: theme.colorScheme.primary),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            tr(context, 'algo.autoResult', {
-              'place': f.place,
-              'temp': f.shortTemp,
-              'mode': label,
-            }),
-            style: TextStyle(
-                fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+      child: Row(
+        children: [
+          Icon(
+            f.isHot ? Icons.wb_sunny_outlined : Icons.ac_unit,
+            size: 16,
+            color: theme.colorScheme.primary,
           ),
-        ),
-      ]),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              tr(context, 'algo.autoResult', {
+                'place': f.place,
+                'temp': f.shortTemp,
+                'mode': label,
+              }),
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -188,8 +205,18 @@ class AlgoSheetState extends State<AlgoSheet> {
   }
 
   static const _colors = [
-    'Black', 'White', 'Grey', 'Beige', 'Brown', 'Blue',
-    'Red', 'Green', 'Yellow', 'Orange', 'Purple', 'Pink',
+    'Black',
+    'White',
+    'Grey',
+    'Beige',
+    'Brown',
+    'Blue',
+    'Red',
+    'Green',
+    'Yellow',
+    'Orange',
+    'Purple',
+    'Pink',
   ];
 
   List<String> _brands = [];
@@ -228,7 +255,9 @@ class AlgoSheetState extends State<AlgoSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -236,11 +265,15 @@ class AlgoSheetState extends State<AlgoSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(tr(context, 'algo.pick'),
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                tr(context, 'algo.pick'),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
-              Text(tr(context, 'algo.guarantee'),
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(
+                tr(context, 'algo.guarantee'),
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
               const SizedBox(height: 12),
               FutureBuilder<List<AlgoMeta>>(
                 future: _future,
@@ -252,8 +285,10 @@ class AlgoSheetState extends State<AlgoSheet> {
                     );
                   }
                   if (snap.hasError) {
-                    return Text('${tr(context, 'algo.loadFailed')}: ${snap.error}',
-                        style: const TextStyle(color: Colors.red));
+                    return Text(
+                      '${tr(context, 'algo.loadFailed')}: ${snap.error}',
+                      style: const TextStyle(color: Colors.red),
+                    );
                   }
                   final items = snap.data ?? const [];
                   if (_algo == null && items.isNotEmpty) {
@@ -262,8 +297,10 @@ class AlgoSheetState extends State<AlgoSheet> {
                   return RadioGroup<String>(
                     groupValue: _algo?.id,
                     onChanged: (v) => setState(() {
-                      _algo = items.firstWhere((a) => a.id == v,
-                          orElse: () => items.first);
+                      _algo = items.firstWhere(
+                        (a) => a.id == v,
+                        orElse: () => items.first,
+                      );
                     }),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,11 +308,15 @@ class AlgoSheetState extends State<AlgoSheet> {
                         for (final a in items)
                           RadioListTile<String>(
                             value: a.id,
-                            title: Text(trOr(context, 'algoName.${a.id}', a.label),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle:
-                                Text(trOr(context, 'algoDesc.${a.id}', a.desc)),
+                            title: Text(
+                              trOr(context, 'algoName.${a.id}', a.label),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              trOr(context, 'algoDesc.${a.id}', a.desc),
+                            ),
                             dense: true,
                           ),
                       ],
@@ -288,11 +329,15 @@ class AlgoSheetState extends State<AlgoSheet> {
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: _colors.map((c) => ChoiceChip(
-                        label: Text(colorName(context, c)),
-                        selected: _color == c,
-                        onSelected: (_) => setState(() => _color = c),
-                      )).toList(),
+                  children: _colors
+                      .map(
+                        (c) => ChoiceChip(
+                          label: Text(colorName(context, c)),
+                          selected: _color == c,
+                          onSelected: (_) => setState(() => _color = c),
+                        ),
+                      )
+                      .toList(),
                 ),
               ],
               if (_algo?.needs == 'brand') ...[
@@ -313,8 +358,10 @@ class AlgoSheetState extends State<AlgoSheet> {
               if (_algo?.needs == 'tag') ...[
                 const SizedBox(height: 8),
                 if (_tags.isEmpty)
-                  Text(tr(context, 'algo.noTags'),
-                      style: TextStyle(color: Colors.grey, fontSize: 12))
+                  Text(
+                    tr(context, 'algo.noTags'),
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  )
                 else
                   DropdownButtonFormField<String>(
                     initialValue: _tag,
@@ -324,8 +371,9 @@ class AlgoSheetState extends State<AlgoSheet> {
                       isDense: true,
                     ),
                     items: _tags
-                        .map((t) =>
-                            DropdownMenuItem(value: t, child: Text('#$t')))
+                        .map(
+                          (t) => DropdownMenuItem(value: t, child: Text('#$t')),
+                        )
                         .toList(),
                     onChanged: (v) => setState(() => _tag = v),
                   ),
@@ -339,71 +387,94 @@ class AlgoSheetState extends State<AlgoSheet> {
                 controlAffinity: ListTileControlAffinity.leading,
                 dense: true,
                 title: Text(tr(context, 'algo.fillGaps')),
-                subtitle: Text(tr(context, 'algo.fillGapsHint'),
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                subtitle: Text(
+                  tr(context, 'algo.fillGapsHint'),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ),
               // Weather + explicit types don't apply to a pick-by-* theme.
               if (!_isPickTheme) ...[
                 const SizedBox(height: 16),
-                Text(tr(context, 'algo.weather'),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(
+                  tr(context, 'algo.weather'),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
-                Text(tr(context, 'algo.weatherHint'),
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(
+                  tr(context, 'algo.weatherHint'),
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
                 const SizedBox(height: 6),
-                Wrap(spacing: 6, children: [
-                  ChoiceChip(
-                    label: Text(tr(context, 'algo.any')),
-                    selected: _weather == 'any',
-                    onSelected: (_) => _setWeather('any'),
-                  ),
-                  ChoiceChip(
-                    label: Text(tr(context, 'algo.hot')),
-                    selected: _weather == 'hot',
-                    onSelected: (_) => _setWeather('hot'),
-                  ),
-                  ChoiceChip(
-                    label: Text(tr(context, 'algo.cold')),
-                    selected: _weather == 'cold',
-                    onSelected: (_) => _setWeather('cold'),
-                  ),
-                  ChoiceChip(
-                    avatar: _forecastLoading
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.wb_sunny_outlined, size: 16),
-                    label: Text(tr(context, 'algo.autoWeather')),
-                    selected: _weather == 'auto',
-                    onSelected: (_) => _setWeather('auto'),
-                  ),
-                ]),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    ChoiceChip(
+                      label: Text(tr(context, 'algo.any')),
+                      selected: _weather == 'any',
+                      onSelected: (_) => _setWeather('any'),
+                    ),
+                    ChoiceChip(
+                      label: Text(tr(context, 'algo.hot')),
+                      selected: _weather == 'hot',
+                      onSelected: (_) => _setWeather('hot'),
+                    ),
+                    ChoiceChip(
+                      label: Text(tr(context, 'algo.cold')),
+                      selected: _weather == 'cold',
+                      onSelected: (_) => _setWeather('cold'),
+                    ),
+                    ChoiceChip(
+                      avatar: _forecastLoading
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.wb_sunny_outlined, size: 16),
+                      label: Text(tr(context, 'algo.autoWeather')),
+                      selected: _weather == 'auto',
+                      onSelected: (_) => _setWeather('auto'),
+                    ),
+                  ],
+                ),
                 if (_weather == 'auto') _forecastLine(),
                 const SizedBox(height: 12),
-                Text(tr(context, 'algo.clothingTypes'),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(
+                  tr(context, 'algo.clothingTypes'),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
-                Text(tr(context, 'algo.clothingTypesHint'),
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(
+                  tr(context, 'algo.clothingTypesHint'),
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
                 const SizedBox(height: 6),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  // Ordered head-to-toe so bottom-of-body types sit lower.
-                  for (final c in [...kCategoryOptions]
-                    ..sort((a, b) => bodyOrder(a).compareTo(bodyOrder(b))))
-                    FilterChip(
-                      label: Text(categoryName(context, c)),
-                      selected: _cats.contains(c),
-                      onSelected: (_) => _toggleCat(c),
-                    ),
-                ]),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    // Ordered head-to-toe so bottom-of-body types sit lower.
+                    for (final c in [
+                      ...kCategoryOptions,
+                    ]..sort((a, b) => bodyOrder(a).compareTo(bodyOrder(b))))
+                      FilterChip(
+                        label: Text(categoryName(context, c)),
+                        selected: _cats.contains(c),
+                        onSelected: (_) => _toggleCat(c),
+                      ),
+                  ],
+                ),
               ],
               const SizedBox(height: 16),
-              Text(tr(context, 'algo.minRating'),
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(
+                tr(context, 'algo.minRating'),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
-              Text(tr(context, 'algo.minRatingHint'),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(
+                tr(context, 'algo.minRatingHint'),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
               Slider(
                 value: _minScore.toDouble(),
                 min: 0,
@@ -414,12 +485,15 @@ class AlgoSheetState extends State<AlgoSheet> {
               ),
               if (widget.showCount) ...[
                 const SizedBox(height: 8),
-                Text(tr(context, 'algo.count'),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(
+                  tr(context, 'algo.count'),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
                 const Text(
-                    'You\'ll preview each selection, then confirm the ones you want rendered.',
-                    style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  'You\'ll preview each selection, then confirm the ones you want rendered.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
                 Slider(
                   value: _count.toDouble(),
                   min: 1,
@@ -438,19 +512,35 @@ class AlgoSheetState extends State<AlgoSheet> {
                       ? null
                       : () {
                           final a = _algo!;
-                          if (a.needs == 'color' && (_color == null || _color!.isEmpty)) {
+                          if (a.needs == 'color' &&
+                              (_color == null || _color!.isEmpty)) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(tr(context, 'algo.pickColorFirst'))));
+                              SnackBar(
+                                content: Text(
+                                  tr(context, 'algo.pickColorFirst'),
+                                ),
+                              ),
+                            );
                             return;
                           }
-                          if (a.needs == 'brand' && (_brand == null || _brand!.isEmpty)) {
+                          if (a.needs == 'brand' &&
+                              (_brand == null || _brand!.isEmpty)) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(tr(context, 'algo.pickBrandFirst'))));
+                              SnackBar(
+                                content: Text(
+                                  tr(context, 'algo.pickBrandFirst'),
+                                ),
+                              ),
+                            );
                             return;
                           }
-                          if (a.needs == 'tag' && (_tag == null || _tag!.isEmpty)) {
+                          if (a.needs == 'tag' &&
+                              (_tag == null || _tag!.isEmpty)) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(tr(context, 'algo.pickTagFirst'))));
+                              SnackBar(
+                                content: Text(tr(context, 'algo.pickTagFirst')),
+                              ),
+                            );
                             return;
                           }
                           Navigator.pop(
@@ -465,15 +555,18 @@ class AlgoSheetState extends State<AlgoSheet> {
                               // A pick-by-* theme defines the whole outfit, so
                               // the weather + category presets don't apply.
                               weather: _isPickTheme ? 'any' : _weather,
-                              categories:
-                                  _isPickTheme ? const [] : _cats.toList(),
+                              categories: _isPickTheme
+                                  ? const []
+                                  : _cats.toList(),
                               fillGaps: _fillGaps,
                             ),
                           );
                         },
                   icon: const Icon(Icons.auto_awesome),
-                  label: Text('${tr(context, 'algo.preview')} $_count '
-                      '${trPlural(context, 'algo.outfit', _count)}'),
+                  label: Text(
+                    '${tr(context, 'algo.preview')} $_count '
+                    '${trPlural(context, 'algo.outfit', _count)}',
+                  ),
                 ),
               ),
             ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../models/model.dart';
@@ -10,8 +11,8 @@ import '../../services/outfits_service.dart';
 import '../../widgets/outfit_viewer.dart';
 import '../cloth/cloth_detail_screen.dart';
 import 'cloth_picker_screen.dart';
+import 'outfit_collage.dart';
 import '../../widgets/app_image.dart';
-import '../../theme/tones.dart';
 
 class OutfitResultDialog extends StatefulWidget {
   const OutfitResultDialog({
@@ -36,11 +37,26 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   bool _wornToday = false;
   bool _reported = false;
 
+  /// The garments with their pictures, for the collage of an outfit that has
+  /// no render yet. Loaded once; empty until then (or on failure).
+  List<Cloth> _pieces = const [];
+
   @override
   void initState() {
     super.initState();
     _outfit = widget.outfit;
     _wornToday = widget.outfit.wornToday;
+    if (!_outfit.hasRender && _outfit.status != 'failed') _loadPieces();
+  }
+
+  Future<void> _loadPieces() async {
+    final svc = clothesServiceOf(context);
+    try {
+      final got = await Future.wait(_outfit.clothIds.take(4).map(svc.get));
+      if (mounted) setState(() => _pieces = got);
+    } catch (_) {
+      // Decoration only: without pictures the panel still offers the render.
+    }
   }
 
   /// Run [action] with the dialog disabled, reporting any failure under
@@ -66,7 +82,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   /// [_run] for the common case: the action yields the updated outfit, which
   /// becomes this dialog's state and is handed to the parent screen.
   Future<Outfit?> _runUpdating(
-      String errorKey, Future<Outfit> Function() action) async {
+    String errorKey,
+    Future<Outfit> Function() action,
+  ) async {
     final updated = await _run(errorKey, action);
     if (updated == null || !mounted) return null;
     setState(() {
@@ -79,27 +97,39 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
 
   /// Re-run a FAILED generation at the same level (the backend still cascades
   /// up on failure). The outfit's clothes/model/prompt are untouched.
-  Future<void> _retryGeneration() =>
-      _runUpdating('result.retryFailed', () => outfitsServiceOf(context)
-          .regenerate(_outfit.id, tier: _outfit.modelTier));
+  Future<void> _retryGeneration() => _runUpdating(
+    'result.retryFailed',
+    () => outfitsServiceOf(
+      context,
+    ).regenerate(_outfit.id, tier: _outfit.modelTier),
+  );
 
-  Future<void> _regenerate() => _runUpdating('result.regenerateFailed',
-      () => outfitsServiceOf(context).regenerate(_outfit.id));
+  Future<void> _regenerate() => _runUpdating(
+    'result.regenerateFailed',
+    () => outfitsServiceOf(context).regenerate(_outfit.id),
+  );
 
   /// Flip "describe items to the AI" and re-render at the same tier.
-  Future<void> _toggleDescribe(bool value) =>
-      _runUpdating('result.failed', () => outfitsServiceOf(context).regenerate(
-          _outfit.id, tier: _outfit.modelTier, describeClothes: value));
+  Future<void> _toggleDescribe(bool value) => _runUpdating(
+    'result.failed',
+    () => outfitsServiceOf(
+      context,
+    ).regenerate(_outfit.id, tier: _outfit.modelTier, describeClothes: value),
+  );
 
   /// Re-render the SAME outfit at its current tier with a changed reference-image
   /// mode and/or top-render subset (the controls that used to live only on the
   /// create screen, now available after generation too).
   Future<void> _reRenderWith({String? imageMode, List<int>? renderClothIds}) =>
-      _runUpdating('result.failed', () => outfitsServiceOf(context).regenerate(
+      _runUpdating(
+        'result.failed',
+        () => outfitsServiceOf(context).regenerate(
           _outfit.id,
           tier: _outfit.modelTier,
           imageMode: imageMode,
-          renderClothIds: renderClothIds));
+          renderClothIds: renderClothIds,
+        ),
+      );
 
   Future<void> _setImageMode(String mode) async {
     if (mode == _outfit.imageMode) return;
@@ -109,11 +139,13 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   /// Upper-body garments in this outfit (base/mid/outer) — the ones the
   /// "which top to render" chooser toggles.
   List<OutfitCloth> get _upperCloths =>
-      _outfit.cloths.where((c) => isUpperBody(c.category)).toList()
-        ..sort((a, b) => bodyOrder(a.category).compareTo(bodyOrder(b.category)));
+      _outfit.cloths.where((c) => isUpperBody(c.category)).toList()..sort(
+        (a, b) => bodyOrder(a.category).compareTo(bodyOrder(b.category)),
+      );
 
   bool _isRendered(int clothId) =>
-      _outfit.renderClothIds.isEmpty || _outfit.renderClothIds.contains(clothId);
+      _outfit.renderClothIds.isEmpty ||
+      _outfit.renderClothIds.contains(clothId);
 
   Future<void> _toggleTopRender(int clothId, bool render) async {
     final rendered = _outfit.renderClothIds.isEmpty
@@ -123,8 +155,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       rendered.add(clothId);
     } else {
       // Keep at least one upper layer visible.
-      final visibleUppers =
-          _upperCloths.where((c) => rendered.contains(c.id)).length;
+      final visibleUppers = _upperCloths
+          .where((c) => rendered.contains(c.id))
+          .length;
       if (visibleUppers <= 1) return;
       rendered.remove(clothId);
     }
@@ -144,26 +177,26 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(tr(context, 'result.pickOwnModel')),
-          content: const Text(
-              'A back view renders the person from behind, so it needs one of '
-              'your own imported models that has a back photo. The "Random '
-              'model" option and generated people can\'t be used for a back '
-              'view — choose a specific person you added.'),
+          content: Text(tr(context, 'result.backNeedsModel')),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(tr(context, 'result.notNow'))),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr(context, 'result.notNow')),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(tr(context, 'result.chooseModel'))),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr(context, 'result.chooseModel')),
+            ),
           ],
         ),
       );
       if (go == true && mounted) await _changeModel();
       return;
     }
-    final back = await _runUpdating('result.backFailed',
-        () => outfitsServiceOf(context).generateBack(_outfit.id));
+    final back = await _runUpdating(
+      'result.backFailed',
+      () => outfitsServiceOf(context).generateBack(_outfit.id),
+    );
     if (back != null) _toastKey('result.backCreated');
   }
 
@@ -171,8 +204,10 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (_outfit.linkedId == null) return;
     // Await completion: editing clothes on one view re-renders the other, so
     // the linked outfit may still be processing when we switch to it.
-    await _runUpdating('result.failed',
-        () => outfitsServiceOf(context).getAwait(_outfit.linkedId!));
+    await _runUpdating(
+      'result.failed',
+      () => outfitsServiceOf(context).getAwait(_outfit.linkedId!),
+    );
   }
 
   Future<void> _markWorn() async {
@@ -195,38 +230,26 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     } catch (_) {}
     if (!mounted || w == null) return;
     final wears = w;
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  'Worn ${wears.total} ${wears.total == 1 ? 'day' : 'days'} '
-                  '· ${wears.thisYear} this year',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              if (wears.days.isEmpty)
-                Text(tr(context, 'result.notWornYet'),
-                    style: TextStyle(color: Colors.grey))
-              else
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children:
-                          wears.days.map((d) => Chip(label: Text(d))).toList(),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+    showDsSheet<void>(
+      context,
+      title: tr(context, 'result.wornCount')
+          .replaceFirst('{n}', '${wears.total}')
+          .replaceFirst('{y}', '${wears.thisYear}'),
+      child: Builder(
+        builder: (ctx) {
+          final ds = ctx.ds;
+          if (wears.days.isEmpty) {
+            return Text(
+              tr(ctx, 'result.notWornYet'),
+              style: ds.typo.label.copyWith(color: ds.colors.textMuted),
+            );
+          }
+          return Wrap(
+            spacing: ds.space.xs,
+            runSpacing: ds.space.xs,
+            children: [for (final d in wears.days) DsBadge(text: d)],
+          );
+        },
       ),
     );
   }
@@ -245,12 +268,14 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(tr(ctx, 'share.title')),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(tr(ctx, 'share.explain')),
-            const SizedBox(height: 12),
-            SelectableText(shared.url,
-                style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(tr(ctx, 'share.explain')),
+              const SizedBox(height: 12),
+              SelectableText(shared.url, style: ctx.ds.typo.monoSmall),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () async {
@@ -283,17 +308,25 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   }
 
   Future<void> _toggleFav() async {
-    final newVal = await _run('result.favoriteFailed', () => outfitsServiceOf(
-        context).toggleFavorite(_outfit.id, isFavorite: !_outfit.isFavorite));
+    final newVal = await _run(
+      'result.favoriteFailed',
+      () => outfitsServiceOf(
+        context,
+      ).toggleFavorite(_outfit.id, isFavorite: !_outfit.isFavorite),
+    );
     if (newVal == null || !mounted) return;
     setState(() => _outfit = _outfit.copyWith(isFavorite: newVal));
     widget.onChanged(_outfit);
-    _toast(newVal ? 'Saved to favorites ✓' : 'Removed from favorites');
+    _toastKey(newVal ? 'result.favAdded' : 'result.favRemoved');
   }
 
   Future<void> _toggleBlacklist() async {
-    final newVal = await _run('result.failed', () => outfitsServiceOf(context)
-        .setBlacklist(_outfit.id, blacklisted: !_outfit.isBlacklisted));
+    final newVal = await _run(
+      'result.failed',
+      () => outfitsServiceOf(
+        context,
+      ).setBlacklist(_outfit.id, blacklisted: !_outfit.isBlacklisted),
+    );
     if (newVal == null || !mounted) return;
     setState(() => _outfit = _outfit.copyWith(isBlacklisted: newVal));
     widget.onChanged(_outfit);
@@ -318,17 +351,18 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
             autofocus: true,
             maxLines: 2,
             decoration: InputDecoration(
-              border: const OutlineInputBorder(),
               hintText: tr(context, 'result.addDetailHint'),
             ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(tr(context, 'common.cancel'))),
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(tr(context, 'common.cancel')),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                child: Text(tr(context, 'result.regenerate'))),
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text(tr(context, 'result.regenerate')),
+            ),
           ],
         ),
       );
@@ -336,9 +370,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       ctrl.dispose();
     }
     if (detail == null || detail.isEmpty || !mounted) return;
-    await _runUpdating('result.regenerateFailed',
-        () => outfitsServiceOf(context).regenerate(
-            _outfit.id, tier: _outfit.modelTier, addDetail: detail));
+    await _runUpdating(
+      'result.regenerateFailed',
+      () => outfitsServiceOf(
+        context,
+      ).regenerate(_outfit.id, tier: _outfit.modelTier, addDetail: detail),
+    );
   }
 
   Future<void> _addToAgenda() async {
@@ -351,7 +388,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       lastDate: DateTime(now.year + 2),
     );
     if (picked == null || !mounted) return;
-    final day = '${picked.year.toString().padLeft(4, '0')}-'
+    final day =
+        '${picked.year.toString().padLeft(4, '0')}-'
         '${picked.month.toString().padLeft(2, '0')}-'
         '${picked.day.toString().padLeft(2, '0')}';
     final ok = await _run('result.agendaFailed', () async {
@@ -370,8 +408,10 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       _toastKey('result.needOneCloth');
       return;
     }
-    await _runUpdating('result.removeFailed', () => outfitsServiceOf(context)
-        .replaceClothes(_outfit.id, remaining));
+    await _runUpdating(
+      'result.removeFailed',
+      () => outfitsServiceOf(context).replaceClothes(_outfit.id, remaining),
+    );
   }
 
   Future<void> _editClothes() async {
@@ -380,14 +420,15 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     final picked = await Navigator.push<Set<int>>(
       context,
       MaterialPageRoute(
-        builder: (_) => ClothPickerScreen(
-          initialSelected: _outfit.clothIds.toSet(),
-        ),
+        builder: (_) =>
+            ClothPickerScreen(initialSelected: _outfit.clothIds.toSet()),
       ),
     );
     if (picked == null || picked.isEmpty) return;
-    await _runUpdating('result.regenerateFailed',
-        () => svc.replaceClothes(_outfit.id, picked.toList()));
+    await _runUpdating(
+      'result.regenerateFailed',
+      () => svc.replaceClothes(_outfit.id, picked.toList()),
+    );
   }
 
   /// Swap the person the outfit is rendered on (or drop the model) and
@@ -402,50 +443,60 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       return;
     }
     if (!mounted) return;
-    final choice = await showModalBottomSheet<({int? modelId, bool random})>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text(tr(context, 'result.renderOn'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.block),
-            title: Text(tr(context, 'result.noModelOutfitOnly')),
-            trailing: _outfit.modelId == null
-                ? const Icon(Icons.check, color: Colors.tealAccent)
-                : null,
-            onTap: () => Navigator.pop(ctx, (modelId: null, random: false)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.casino),
-            title: Text(tr(context, 'result.randomModel')),
-            subtitle: Text(models.isNotEmpty
-                ? tr(context, 'result.randomModelSubHas')
-                : tr(context, 'result.randomModelSubNone')),
-            onTap: () => Navigator.pop(ctx, (modelId: null, random: true)),
-          ),
-          for (final m in models)
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: Text(m.name),
-              trailing: m.id == _outfit.modelId
-                  ? const Icon(Icons.check, color: Colors.tealAccent)
-                  : null,
-              onTap: () => Navigator.pop(ctx, (modelId: m.id, random: false)),
-            ),
-        ]),
+    final choice = await showDsSheet<({int? modelId, bool random})>(
+      context,
+      title: tr(context, 'result.renderOn'),
+      child: Builder(
+        builder: (ctx) {
+          final c = ctx.ds.colors;
+          final check = Icon(Icons.check, color: c.accent);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.block),
+                title: Text(tr(ctx, 'result.noModelOutfitOnly')),
+                trailing: _outfit.modelId == null ? check : null,
+                onTap: () => Navigator.pop(ctx, (modelId: null, random: false)),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.casino_outlined),
+                title: Text(tr(ctx, 'result.randomModel')),
+                subtitle: Text(
+                  tr(
+                    ctx,
+                    models.isNotEmpty
+                        ? 'result.randomModelSubHas'
+                        : 'result.randomModelSubNone',
+                  ),
+                ),
+                onTap: () => Navigator.pop(ctx, (modelId: null, random: true)),
+              ),
+              for (final m in models)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(m.name),
+                  trailing: m.id == _outfit.modelId ? check : null,
+                  onTap: () =>
+                      Navigator.pop(ctx, (modelId: m.id, random: false)),
+                ),
+            ],
+          );
+        },
       ),
     );
     if (choice == null || !mounted) return;
-    await _runUpdating('result.changeModelFailed',
-        () => outfitsServiceOf(context).replaceModel(
-              _outfit.id,
-              modelId: choice.modelId,
-              randomModel: choice.random,
-            ));
+    await _runUpdating(
+      'result.changeModelFailed',
+      () => outfitsServiceOf(context).replaceModel(
+        _outfit.id,
+        modelId: choice.modelId,
+        randomModel: choice.random,
+      ),
+    );
   }
 
   Future<void> _deleteOutfit() async {
@@ -455,15 +506,21 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(tr(context, 'result.deleteOutfit')),
-        content: Text(tr(context, 'result.deleteConfirm').replaceFirst(
-            '{name}', _outfit.modelName ?? tr(context, 'result.outfitFallback'))),
+        content: Text(
+          tr(context, 'result.deleteConfirm').replaceFirst(
+            '{name}',
+            _outfit.modelName ?? tr(context, 'result.outfitFallback'),
+          ),
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr(context, 'common.cancel'))),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr(context, 'common.cancel')),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(tr(context, 'common.delete'))),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(tr(context, 'common.delete')),
+          ),
         ],
       ),
     );
@@ -471,12 +528,13 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     try {
       await svc.delete(_outfit.id);
       if (!mounted) return;
-      Navigator.pop(context, true);  // tell parent to drop from history
+      Navigator.pop(context, true); // tell parent to drop from history
       _toastKey('result.outfitRemoved');
     } catch (e) {
       _toastKey('result.deleteFailed', e);
     }
   }
+
   Future<void> _report() async {
     final ok = await _run('result.reportFailed', () async {
       await outfitsServiceOf(context).report(
@@ -506,516 +564,554 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final muted = ds.typo.label.copyWith(color: c.textMuted);
     final failed = _outfit.status == 'failed';
-    // A planned outfit (written by the week planner) carries the clothes for a
-    // day and no image. Every image action below — download, share, back view,
-    // "try a better model" — needs one to exist, and the dialog used to offer
-    // them all over a broken-image placeholder with no way to render.
+    // A planned outfit (written by the week planner) carries a day's clothes
+    // and no image. Every image action needs one, so they stay hidden until
+    // it is rendered.
     final rendered = _outfit.hasRender;
     final hasNext = _outfit.nextTier != null;
-    final nextTierLabel = const {
-      'vto': 'Try-On',
-      'flex': 'Flex',
-      'pro': 'Pro',
-      'max': 'Max',
-      'klein': 'Flex',
-      'flux': 'Pro',
-    }[_outfit.nextTier] ??
+    final nextTierLabel =
+        const {
+          'vto': 'Try-On',
+          'flex': 'Flex',
+          'pro': 'Pro',
+          'max': 'Max',
+          'klein': 'Flex',
+          'flux': 'Pro',
+        }[_outfit.nextTier] ??
         _outfit.nextTier ??
         '';
+    final gap = SizedBox(height: ds.space.s);
+
     return Dialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: ds.space.s,
+        vertical: ds.space.l,
+      ),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Text(
-                tr(context,
-                    rendered ? 'result.generatedOutfit' : 'result.plannedOutfit'),
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Spacer(),
-            IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context)),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: subtleFill(context),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                _outfit.isMock
-                    ? tr(context, 'result.previewBadge')
-                    : _outfit.tierLabel,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-              ),
+        padding: EdgeInsets.all(ds.space.m),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    tr(
+                      context,
+                      rendered
+                          ? 'result.generatedOutfit'
+                          : 'result.plannedOutfit',
+                    ).toUpperCase(),
+                    style: ds.typo.headline,
+                  ),
+                ),
+                DsButton.icon(
+                  icon: Icons.close,
+                  semanticLabel: MaterialLocalizations.of(
+                    context,
+                  ).closeButtonTooltip,
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: _outfit.view == 'back' ? Colors.indigo : Colors.teal,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                _outfit.view == 'back' ? tr(context, 'result.back') : tr(context, 'result.front'),
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-              ),
+            gap,
+            Row(
+              children: [
+                DsBadge(
+                  text: _outfit.isMock
+                      ? tr(context, 'result.previewBadge')
+                      : _outfit.tierLabel,
+                ),
+                SizedBox(width: ds.space.xs),
+                DsBadge(
+                  text: tr(
+                    context,
+                    _outfit.view == 'back' ? 'result.back' : 'result.front',
+                  ),
+                  tone: _outfit.view == 'back'
+                      ? DsBadgeTone.accent
+                      : DsBadgeTone.neutral,
+                ),
+                const Spacer(),
+                // Front and back are one linked outfit: flip between them.
+                if (_outfit.linkedId != null)
+                  DsChip(
+                    label: tr(
+                      context,
+                      _outfit.view == 'back'
+                          ? 'result.viewFront'
+                          : 'result.viewBack',
+                    ),
+                    leading: const Icon(Icons.flip, size: 16),
+                    selected: false,
+                    onTap: _busy ? () {} : _switchLinkedView,
+                  ),
+              ],
             ),
-            if (_outfit.linkedId != null) ...[
-              const Spacer(),
-              // Front and back are one linked outfit — toggle between them.
-              TextButton.icon(
-                onPressed: _busy ? null : _switchLinkedView,
-                icon: const Icon(Icons.flip, size: 16),
-                label: Text(_outfit.view == 'back' ? tr(context, 'result.viewFront') : tr(context, 'result.viewBack')),
-              ),
-            ],
-          ]),
-          const SizedBox(height: 8),
-          if (failed)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(tr(context, 'result.generationFailed'),
-                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(tr(context, 'result.outfitKept'),
-                    style: TextStyle(
-                        color: secondaryText(context), fontSize: 12)),
-                if (_outfit.error.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(_outfit.error,
-                      style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
-                ],
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
+            gap,
+            if (failed)
+              _Panel(
+                tint: c.danger,
+                children: [
+                  Text(
+                    tr(context, 'result.generationFailed'),
+                    style: ds.typo.bodyStrong.copyWith(color: c.danger),
+                  ),
+                  SizedBox(height: ds.space.xs),
+                  Text(tr(context, 'result.outfitKept'), style: muted),
+                  if (_outfit.error.isNotEmpty) ...[
+                    SizedBox(height: ds.space.xs),
+                    Text(
+                      _outfit.error,
+                      style: ds.typo.monoSmall.copyWith(color: c.danger),
+                    ),
+                  ],
+                  gap,
+                  DsButton(
+                    label: tr(context, 'result.retryGeneration'),
+                    icon: Icons.refresh,
+                    expand: true,
+                    loading: _busy,
                     onPressed: _busy ? null : _retryGeneration,
-                    icon: _busy
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.refresh),
-                    label: Text(tr(context, 'result.retryGeneration')),
                   ),
-                ),
-              ]),
-            )
-          else if (!rendered)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              decoration: BoxDecoration(
-                color: subtleFill(context),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(children: [
-                Icon(Icons.checkroom, size: 48, color: faintText(context)),
-                const SizedBox(height: 8),
-                Text(tr(context, 'result.noRenderYet'),
+                ],
+              )
+            else if (!rendered)
+              _Panel(
+                children: [
+                  if (_pieces.isNotEmpty) ...[
+                    OutfitCollage(clothes: _pieces),
+                    gap,
+                  ],
+                  Text(
+                    tr(context, 'result.noRenderYet'),
                     textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: secondaryText(context), fontSize: 12)),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _busy ? null : _regenerate,
-                    icon: _busy
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.auto_awesome),
-                    label: Text(tr(context, 'result.generateImage')),
+                    style: muted,
                   ),
-                ),
-              ]),
-            )
-          else
-            GestureDetector(
-              onTap: () => showOutfitFullscreen(context, outfitImageUrl(_outfit)),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                // Screen-sized copy, through the cache. The stored render was
-                // re-fetched in full on every rebuild of this dialog, and it
-                // rebuilds on every action taken in it.
-                child: SizedBox(
-                  height: 360,
+                  gap,
+                  DsButton(
+                    label: tr(context, 'result.generateImage'),
+                    icon: Icons.auto_awesome,
+                    expand: true,
+                    loading: _busy,
+                    onPressed: _busy ? null : _regenerate,
+                  ),
+                ],
+              )
+            else
+              GestureDetector(
+                onTap: () =>
+                    showOutfitFullscreen(context, outfitImageUrl(_outfit)),
+                child: Container(
+                  height: 380,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(ds.shape.card),
+                  ),
+                  // Screen-sized copy through the cache, keyed on the full
+                  // URL (it carries ?v=<mtime>) so a same-view re-render
+                  // reloads instead of showing the previous image.
                   child: AppImage(
                     url: outfitPreviewUrl(_outfit),
-                    // Keyed on the full URL (which carries ?v=<mtime>) so a
-                    // same-view regenerate — e.g. changing the model — reloads
-                    // instead of showing the previous render.
                     cacheKey: outfitPreviewUrl(_outfit),
                     fit: BoxFit.contain,
                     memWidth: 800,
                   ),
                 ),
               ),
-            ),
-          const SizedBox(height: 8),
-          if (_outfit.isMock)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Text(
-                    tr(context, 'result.previewNote'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.amber, fontSize: 12)),
+            if (_outfit.isMock) ...[
+              gap,
+              Text(
+                tr(context, 'result.previewNote'),
+                textAlign: TextAlign.center,
+                style: muted,
               ),
-            ),
-          // Algorithm label only. The clothes themselves are shown once, as the
-          // editable chips just below (tap = open, ✕ = remove) — no duplicate
-          // green list above them.
-          if (_outfit.algoLabel != null && _outfit.algoLabel!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text('${tr(context, 'result.algorithm')}: ${_outfit.algoLabel}',
-                  style: const TextStyle(
-                      color: Colors.tealAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold)),
-            ),
-          // Editable cloth chips — tap the name to open the cloth's detail
-          // screen (see all info + edit), tap ✕ to drop it and re-render. Tap
-          // is implemented on a custom widget so it doesn't fight the
-          // delete button.
-          if (_outfit.cloths.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            ],
+
+            // ----- Pieces: tap to open, cross to drop and re-render -----
+            if (_outfit.cloths.isNotEmpty) ...[
+              DsSectionTitle(
+                tr(context, 'create.clothes'),
+                hint: _outfit.algoLabel?.isNotEmpty == true
+                    ? '${tr(context, 'result.algorithm')}: ${_outfit.algoLabel}'
+                    : null,
+              ),
+              Wrap(
+                spacing: ds.space.xs,
+                runSpacing: ds.space.xs,
+                children: [
+                  for (final cl in _outfit.cloths)
+                    _ClothChipWithDelete(
+                      name: cl.name,
+                      onOpen: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ClothDetailScreen(clothId: cl.id),
+                        ),
+                      ),
+                      onRemove: _busy ? null : () => _removeCloth(cl.id),
+                    ),
+                ],
+              ),
+            ],
+            gap,
             Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: _outfit.cloths
-                  .map((c) => _ClothChipWithDelete(
-                        clothId: c.id,
-                        name: c.name,
-                        onOpen: () {
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => ClothDetailScreen(clothId: c.id),
-                          ));
-                        },
-                        onRemove: _busy ? null : () => _removeCloth(c.id),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _busy ? null : _editClothes,
-                icon: const Icon(Icons.edit_outlined),
-                label: Text(tr(context, 'result.addSwapClothes')),
-              ),
-            ),
-          ],
-          // Swap the person the outfit is rendered on (mirror of "swap clothes").
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _busy ? null : _changeModel,
-              icon: const Icon(Icons.person_outline),
-              label: Text(_outfit.modelName == null
-                  ? tr(context, 'result.changeModel')
-                  : '${tr(context, 'result.changeModel')} (${_outfit.modelName})'),
-            ),
-          ),
-          // Open this outfit's clothes in the non-AI manual builder.
-          if (widget.onOpenManual != null && _outfit.clothIds.isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        final o = _outfit;
-                        Navigator.of(context).pop();
-                        widget.onOpenManual!(o);
-                      },
-                icon: const Icon(Icons.brush_outlined),
-                label: Text(trOr(context, 'result.openManual',
-                    'Edit in manual builder')),
-              ),
-            ),
-          // Toggle the item description in the prompt, then re-render in place.
-          if (!failed)
-            SwitchListTile(
-              value: _outfit.describeClothes,
-              onChanged: _busy ? null : _toggleDescribe,
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(tr(context, 'create.describeItems')),
-              subtitle: Text(
-                  tr(context, 'result.describeSub'),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ),
-          // Reference-image mode — re-renders in place when changed.
-          if (!failed) ...[
-            const SizedBox(height: 4),
-            Text(tr(context, 'create.imageMode'),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            SegmentedButton<String>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12))),
-              segments: [
-                ButtonSegment(
-                    value: 'collage',
-                    label: Text(tr(context, 'create.imageModeCollage'))),
-                ButtonSegment(
-                    value: 'separate',
-                    label: Text(tr(context, 'create.imageModeSeparate'))),
+              spacing: ds.space.xs,
+              runSpacing: ds.space.xs,
+              children: [
+                if (_outfit.cloths.isNotEmpty)
+                  _SmallAction(
+                    icon: Icons.edit_outlined,
+                    label: tr(context, 'result.addSwapClothes'),
+                    onTap: _busy ? null : _editClothes,
+                  ),
+                // Swap the person it is rendered on.
+                _SmallAction(
+                  icon: Icons.person_outline,
+                  label: _outfit.modelName == null
+                      ? tr(context, 'result.changeModel')
+                      : '${tr(context, 'result.changeModel')} '
+                            '(${_outfit.modelName})',
+                  onTap: _busy ? null : _changeModel,
+                ),
+                if (widget.onOpenManual != null && _outfit.clothIds.isNotEmpty)
+                  _SmallAction(
+                    icon: Icons.brush_outlined,
+                    label: trOr(
+                      context,
+                      'result.openManual',
+                      'Edit in manual builder',
+                    ),
+                    onTap: _busy
+                        ? null
+                        : () {
+                            final o = _outfit;
+                            Navigator.of(context).pop();
+                            widget.onOpenManual!(o);
+                          },
+                  ),
               ],
-              selected: {_outfit.imageMode == 'separate' ? 'separate' : 'collage'},
-              onSelectionChanged:
-                  _busy ? null : (s) => _setImageMode(s.first),
             ),
-          ],
-          // Which top to render — only when the outfit has several upper layers.
-          if (!failed && _upperCloths.length >= 2) ...[
-            const SizedBox(height: 8),
-            Text(tr(context, 'create.topToRender'),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-            for (final c in _upperCloths)
-              CheckboxListTile(
-                value: _isRendered(c.id),
-                onChanged: _busy
-                    ? null
-                    : (v) => _toggleTopRender(c.id, v ?? true),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                title: Text(c.name),
-                subtitle: Text(categoryName(context, c.category),
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+
+            // ----- Render settings: each change re-renders in place -----
+            if (!failed) ...[
+              DsSectionTitle(tr(context, 'create.imageMode')),
+              DsSegment<String>(
+                options: [
+                  ('collage', tr(context, 'create.imageModeCollage')),
+                  ('separate', tr(context, 'create.imageModeSeparate')),
+                ],
+                value: _outfit.imageMode == 'separate' ? 'separate' : 'collage',
+                onChanged: (v) {
+                  if (!_busy) _setImageMode(v);
+                },
               ),
-          ],
-          Text(_outfit.prompt.isEmpty
-              ? tr(context, 'result.noTextPrompt')
-              : _outfit.prompt,
+              if (_upperCloths.length >= 2) ...[
+                DsSectionTitle(tr(context, 'create.topToRender')),
+                Wrap(
+                  spacing: ds.space.xs,
+                  runSpacing: ds.space.xs,
+                  children: [
+                    for (final u in _upperCloths)
+                      DsChip(
+                        label: u.name,
+                        selected: _isRendered(u.id),
+                        onTap: () {
+                          if (!_busy) {
+                            _toggleTopRender(u.id, !_isRendered(u.id));
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              ],
+              SwitchListTile(
+                value: _outfit.describeClothes,
+                onChanged: _busy ? null : _toggleDescribe,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(
+                  tr(context, 'create.describeItems'),
+                  style: ds.typo.body,
+                ),
+                subtitle: Text(tr(context, 'result.describeSub'), style: muted),
+              ),
+            ],
+            Text(
+              _outfit.prompt.isEmpty
+                  ? tr(context, 'result.noTextPrompt')
+                  : _outfit.prompt,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 12),
-          // Image actions: download, favorite.
-          if (!failed && rendered)
-            Row(children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _busy ? null : () => saveOutfitImage(context, outfitImageUrl(_outfit)),
-                  icon: const Icon(Icons.download),
-                  label: Text(tr(context, 'result.download')),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : _toggleFav,
-                  icon: Icon(_outfit.isFavorite
-                      ? Icons.favorite
-                      : Icons.favorite_border),
-                  label: Text(tr(context,
-                      _outfit.isFavorite ? 'result.saved' : 'result.save')),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _busy ? null : _share,
-                icon: const Icon(Icons.ios_share),
-                tooltip: tr(context, 'share.action'),
-              ),
-            ]),
-          if (!failed) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: _wornToday
-                  ? FilledButton.icon(
-                      onPressed: null,
-                      style: FilledButton.styleFrom(
-                          disabledBackgroundColor: Colors.teal.shade700,
-                          disabledForegroundColor: Colors.white),
-                      icon: const Icon(Icons.check_circle),
-                      label: Text(tr(context, 'result.wornTodayDone')),
-                    )
-                  : OutlinedButton.icon(
-                      onPressed: _busy ? null : _markWorn,
-                      icon: const Icon(Icons.checkroom),
-                      label: Text(tr(context, 'result.markWorn')),
+              style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+            ),
+            SizedBox(height: ds.space.m),
+
+            // ----- Image actions -----
+            if (!failed && rendered) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: DsButton(
+                      label: tr(context, 'result.download'),
+                      icon: Icons.download,
+                      expand: true,
+                      onPressed: _busy
+                          ? null
+                          : () => saveOutfitImage(
+                              context,
+                              outfitImageUrl(_outfit),
+                            ),
                     ),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _busy ? null : _showWearHistory,
-                icon: const Icon(Icons.history, size: 18),
-                label: Text(tr(context, 'result.wearHistory')),
+                  ),
+                  SizedBox(width: ds.space.xs),
+                  DsButton.icon(
+                    icon: _outfit.isFavorite
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    semanticLabel: tr(
+                      context,
+                      _outfit.isFavorite ? 'result.saved' : 'result.save',
+                    ),
+                    onPressed: _busy ? null : _toggleFav,
+                  ),
+                  SizedBox(width: ds.space.xs),
+                  DsButton.icon(
+                    icon: Icons.ios_share,
+                    semanticLabel: tr(context, 'share.action'),
+                    onPressed: _busy ? null : _share,
+                  ),
+                ],
               ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          // Cascade + back-view actions.
-          if (hasNext && rendered)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
+              gap,
+            ],
+            if (!failed) ...[
+              DsButton(
+                label: tr(
+                  context,
+                  _wornToday ? 'result.wornTodayDone' : 'result.markWorn',
+                ),
+                icon: _wornToday ? Icons.check_circle : Icons.checkroom,
+                kind: DsButtonKind.secondary,
+                expand: true,
+                onPressed: _busy || _wornToday ? null : _markWorn,
+              ),
+              gap,
+            ],
+            if (hasNext && rendered) ...[
+              DsButton(
+                label:
+                    '${tr(context, 'result.tryBetterModel')} ($nextTierLabel)',
+                icon: Icons.upgrade,
+                kind: DsButtonKind.secondary,
+                expand: true,
+                loading: _busy,
                 onPressed: _busy ? null : _regenerate,
-                icon: _busy
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.upgrade),
-                label: Text('${tr(context, 'result.tryBetterModel')} ($nextTierLabel)'),
               ),
-            )
-          else if (!failed && rendered)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(tr(context, 'result.bestModel'),
-                  style:
-                      TextStyle(color: secondaryText(context), fontSize: 12)),
-            ),
-          if (!failed && rendered && _outfit.view == 'front' &&
-              _outfit.linkedId == null) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _generateBack,
-                icon: _busy
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.flip),
-                label: Text(tr(context, 'result.generateBackView')),
-              ),
+              gap,
+            ] else if (!failed && rendered) ...[
+              Text(tr(context, 'result.bestModel'), style: muted),
+              gap,
+            ],
+
+            // ----- Everything else -----
+            DsSectionTitle(tr(context, 'result.more')),
+            Wrap(
+              spacing: ds.space.xs,
+              runSpacing: ds.space.xs,
+              children: [
+                if (!failed)
+                  _SmallAction(
+                    icon: Icons.history,
+                    label: tr(context, 'result.wearHistory'),
+                    onTap: _busy ? null : _showWearHistory,
+                  ),
+                if (!failed &&
+                    rendered &&
+                    _outfit.view == 'front' &&
+                    _outfit.linkedId == null)
+                  _SmallAction(
+                    icon: Icons.flip,
+                    label: tr(context, 'result.generateBackView'),
+                    onTap: _busy ? null : _generateBack,
+                  ),
+                if (!failed && rendered) ...[
+                  // Re-render with an extra instruction (pose, angle…).
+                  _SmallAction(
+                    icon: Icons.tune,
+                    label: tr(context, 'result.addDetailTitle'),
+                    onTap: _busy ? null : _regenerateWithDetail,
+                  ),
+                  _SmallAction(
+                    icon: Icons.event,
+                    label: tr(context, 'result.addToAgenda'),
+                    onTap: _busy ? null : _addToAgenda,
+                  ),
+                ],
+                // Ban this exact combination from the generator.
+                _SmallAction(
+                  icon: _outfit.isBlacklisted
+                      ? Icons.block_flipped
+                      : Icons.block,
+                  label: tr(
+                    context,
+                    _outfit.isBlacklisted
+                        ? 'result.bannedTapAllow'
+                        : 'result.neverAutoGen',
+                  ),
+                  onTap: _busy ? null : _toggleBlacklist,
+                ),
+                _SmallAction(
+                  icon: Icons.support_agent,
+                  label: tr(
+                    context,
+                    _reported ? 'result.reportedShort' : 'result.reportProblem',
+                  ),
+                  onTap: _busy || _reported ? null : _report,
+                ),
+                _SmallAction(
+                  icon: Icons.delete_outline,
+                  label: tr(context, 'result.deleteFromHistory'),
+                  danger: true,
+                  onTap: _busy ? null : _deleteOutfit,
+                ),
+              ],
             ),
           ],
-          if (!failed && rendered) ...[
-            const SizedBox(height: 8),
-            // Re-render with an extra instruction (pose, angle, setting…).
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _regenerateWithDetail,
-                icon: const Icon(Icons.tune),
-                label: Text(tr(context, 'result.addDetailTitle')),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Plan this outfit for a day.
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _addToAgenda,
-                icon: const Icon(Icons.event),
-                label: Text(tr(context, 'result.addToAgenda')),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          // Ban this exact cloth combination from the generator.
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _busy ? null : _toggleBlacklist,
-              icon: Icon(_outfit.isBlacklisted
-                  ? Icons.block_flipped
-                  : Icons.block),
-              label: Text(_outfit.isBlacklisted
-                  ? tr(context, 'result.bannedTapAllow')
-                  : tr(context, 'result.neverAutoGen')),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _busy || _reported ? null : _report,
-              icon: const Icon(Icons.support_agent),
-              label: Text(_reported ? tr(context, 'result.reportedShort') : tr(context, 'result.reportProblem')),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _busy ? null : _deleteOutfit,
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              label: Text(tr(context, 'result.deleteFromHistory'),
-                  style: const TextStyle(color: Colors.redAccent)),
-            ),
-          ),
-        ]),
+        ),
       ),
     );
   }
 }
 
+/// A tinted block inside the dialog (failure, missing render).
+class _Panel extends StatelessWidget {
+  const _Panel({required this.children, this.tint});
 
-/// Dialog that shows the algorithm's proposed selections (cloth picks only, no
-/// image) and asks the user to confirm before any outfit is rendered. Supports
-/// "Reshuffle" (re-run the algorithm for fresh picks) and "Generate" (render
-/// every selection in parallel).
+  final List<Widget> children;
+  final Color? tint;
 
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    return Container(
+      padding: EdgeInsets.all(ds.space.m),
+      decoration: BoxDecoration(
+        color: tint?.withValues(alpha: 0.12) ?? ds.colors.surface,
+        borderRadius: BorderRadius.circular(ds.shape.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// A secondary action as a compact outlined pill: reads as a button, unlike
+/// a bare text link, without the weight of a full-width one.
+class _SmallAction extends StatelessWidget {
+  const _SmallAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final fg = onTap == null
+        ? c.textMuted
+        : danger
+        ? c.danger
+        : c.text;
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: EdgeInsets.symmetric(horizontal: ds.space.s),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(ds.shape.pill),
+            border: Border.all(color: c.hairline),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: fg),
+              SizedBox(width: ds.space.xs),
+              Flexible(
+                child: Text(label, style: ds.typo.label.copyWith(color: fg)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A garment of the outfit: tap the name to open it, the cross to drop it.
 class _ClothChipWithDelete extends StatelessWidget {
   const _ClothChipWithDelete({
-    required this.clothId,
     required this.name,
     required this.onOpen,
     required this.onRemove,
   });
-  final int clothId;
+
   final String name;
   final VoidCallback onOpen;
   final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
     return Container(
+      height: 40,
       decoration: BoxDecoration(
-        color: Colors.white12,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white24),
+        color: c.surface,
+        borderRadius: BorderRadius.circular(ds.shape.pill),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        InkWell(
-          onTap: onOpen,
-          borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
-            child: Text(name, style: const TextStyle(fontSize: 12)),
-          ),
-        ),
-        if (onRemove != null)
-          InkWell(
-            onTap: onRemove,
-            borderRadius: const BorderRadius.only(
-                topRight: Radius.circular(16),
-                bottomRight: Radius.circular(16)),
-            child: const Padding(
-              padding: EdgeInsets.fromLTRB(4, 6, 8, 6),
-              child: Icon(Icons.close, size: 16, color: Colors.white70),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onOpen,
+            child: Padding(
+              padding: EdgeInsets.only(left: ds.space.s, right: ds.space.xs),
+              child: Center(child: Text(name, style: ds.typo.label)),
             ),
           ),
-      ]),
+          if (onRemove != null)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
+              icon: Icon(Icons.close, color: c.textMuted),
+              onPressed: onRemove,
+            )
+          else
+            SizedBox(width: ds.space.s),
+        ],
+      ),
     );
   }
 }
-

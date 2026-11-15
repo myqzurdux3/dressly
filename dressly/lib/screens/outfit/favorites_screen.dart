@@ -28,12 +28,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   void initState() {
     super.initState();
     _outfits = PagedList<Outfit>(
-      fetchPage: ({required limit, required offset}) => outfitsServiceOf(context)
-          .favorites(
-              sort: _query.sort,
-              model: _query.model,
-              limit: limit,
-              offset: offset),
+      fetchPage: ({required limit, required offset}) =>
+          outfitsServiceOf(context).favorites(
+            sort: _query.sort,
+            model: _query.model,
+            limit: limit,
+            offset: offset,
+          ),
     );
     _reload();
   }
@@ -49,8 +50,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Future<void> _openSort() async {
     // Saved tab is already favorites-only, so hide the Favorites chip — but the
     // model filter still applies.
-    final result =
-        await showOutfitSortSheet(context, _query, showFavoriteFilter: false);
+    final result = await showOutfitSortSheet(
+      context,
+      _query,
+      showFavoriteFilter: false,
+    );
     if (result == null || !mounted) return;
     setState(() => _query = result);
     _reload();
@@ -59,16 +63,21 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'fav.title')), actions: [
-        IconButton(
-          tooltip: tr(context, 'fav.sort'),
-          icon: Icon(Icons.sort,
+      appBar: AppBar(
+        title: Text(tr(context, 'fav.title')),
+        actions: [
+          IconButton(
+            tooltip: tr(context, 'fav.sort'),
+            icon: Icon(
+              Icons.sort,
               color: _query.isActive
                   ? Theme.of(context).colorScheme.primary
-                  : null),
-          onPressed: _openSort,
-        ),
-      ]),
+                  : null,
+            ),
+            onPressed: _openSort,
+          ),
+        ],
+      ),
       body: PagedGrid<Outfit>(
         controller: _outfits,
         onRefresh: _reload,
@@ -86,8 +95,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               const SizedBox(height: 12),
               Text(tr(context, 'fav.empty')),
               const SizedBox(height: 4),
-              Text(tr(context, 'fav.emptyHint'),
-                  style: const TextStyle(color: Colors.grey)),
+              Text(
+                tr(context, 'fav.emptyHint'),
+                style: const TextStyle(color: Colors.grey),
+              ),
             ],
           ),
         ),
@@ -96,8 +107,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           onTap: () => _showDetail(outfit),
           onUnfavorite: () async {
             try {
-              await outfitsServiceOf(context)
-                  .toggleFavorite(outfit.id, isFavorite: false);
+              await outfitsServiceOf(
+                context,
+              ).toggleFavorite(outfit.id, isFavorite: false);
               // This screen only ever shows favourites, so the card is simply
               // gone — no need to refetch every page to learn that.
               _outfits.removeItem((o) => o.id == outfit.id);
@@ -121,8 +133,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 }
 
 class _FavCard extends StatelessWidget {
-  const _FavCard(
-      {required this.outfit, required this.onTap, required this.onUnfavorite});
+  const _FavCard({
+    required this.outfit,
+    required this.onTap,
+    required this.onUnfavorite,
+  });
   final Outfit outfit;
   final VoidCallback onTap;
   final VoidCallback onUnfavorite;
@@ -135,75 +150,99 @@ class _FavCard extends StatelessWidget {
       child: Card(
         clipBehavior: Clip.antiAlias,
         margin: EdgeInsets.zero,
-        child: Stack(children: [
-          if (failed)
-            Container(color: Colors.red.shade900, child: const Center(child: Icon(Icons.error_outline, color: Colors.white)))
-          else
-            Positioned.fill(
-              child: AppImage(
-                // Grid card: take the server thumbnail rather than the
-                // full-resolution render.
-                url: outfitThumbUrl(outfit),
-                cacheKey: outfitThumbUrl(outfit),
-                fit: BoxFit.cover,
-                memWidth: 600,
+        child: Stack(
+          children: [
+            if (failed)
+              Container(
+                color: Colors.red.shade900,
+                child: const Center(
+                  child: Icon(Icons.error_outline, color: Colors.white),
+                ),
+              )
+            else
+              Positioned.fill(
+                child: AppImage(
+                  // Grid card: take the server thumbnail rather than the
+                  // full-resolution render.
+                  url: outfitThumbUrl(outfit),
+                  cacheKey: outfitThumbUrl(outfit),
+                  fit: BoxFit.cover,
+                  memWidth: 600,
+                ),
               ),
-            ),
-          Positioned(
-            top: 6, left: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                  color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-              child: Text(
+            Positioned(
+              top: 6,
+              left: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
                   outfit.view == 'back'
                       ? tr(context, 'card.back')
                       : tr(context, 'card.front'),
                   style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
-            ),
-          ),
-          Positioned(
-            top: 4, right: 4,
-            child: GestureDetector(
-              onTap: onUnfavorite,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                    color: Colors.black54, shape: BoxShape.circle),
-                child: const Icon(Icons.favorite,
-                    color: Colors.redAccent, size: 22),
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0, right: 0, bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: onUnfavorite,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.favorite,
+                    color: Colors.redAccent,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     stops: [0.0, 0.75, 1.0],
-                    colors: [Colors.black87, Colors.black54, Colors.transparent]),
-              ),
-              child: Text(
-                [
-                  if (outfit.modelName != null) outfit.modelName!,
-                  if (outfit.cloths.isNotEmpty)
-                    outfit.cloths.map((c) => c.name).join(', '),
-                ].join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Colors.white),
+                    colors: [
+                      Colors.black87,
+                      Colors.black54,
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Text(
+                  [
+                    if (outfit.modelName != null) outfit.modelName!,
+                    if (outfit.cloths.isNotEmpty)
+                      outfit.cloths.map((c) => c.name).join(', '),
+                  ].join(' · '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.white),
+                ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 }
-

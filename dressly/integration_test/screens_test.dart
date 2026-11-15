@@ -15,6 +15,7 @@ import 'package:dressly/screens/home/home_shell.dart';
 import 'package:dressly/services/auth_service.dart';
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/screens/wardrobe/wardrobe_card.dart';
+import 'package:dressly/widgets/outfit_history_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -93,5 +94,26 @@ void main() {
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
     await _settle(tester);
     await _shot(tester, '10_add_form_bottom');
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+
+    // An outfit's result, from the Create tab's history.
+    await tester.tap(tab(1));
+    await _settle(tester);
+    // Lazy list: the history is not built until scrolled to, so no `.first`
+    // until it is.
+    final cards = find.byType(OutfitHistoryCard);
+    for (var i = 0; i < 20 && cards.evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -400));
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+    await _settle(tester);
+    await tester.tap(cards.first);
+    await _settle(tester, const Duration(seconds: 3));
+    await _shot(tester, '11_result');
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
+    await _settle(tester);
+    await _shot(tester, '12_result_bottom');
   });
 }

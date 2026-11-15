@@ -12,7 +12,6 @@ lib/screens/outfit/algo_sheet.dart
 lib/screens/outfit/cloth_picker_screen.dart
 lib/screens/outfit/favorites_screen.dart
 lib/screens/outfit/manual_builder_screen.dart
-lib/screens/outfit/outfit_result_dialog.dart
 lib/screens/profile/profile_screen.dart
 lib/screens/settings/api_credits_screen.dart
 lib/screens/settings/change_password_screen.dart

@@ -51,7 +51,9 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${tr(context, 'result.reshuffleFailed')}: $e')),
+          SnackBar(
+            content: Text('${tr(context, 'result.reshuffleFailed')}: $e'),
+          ),
         );
       }
     } finally {
@@ -63,14 +65,16 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
     // Render only the ticked selections, preserving order.
     final chosen = [
       for (var i = 0; i < _preview.selections.length; i++)
-        if (_chosen.contains(i)) _preview.selections[i]
+        if (_chosen.contains(i)) _preview.selections[i],
     ];
     Navigator.pop(
-        context,
-        AlgoPreview(
-            algo: _preview.algo,
-            algoLabel: _preview.algoLabel,
-            selections: chosen));
+      context,
+      AlgoPreview(
+        algo: _preview.algo,
+        algoLabel: _preview.algoLabel,
+        selections: chosen,
+      ),
+    );
   }
 
   @override
@@ -87,30 +91,43 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_preview.algoLabel,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _preview.algoLabel,
                           style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text(
-                          tr(context, 'algo.proposed')
-                              .replaceFirst('{n}', '$n'),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          tr(
+                            context,
+                            'algo.proposed',
+                          ).replaceFirst('{n}', '$n'),
                           style: TextStyle(
-                              color: secondaryText(context), fontSize: 12)),
-                    ],
+                            color: secondaryText(context),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context, null),
-                ),
-              ]),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context, null),
+                  ),
+                ],
+              ),
               const SizedBox(height: 4),
-              Text(tr(context, 'algo.pickWhich'),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(
+                tr(context, 'algo.pickWhich'),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
               const SizedBox(height: 12),
               Flexible(
                 child: _reshuffling
@@ -145,7 +162,9 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                                 ),
                                 Expanded(
                                   child: _AlgoSelectionCard(
-                                      index: i + 1, picks: sel),
+                                    index: i + 1,
+                                    picks: sel,
+                                  ),
                                 ),
                               ],
                             ),
@@ -154,23 +173,27 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                       ),
               ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _reshuffling ? null : _doReshuffle,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(tr(context, 'result.reshuffle')),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _reshuffling ? null : _doReshuffle,
+                      icon: const Icon(Icons.refresh),
+                      label: Text(tr(context, 'result.reshuffle')),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: (_reshuffling || k == 0) ? null : _confirm,
-                    icon: const Icon(Icons.auto_awesome),
-                    label: Text('${tr(context, 'result.generate')} $k ${trPlural(context, 'result.outfit', k)}'),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: (_reshuffling || k == 0) ? null : _confirm,
+                      icon: const Icon(Icons.auto_awesome),
+                      label: Text(
+                        '${tr(context, 'result.generate')} $k ${trPlural(context, 'result.outfit', k)}',
+                      ),
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ],
           ),
         ),
@@ -189,59 +212,75 @@ class _AlgoSelectionCard extends StatelessWidget {
     // Order head-to-toe: tops first, shoes last.
     final ordered = [...picks]
       ..sort((a, b) => bodyOrder(a.category).compareTo(bodyOrder(b.category)));
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('${tr(context, 'result.outfitLabel')} #$index',
-          style:
-              const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      const SizedBox(height: 8),
-      ...ordered.map((c) => Padding(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${tr(context, 'result.outfitLabel')} #$index',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        const SizedBox(height: 8),
+        ...ordered.map(
+          (c) => Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: Row(children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: c.thumbUrl.isEmpty
-                    ? Container(
-                        width: 44,
-                        height: 44,
-                        color: Colors.blueGrey.shade900,
-                        child: const Icon(Icons.checkroom,
-                            color: Colors.white38, size: 20),
-                      )
-                    : SizedBox(
-                        width: 44,
-                        height: 44,
-                        child: AppImage(
-                          url: imageUrl(c.thumbUrl),
-                          fit: BoxFit.contain,
-                          memWidth: 88,
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: c.thumbUrl.isEmpty
+                      ? Container(
+                          width: 44,
+                          height: 44,
+                          color: Colors.blueGrey.shade900,
+                          child: const Icon(
+                            Icons.checkroom,
+                            color: Colors.white38,
+                            size: 20,
+                          ),
+                        )
+                      : SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: AppImage(
+                            url: imageUrl(c.thumbUrl),
+                            fit: BoxFit.contain,
+                            memWidth: 88,
+                          ),
                         ),
-                      ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(c.name,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
-                    Text(
-                      [
-                        if (c.role.isNotEmpty) c.role,
-                        if (c.brand.isNotEmpty) c.brand,
-                        if (c.category.isNotEmpty) c.category,
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: secondaryText(context), fontSize: 11),
-                    ),
-                  ],
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        [
+                          if (c.role.isNotEmpty) c.role,
+                          if (c.brand.isNotEmpty) c.brand,
+                          if (c.category.isNotEmpty) c.category,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: secondaryText(context),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ]),
-          )),
-    ]);
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

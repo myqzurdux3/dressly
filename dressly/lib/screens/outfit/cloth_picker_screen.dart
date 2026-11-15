@@ -62,17 +62,24 @@ class _ClothPickerScreenState extends State<ClothPickerScreen> {
   Future<List<Cloth>> _fetch() async {
     try {
       final clothes = await _service.list(filter: _filter);
-      _service.autocompleteBrands().then((b) {
-        if (mounted) setState(() => _brands = b);
-      }).catchError((_) {});
-      _service.autocompleteTags().then((t) {
-        if (mounted) setState(() => _tags = t);
-      }).catchError((_) {});
+      _service
+          .autocompleteBrands()
+          .then((b) {
+            if (mounted) setState(() => _brands = b);
+          })
+          .catchError((_) {});
+      _service
+          .autocompleteTags()
+          .then((t) {
+            if (mounted) setState(() => _tags = t);
+          })
+          .catchError((_) {});
       return clothes;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${tr(context, 'wardrobe.loadFailed')}: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${tr(context, 'wardrobe.loadFailed')}: $e')),
+        );
       }
       return <Cloth>[];
     }
@@ -137,110 +144,118 @@ class _ClothPickerScreenState extends State<ClothPickerScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, _selected),
-            child: Text(tr(context, 'common.done'),
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(
+              tr(context, 'common.done'),
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  hintText: tr(context, 'wardrobe.searchHint'),
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchCtrl.text.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchCtrl.clear();
-                            _onSearch('');
-                          },
-                        ),
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onSubmitted: _onSearch,
-                onChanged: (_) => setState(() {}),
-                textInputAction: TextInputAction.search,
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: tr(context, 'filter.title'),
-              onPressed: _openFilters,
-            ),
-          ]),
-        ),
-        Expanded(
-          child: FutureBuilder(
-            future: _future,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final items = snapshot.data ?? [];
-              _lastItems = items;
-              if (items.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      _filter.isEmpty
-                          ? tr(context, 'wardrobe.empty')
-                          : tr(context, 'wardrobe.noMatch'),
-                      style: const TextStyle(color: Colors.grey),
-                      textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: tr(context, 'wardrobe.searchHint'),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchCtrl.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                _onSearch('');
+                              },
+                            ),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
+                    onSubmitted: _onSearch,
+                    onChanged: (_) => setState(() {}),
+                    textInputAction: TextInputAction.search,
                   ),
-                );
-              }
-              return GridView.builder(
-                padding: const EdgeInsets.all(8),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 0.72,
                 ),
-                itemCount: items.length,
-                itemBuilder: (context, i) {
-                  final c = items[i];
-                  final selected = _selected.contains(c.id);
-                  // Block picking two clothes of the same slot (e.g. jeans +
-                  // joggers): an outfit can only wear one.
-                  final clash = selected ? null : _conflictingSelection(c);
-                  final blocked = clash != null;
-                  return _PickTile(
-                    cloth: c,
-                    selected: selected,
-                    blocked: blocked,
-                    onTap: () {
-                      if (clash != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(
-                              '${tr(context, 'picker.alreadyPicked')} "${clash.name}" '
-                              '(${outfitSlotLabel(context, c.category)}) — ${tr(context, 'picker.removeFirst')}'),
-                        ));
-                        return;
-                      }
-                      _toggle(c, !selected);
-                    },
-                  );
-                },
-              );
-            },
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  tooltip: tr(context, 'filter.title'),
+                  onPressed: _openFilters,
+                ),
+              ],
+            ),
           ),
-        ),
-      ]),
+          Expanded(
+            child: FutureBuilder(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final items = snapshot.data ?? [];
+                _lastItems = items;
+                if (items.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        _filter.isEmpty
+                            ? tr(context, 'wardrobe.empty')
+                            : tr(context, 'wardrobe.noMatch'),
+                        style: const TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+                return GridView.builder(
+                  padding: const EdgeInsets.all(8),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) {
+                    final c = items[i];
+                    final selected = _selected.contains(c.id);
+                    // Block picking two clothes of the same slot (e.g. jeans +
+                    // joggers): an outfit can only wear one.
+                    final clash = selected ? null : _conflictingSelection(c);
+                    final blocked = clash != null;
+                    return _PickTile(
+                      cloth: c,
+                      selected: selected,
+                      blocked: blocked,
+                      onTap: () {
+                        if (clash != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${tr(context, 'picker.alreadyPicked')} "${clash.name}" '
+                                '(${outfitSlotLabel(context, c.category)}) — ${tr(context, 'picker.removeFirst')}',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        _toggle(c, !selected);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -263,72 +278,87 @@ class _PickTile extends StatelessWidget {
       opacity: blocked ? 0.4 : 1.0,
       child: GestureDetector(
         onTap: onTap,
-        child: Stack(children: [
-          Card(
-            clipBehavior: Clip.antiAlias,
-            margin: EdgeInsets.zero,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Container(
-                    color: Colors.blueGrey.shade900,
-                    child: cloth.thumbImageUrl == null
-                        ? const Center(
-                            child: Icon(Icons.checkroom,
-                                color: Colors.white38, size: 36))
-                        : AppImage.path(
-                            // The grid thumbnail, ~26 KB. This used to load
-                            // the stored cut-out — a median of 756 KB — for
-                            // every cloth in the wardrobe at once.
-                            cloth.thumbImageUrl,
-                            cacheKey: cloth.thumbImageUrl,
-                            fit: BoxFit.contain,
-                            memWidth: 600, // match the wardrobe — 200 was too soft
-                          ),
+        child: Stack(
+          children: [
+            Card(
+              clipBehavior: Clip.antiAlias,
+              margin: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Container(
+                      color: Colors.blueGrey.shade900,
+                      child: cloth.thumbImageUrl == null
+                          ? const Center(
+                              child: Icon(
+                                Icons.checkroom,
+                                color: Colors.white38,
+                                size: 36,
+                              ),
+                            )
+                          : AppImage.path(
+                              // The grid thumbnail, ~26 KB. This used to load
+                              // the stored cut-out — a median of 756 KB — for
+                              // every cloth in the wardrobe at once.
+                              cloth.thumbImageUrl,
+                              cacheKey: cloth.thumbImageUrl,
+                              fit: BoxFit.contain,
+                              memWidth:
+                                  600, // match the wardrobe — 200 was too soft
+                            ),
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(cloth.name,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          cloth.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.bold)),
-                      if (cloth.category.isNotEmpty)
-                        Text(categoryName(context, cloth.category),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (cloth.category.isNotEmpty)
+                          Text(
+                            categoryName(context, cloth.category),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 10, color: secondaryText(context))),
-                    ],
+                              fontSize: 10,
+                              color: secondaryText(context),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: selected ? Colors.teal : Colors.black54,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
                 ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              decoration: BoxDecoration(
-                color: selected ? Colors.teal : Colors.black54,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white24),
-              ),
-              padding: const EdgeInsets.all(2),
-              child: Icon(
-                selected ? Icons.check : Icons.add,
-                size: 18,
-                color: Colors.white,
+                padding: const EdgeInsets.all(2),
+                child: Icon(
+                  selected ? Icons.check : Icons.add,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }

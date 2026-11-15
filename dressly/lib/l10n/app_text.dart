@@ -386,6 +386,14 @@ const Map<String, Map<String, String>> _strings = {
     'result.regenerateFailed': 'Regenerate failed',
     'result.failed': 'Failed',
     'result.pickOwnModel': 'Pick one of your own models',
+    'result.backNeedsModel':
+        'A back view renders the person from behind, so it needs one of your '
+        'own models with a back photo. "Random model" and generated people '
+        'cannot be used: choose a specific person you added.',
+    'result.wornCount': 'Worn {n}× · {y} this year',
+    'result.favAdded': 'Saved to favorites',
+    'result.favRemoved': 'Removed from favorites',
+    'result.more': 'More',
     'result.notNow': 'Not now',
     'result.chooseModel': 'Choose a model',
     'result.backCreated': 'Back view created ✓',
@@ -1127,6 +1135,15 @@ const Map<String, Map<String, String>> _strings = {
     'result.regenerateFailed': 'Échec de la régénération',
     'result.failed': 'Échec',
     'result.pickOwnModel': 'Choisissez un de vos propres modèles',
+    'result.backNeedsModel':
+        'Une vue de dos montre la personne de derrière : il faut un de vos '
+        'modèles avec une photo de dos. « Modèle aléatoire » et les personnes '
+        'générées ne conviennent pas, choisissez une personne que vous avez '
+        'ajoutée.',
+    'result.wornCount': 'Portée {n}× · {y} cette année',
+    'result.favAdded': 'Ajoutée aux favoris',
+    'result.favRemoved': 'Retirée des favoris',
+    'result.more': 'Plus',
     'result.notNow': 'Pas maintenant',
     'result.chooseModel': 'Choisir un modèle',
     'result.backCreated': 'Vue de dos créée ✓',

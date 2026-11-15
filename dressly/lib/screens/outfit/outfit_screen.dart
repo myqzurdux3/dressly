@@ -18,6 +18,7 @@ import 'cloth_picker_screen.dart';
 import 'algo_preview_dialog.dart';
 import 'algo_sheet.dart';
 import 'manual_builder_screen.dart';
+import 'outfit_collage.dart';
 import 'outfit_result_dialog.dart';
 import '../../widgets/app_image.dart';
 
@@ -673,6 +674,13 @@ class _OutfitScreenState extends State<OutfitScreen> {
       ),
       SizedBox(height: ds.space.m),
 
+      // The wait for a render: the chosen pieces land on the table.
+      if (_generating && n > 0) ...[
+        OutfitCollage(
+          clothes: [for (final id in _selectedClothIds) ?_clothesById(id)],
+        ),
+        SizedBox(height: ds.space.s),
+      ],
       DsButton(
         label: _generating
             ? tr(context, 'create.generating')
