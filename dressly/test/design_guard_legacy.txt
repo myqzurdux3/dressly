@@ -22,7 +22,6 @@ lib/screens/settings/weather_location_screen.dart
 lib/widgets/app_image.dart
 lib/widgets/brand_logo.dart
 lib/widgets/filter_sheet.dart
-lib/widgets/image_review.dart
 lib/widgets/model_chip.dart
 lib/widgets/outfit_history_card.dart
 lib/widgets/outfit_sort_sheet.dart

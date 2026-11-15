@@ -5,20 +5,19 @@ import '../../../design/ds.dart';
 import '../../../l10n/app_text.dart';
 import '../../../models/cloth.dart';
 import '../../../widgets/app_image.dart';
-import '../../../widgets/image_review.dart'
+import '../photo_review.dart'
     show enhanceTierLabel, showCropDecision, showImageFullscreen;
 
 /// Draws one network image. Injected so tests need no network.
 typedef DetailImageBuilder =
     Widget Function(String url, String cacheKey, int memWidth);
 
-Widget detailAppImage(String url, String cacheKey, int memWidth) =>
-    AppImage(
-      url: url,
-      cacheKey: cacheKey,
-      fit: BoxFit.contain,
-      memWidth: memWidth,
-    );
+Widget detailAppImage(String url, String cacheKey, int memWidth) => AppImage(
+  url: url,
+  cacheKey: cacheKey,
+  fit: BoxFit.contain,
+  memWidth: memWidth,
+);
 
 /// The badge over a photo: its side, in the app's language. The server says
 /// "front" / "back" / "extra"; printed raw, a French app showed "FRONT".

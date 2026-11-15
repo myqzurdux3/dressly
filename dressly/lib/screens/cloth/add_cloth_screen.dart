@@ -11,7 +11,7 @@ import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../services/clothes_service.dart';
 import '../../state/providers.dart';
-import '../../widgets/image_review.dart';
+import 'photo_review.dart';
 import 'cloth_detail_screen.dart';
 import 'detail/detail_image_panel.dart' show roleLabel;
 import 'form/color_editor.dart';

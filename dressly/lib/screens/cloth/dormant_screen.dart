@@ -74,7 +74,10 @@ class _DormantScreenState extends State<DormantScreen> {
         months: report.months,
         count: (report.count - 1).clamp(0, report.count),
         wardrobeCount: report.wardrobeCount,
-        items: [for (final it in report.items) if (it.cloth.id != clothId) it],
+        items: [
+          for (final it in report.items)
+            if (it.cloth.id != clothId) it,
+        ],
       );
     });
   }
@@ -86,9 +89,13 @@ class _DormantScreenState extends State<DormantScreen> {
       await svc.wear(item.cloth.id);
       if (!mounted) return;
       _removeLocally(item.cloth.id);
-      messenger.showSnackBar(SnackBar(
-          content: Text(tr(context, 'dormant.markedWorn',
-              {'name': item.cloth.name}))));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            tr(context, 'dormant.markedWorn', {'name': item.cloth.name}),
+          ),
+        ),
+      );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
@@ -98,8 +105,10 @@ class _DormantScreenState extends State<DormantScreen> {
     final svc = clothesServiceOf(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final excluded = await svc.setExcludeFromAlgo(item.cloth.id,
-          exclude: !item.cloth.excludeFromAlgo);
+      final excluded = await svc.setExcludeFromAlgo(
+        item.cloth.id,
+        exclude: !item.cloth.excludeFromAlgo,
+      );
       if (!mounted) return;
       final report = _report;
       if (report != null) {
@@ -126,10 +135,15 @@ class _DormantScreenState extends State<DormantScreen> {
           );
         });
       }
-      messenger.showSnackBar(SnackBar(
-          content: Text(excluded
-              ? tr(context, 'dormant.excluded')
-              : tr(context, 'dormant.included'))));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            excluded
+                ? tr(context, 'dormant.excluded')
+                : tr(context, 'dormant.included'),
+          ),
+        ),
+      );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
@@ -143,11 +157,13 @@ class _DormantScreenState extends State<DormantScreen> {
         content: Text(tr(ctx, 'dormant.deleteBody', {'name': item.cloth.name})),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(tr(ctx, 'common.cancel'))),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr(ctx, 'common.cancel')),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(tr(ctx, 'dormant.delete'))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(tr(ctx, 'dormant.delete')),
+          ),
         ],
       ),
     );
@@ -159,7 +175,8 @@ class _DormantScreenState extends State<DormantScreen> {
       if (!mounted) return;
       _removeLocally(item.cloth.id);
       messenger.showSnackBar(
-          SnackBar(content: Text(tr(context, 'dormant.deleted'))));
+        SnackBar(content: Text(tr(context, 'dormant.deleted'))),
+      );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
@@ -169,10 +186,7 @@ class _DormantScreenState extends State<DormantScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'dormant.title'))),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _body(),
-      ),
+      body: RefreshIndicator(onRefresh: _load, child: _body()),
     );
   }
 
@@ -181,13 +195,17 @@ class _DormantScreenState extends State<DormantScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return ListView(children: [
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('${tr(context, 'dormant.loadError')}: $_error',
-              textAlign: TextAlign.center),
-        ),
-      ]);
+      return ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              '${tr(context, 'dormant.loadError')}: $_error',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      );
     }
     final report = _report!;
     return ListView(
@@ -205,8 +223,9 @@ class _DormantScreenState extends State<DormantScreen> {
           // is a habit. Lumping them together made both harder to act on.
           ..._section(tr(context, 'dormant.neverWornTitle'), report.neverWorn),
           ..._section(
-              trPlural(context, 'dormant.staleTitle', report.months),
-              report.stale),
+            trPlural(context, 'dormant.staleTitle', report.months),
+            report.stale,
+          ),
         ],
       ],
     );
@@ -226,9 +245,11 @@ class _DormantScreenState extends State<DormantScreen> {
           item: item,
           onOpen: () async {
             await Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => ClothDetailScreen(clothId: item.cloth.id)));
+              context,
+              MaterialPageRoute(
+                builder: (_) => ClothDetailScreen(clothId: item.cloth.id),
+              ),
+            );
             if (mounted) await _load();
           },
           onWear: () => _wearToday(item),
@@ -259,8 +280,9 @@ class _DormantScreenState extends State<DormantScreen> {
             'never': '${report.neverWornCount}',
             'stale': '${report.staleCount}',
           }),
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -286,8 +308,11 @@ class _DormantScreenState extends State<DormantScreen> {
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         children: [
-          Icon(Icons.check_circle_outline,
-              size: 48, color: theme.colorScheme.primary),
+          Icon(
+            Icons.check_circle_outline,
+            size: 48,
+            color: theme.colorScheme.primary,
+          ),
           const SizedBox(height: 12),
           Text(
             report.wardrobeCount == 0
@@ -355,19 +380,25 @@ class _DormantCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(cloth.name,
-                        style: theme.textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      cloth.name,
+                      style: theme.textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       item.neverWorn
-                          ? tr(context, 'dormant.neverWorn',
-                              {'age': _age(context)})
-                          : tr(context, 'dormant.notWornSince',
-                              {'age': _age(context), 'times': '${item.timesWorn}'}),
+                          ? tr(context, 'dormant.neverWorn', {
+                              'age': _age(context),
+                            })
+                          : tr(context, 'dormant.notWornSince', {
+                              'age': _age(context),
+                              'times': '${item.timesWorn}',
+                            }),
                       style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Wrap(
@@ -381,20 +412,24 @@ class _DormantCard extends StatelessWidget {
                         TextButton.icon(
                           onPressed: onToggleExclude,
                           icon: Icon(
-                              cloth.excludeFromAlgo
-                                  ? Icons.visibility_outlined
-                                  : Icons.block_outlined,
-                              size: 18),
-                          label: Text(cloth.excludeFromAlgo
-                              ? tr(context, 'dormant.includeAgain')
-                              : tr(context, 'dormant.exclude')),
+                            cloth.excludeFromAlgo
+                                ? Icons.visibility_outlined
+                                : Icons.block_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            cloth.excludeFromAlgo
+                                ? tr(context, 'dormant.includeAgain')
+                                : tr(context, 'dormant.exclude'),
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: onDelete,
                           icon: const Icon(Icons.delete_outline, size: 18),
                           label: Text(tr(context, 'dormant.delete')),
                           style: TextButton.styleFrom(
-                              foregroundColor: theme.colorScheme.error),
+                            foregroundColor: theme.colorScheme.error,
+                          ),
                         ),
                       ],
                     ),

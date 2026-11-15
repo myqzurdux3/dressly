@@ -128,7 +128,7 @@ void main() {
       const exempt = [
         'app_image.dart',
         'photo_edit_screen.dart',   // pairs its widget with a measuring provider
-        'image_review.dart',        // fullscreen zoom
+        'photo_review.dart',        // fullscreen zoom
         'outfit_viewer.dart',       // fullscreen zoom + download
         'cloth.dart',
         'model.dart',
