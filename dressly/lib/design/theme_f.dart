@@ -111,6 +111,17 @@ class ThemeF implements DsTheme {
         titleTextStyle: t.typo.title.copyWith(color: c.text),
         contentTextStyle: t.typo.body.copyWith(color: c.textMuted),
       ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: c.surface,
+        modalBackgroundColor: c.surface,
+        showDragHandle: true,
+        dragHandleColor: c.hairline,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(t.shape.hero),
+          ),
+        ),
+      ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: c.text,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../models/weather.dart';
@@ -125,17 +126,12 @@ class AlgoSheetState extends State<AlgoSheet> {
   /// What 'auto' decided, in one line: the temperature and which wardrobe it
   /// picked — or, when there is nothing to go on, the way to fix that.
   Widget _forecastLine() {
-    final theme = Theme.of(context);
+    final ds = context.ds;
+    final muted = ds.typo.label.copyWith(color: ds.colors.textMuted);
     if (_forecastLoading) {
       return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          tr(context, 'algo.autoLoading'),
-          style: TextStyle(
-            fontSize: 12,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+        padding: EdgeInsets.only(top: ds.space.s),
+        child: Text(tr(context, 'algo.autoLoading'), style: muted),
       );
     }
     final f = _forecast;
@@ -143,12 +139,13 @@ class AlgoSheetState extends State<AlgoSheet> {
       // No location set is the likely reason, and it is one tap to fix, so the
       // line is a button rather than a complaint.
       return Padding(
-        padding: const EdgeInsets.only(top: 4),
+        padding: EdgeInsets.only(top: ds.space.s),
         child: Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            icon: const Icon(Icons.place_outlined, size: 18),
-            label: Text(tr(context, 'algo.autoNeedsPlace')),
+          child: DsButton(
+            icon: Icons.place_outlined,
+            kind: DsButtonKind.secondary,
+            label: tr(context, 'algo.autoNeedsPlace'),
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -168,15 +165,15 @@ class AlgoSheetState extends State<AlgoSheet> {
         ? tr(context, 'algo.cold')
         : tr(context, 'algo.any');
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(top: ds.space.s),
       child: Row(
         children: [
           Icon(
             f.isHot ? Icons.wb_sunny_outlined : Icons.ac_unit,
             size: 16,
-            color: theme.colorScheme.primary,
+            color: ds.colors.accent,
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: ds.space.xs),
           Expanded(
             child: Text(
               tr(context, 'algo.autoResult', {
@@ -184,10 +181,7 @@ class AlgoSheetState extends State<AlgoSheet> {
                 'temp': f.shortTemp,
                 'mode': label,
               }),
-              style: TextStyle(
-                fontSize: 12,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: muted,
             ),
           ),
         ],
@@ -254,40 +248,47 @@ class AlgoSheetState extends State<AlgoSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final muted = ds.typo.label.copyWith(color: c.textMuted);
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          padding: EdgeInsets.fromLTRB(
+            ds.space.gutter,
+            ds.space.s,
+            ds.space.gutter,
+            ds.space.l,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                tr(context, 'algo.pick'),
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                tr(context, 'algo.pick').toUpperCase(),
+                style: ds.typo.headline,
               ),
-              const SizedBox(height: 4),
-              Text(
-                tr(context, 'algo.guarantee'),
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
+              SizedBox(height: ds.space.xs),
+              Text(tr(context, 'algo.guarantee'), style: muted),
+              SizedBox(height: ds.space.s),
               FutureBuilder<List<AlgoMeta>>(
                 future: _future,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: CircularProgressIndicator()),
+                    return Padding(
+                      padding: EdgeInsets.all(ds.space.m),
+                      child: Center(
+                        child: CircularProgressIndicator(color: c.accent),
+                      ),
                     );
                   }
                   if (snap.hasError) {
                     return Text(
                       '${tr(context, 'algo.loadFailed')}: ${snap.error}',
-                      style: const TextStyle(color: Colors.red),
+                      style: ds.typo.label.copyWith(color: c.danger),
                     );
                   }
                   final items = snap.data ?? const [];
@@ -308,14 +309,15 @@ class AlgoSheetState extends State<AlgoSheet> {
                         for (final a in items)
                           RadioListTile<String>(
                             value: a.id,
+                            contentPadding: EdgeInsets.zero,
+                            activeColor: c.accent,
                             title: Text(
                               trOr(context, 'algoName.${a.id}', a.label),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: ds.typo.bodyStrong,
                             ),
                             subtitle: Text(
                               trOr(context, 'algoDesc.${a.id}', a.desc),
+                              style: muted,
                             ),
                             dense: true,
                           ),
@@ -325,29 +327,33 @@ class AlgoSheetState extends State<AlgoSheet> {
                 },
               ),
               if (_algo?.needs == 'color') ...[
-                const SizedBox(height: 8),
+                SizedBox(height: ds.space.s),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: _colors
-                      .map(
-                        (c) => ChoiceChip(
-                          label: Text(colorName(context, c)),
-                          selected: _color == c,
-                          onSelected: (_) => setState(() => _color = c),
+                  spacing: ds.space.xs,
+                  runSpacing: ds.space.xs,
+                  children: [
+                    for (final col in _colors)
+                      DsChip(
+                        label: colorName(context, col),
+                        leading: CircleAvatar(
+                          radius: 7,
+                          backgroundColor: garmentTone(
+                            col,
+                            Theme.of(context).brightness,
+                          ).fill,
                         ),
-                      )
-                      .toList(),
+                        selected: _color == col,
+                        onTap: () => setState(() => _color = col),
+                      ),
+                  ],
                 ),
               ],
               if (_algo?.needs == 'brand') ...[
-                const SizedBox(height: 8),
+                SizedBox(height: ds.space.s),
                 DropdownButtonFormField<String>(
                   initialValue: _brand,
                   decoration: InputDecoration(
                     labelText: tr(context, 'filter.brand'),
-                    border: const OutlineInputBorder(),
-                    isDense: true,
                   ),
                   items: (_brands.isEmpty ? const [''] : _brands)
                       .map((b) => DropdownMenuItem(value: b, child: Text(b)))
@@ -356,19 +362,14 @@ class AlgoSheetState extends State<AlgoSheet> {
                 ),
               ],
               if (_algo?.needs == 'tag') ...[
-                const SizedBox(height: 8),
+                SizedBox(height: ds.space.s),
                 if (_tags.isEmpty)
-                  Text(
-                    tr(context, 'algo.noTags'),
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  )
+                  Text(tr(context, 'algo.noTags'), style: muted)
                 else
                   DropdownButtonFormField<String>(
                     initialValue: _tag,
                     decoration: InputDecoration(
                       labelText: tr(context, 'filter.tag'),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
                     ),
                     items: _tags
                         .map(
@@ -386,188 +387,146 @@ class AlgoSheetState extends State<AlgoSheet> {
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
                 dense: true,
-                title: Text(tr(context, 'algo.fillGaps')),
-                subtitle: Text(
-                  tr(context, 'algo.fillGapsHint'),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+                title: Text(tr(context, 'algo.fillGaps'), style: ds.typo.body),
+                subtitle: Text(tr(context, 'algo.fillGapsHint'), style: muted),
               ),
               // Weather + explicit types don't apply to a pick-by-* theme.
               if (!_isPickTheme) ...[
-                const SizedBox(height: 16),
-                Text(
+                DsSectionTitle(
                   tr(context, 'algo.weather'),
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  hint: tr(context, 'algo.weatherHint'),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  tr(context, 'algo.weatherHint'),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                const SizedBox(height: 6),
                 Wrap(
-                  spacing: 6,
+                  spacing: ds.space.xs,
+                  runSpacing: ds.space.xs,
                   children: [
-                    ChoiceChip(
-                      label: Text(tr(context, 'algo.any')),
-                      selected: _weather == 'any',
-                      onSelected: (_) => _setWeather('any'),
-                    ),
-                    ChoiceChip(
-                      label: Text(tr(context, 'algo.hot')),
-                      selected: _weather == 'hot',
-                      onSelected: (_) => _setWeather('hot'),
-                    ),
-                    ChoiceChip(
-                      label: Text(tr(context, 'algo.cold')),
-                      selected: _weather == 'cold',
-                      onSelected: (_) => _setWeather('cold'),
-                    ),
-                    ChoiceChip(
-                      avatar: _forecastLoading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                    for (final (w, key) in const [
+                      ('any', 'algo.any'),
+                      ('hot', 'algo.hot'),
+                      ('cold', 'algo.cold'),
+                    ])
+                      DsChip(
+                        label: tr(context, key),
+                        selected: _weather == w,
+                        onTap: () => _setWeather(w),
+                      ),
+                    DsChip(
+                      leading: _forecastLoading
+                          ? SizedBox.square(
+                              dimension: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: c.accent,
+                              ),
                             )
                           : const Icon(Icons.wb_sunny_outlined, size: 16),
-                      label: Text(tr(context, 'algo.autoWeather')),
+                      label: tr(context, 'algo.autoWeather'),
                       selected: _weather == 'auto',
-                      onSelected: (_) => _setWeather('auto'),
+                      onTap: () => _setWeather('auto'),
                     ),
                   ],
                 ),
                 if (_weather == 'auto') _forecastLine(),
-                const SizedBox(height: 12),
-                Text(
+                DsSectionTitle(
                   tr(context, 'algo.clothingTypes'),
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  hint: tr(context, 'algo.clothingTypesHint'),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  tr(context, 'algo.clothingTypesHint'),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                const SizedBox(height: 6),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: ds.space.xs,
+                  runSpacing: ds.space.xs,
                   children: [
                     // Ordered head-to-toe so bottom-of-body types sit lower.
-                    for (final c in [
+                    for (final cat in [
                       ...kCategoryOptions,
                     ]..sort((a, b) => bodyOrder(a).compareTo(bodyOrder(b))))
-                      FilterChip(
-                        label: Text(categoryName(context, c)),
-                        selected: _cats.contains(c),
-                        onSelected: (_) => _toggleCat(c),
+                      DsChip(
+                        label: categoryName(context, cat),
+                        selected: _cats.contains(cat),
+                        onTap: () => _toggleCat(cat),
                       ),
                   ],
                 ),
               ],
-              const SizedBox(height: 16),
-              Text(
+              DsSectionTitle(
                 tr(context, 'algo.minRating'),
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                hint: tr(context, 'algo.minRatingHint'),
               ),
-              const SizedBox(height: 4),
-              Text(
-                tr(context, 'algo.minRatingHint'),
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              Slider(
-                value: _minScore.toDouble(),
-                min: 0,
-                max: 5,
-                divisions: 5,
-                label: _minScore == 0 ? 'No rating filter' : '$_minScore / 5',
-                onChanged: (v) => setState(() => _minScore = v.round()),
+              DsSegment<int>(
+                options: [
+                  (0, tr(context, 'algo.noRatingFilter')),
+                  for (var n = 1; n <= 5; n++) (n, '$n+'),
+                ],
+                value: _minScore,
+                onChanged: (v) => setState(() => _minScore = v),
               ),
               if (widget.showCount) ...[
-                const SizedBox(height: 8),
-                Text(
+                DsSectionTitle(
                   tr(context, 'algo.count'),
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  hint: tr(context, 'algo.countHint'),
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'You\'ll preview each selection, then confirm the ones you want rendered.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                Slider(
-                  value: _count.toDouble(),
-                  min: 1,
-                  max: 6,
-                  divisions: 5,
-                  label: '$_count ${_count == 1 ? "outfit" : "outfits"}',
-                  onChanged: (v) => setState(() => _count = v.round()),
+                DsSegment<int>(
+                  options: [for (var n = 1; n <= 6; n++) (n, '$n')],
+                  value: _count,
+                  onChanged: (v) => setState(() => _count = v),
                 ),
               ],
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  onPressed: _algo == null
-                      ? null
-                      : () {
-                          final a = _algo!;
-                          if (a.needs == 'color' &&
-                              (_color == null || _color!.isEmpty)) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  tr(context, 'algo.pickColorFirst'),
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-                          if (a.needs == 'brand' &&
-                              (_brand == null || _brand!.isEmpty)) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  tr(context, 'algo.pickBrandFirst'),
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-                          if (a.needs == 'tag' &&
-                              (_tag == null || _tag!.isEmpty)) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(tr(context, 'algo.pickTagFirst')),
-                              ),
-                            );
-                            return;
-                          }
-                          Navigator.pop(
-                            context,
-                            AlgoPick(
-                              algo: a.id,
-                              minScore: _minScore,
-                              color: _color ?? '',
-                              brand: _brand ?? '',
-                              tag: _tag ?? '',
-                              count: _count,
-                              // A pick-by-* theme defines the whole outfit, so
-                              // the weather + category presets don't apply.
-                              weather: _isPickTheme ? 'any' : _weather,
-                              categories: _isPickTheme
-                                  ? const []
-                                  : _cats.toList(),
-                              fillGaps: _fillGaps,
-                            ),
-                          );
-                        },
-                  icon: const Icon(Icons.auto_awesome),
-                  label: Text(
+              SizedBox(height: ds.space.l),
+              DsButton(
+                expand: true,
+                icon: Icons.auto_awesome,
+                label:
                     '${tr(context, 'algo.preview')} $_count '
                     '${trPlural(context, 'algo.outfit', _count)}',
-                  ),
-                ),
+                onPressed: _algo == null
+                    ? null
+                    : () {
+                        final a = _algo!;
+                        if (a.needs == 'color' &&
+                            (_color == null || _color!.isEmpty)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(tr(context, 'algo.pickColorFirst')),
+                            ),
+                          );
+                          return;
+                        }
+                        if (a.needs == 'brand' &&
+                            (_brand == null || _brand!.isEmpty)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(tr(context, 'algo.pickBrandFirst')),
+                            ),
+                          );
+                          return;
+                        }
+                        if (a.needs == 'tag' &&
+                            (_tag == null || _tag!.isEmpty)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(tr(context, 'algo.pickTagFirst')),
+                            ),
+                          );
+                          return;
+                        }
+                        Navigator.pop(
+                          context,
+                          AlgoPick(
+                            algo: a.id,
+                            minScore: _minScore,
+                            color: _color ?? '',
+                            brand: _brand ?? '',
+                            tag: _tag ?? '',
+                            count: _count,
+                            // A pick-by-* theme defines the whole outfit, so
+                            // the weather + category presets don't apply.
+                            weather: _isPickTheme ? 'any' : _weather,
+                            categories: _isPickTheme
+                                ? const []
+                                : _cats.toList(),
+                            fillGaps: _fillGaps,
+                          ),
+                        );
+                      },
               ),
             ],
           ),

@@ -117,7 +117,7 @@ void main() {
     expect(find.byType(ClothPickerScreen), findsOneWidget);
     await tester.tap(find.text('Blue tee'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'Done'));
+    await tester.tap(find.widgetWithText(DsButton, 'Done'));
     await tester.pumpAndSettle();
   }
 

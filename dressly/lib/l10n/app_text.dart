@@ -552,6 +552,8 @@ const Map<String, Map<String, String>> _strings = {
     'algoName.random': 'Random',
     'algoDesc.random': 'A random wearable outfit.',
     'algo.count': 'How many outfits to generate?',
+    'algo.countHint':
+        'You will preview each selection, then confirm the ones to render.',
     'algo.proposed': '{n} outfits proposed',
     'algo.pickWhich': 'Tick the outfits to render — no images generated yet, so untick any you don\'t want to spend credits on.',
     'algo.pickColorFirst': 'Pick a color first.',
@@ -1304,6 +1306,8 @@ const Map<String, Map<String, String>> _strings = {
     'algoName.random': 'Aléatoire',
     'algoDesc.random': 'Une tenue portable au hasard.',
     'algo.count': 'Combien de tenues générer ?',
+    'algo.countHint':
+        'Vous verrez chaque sélection avant de confirmer celles à générer.',
     'algo.proposed': '{n} tenues proposées',
     'algo.pickWhich': 'Cochez les tenues à générer — aucune image n\'est encore créée, décochez celles pour lesquelles vous ne voulez pas dépenser de crédits.',
     'algo.pickColorFirst': 'Choisissez d\'abord une couleur.',
