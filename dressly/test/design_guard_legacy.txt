@@ -4,7 +4,6 @@ lib/screens/agenda/week_plan_screen.dart
 lib/screens/auth/login_screen.dart
 lib/screens/auth/signup_screen.dart
 lib/screens/cloth/dormant_screen.dart
-lib/screens/cloth/photo_edit_screen.dart
 lib/screens/models/add_model_screen.dart
 lib/screens/models/model_review_screen.dart
 lib/screens/models/models_screen.dart
