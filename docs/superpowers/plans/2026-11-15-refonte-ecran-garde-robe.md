@@ -74,7 +74,7 @@
 - `String swatchColorOf(Cloth c)`: the first colour with dominance `full`, otherwise the first colour, otherwise `''`.
 - The card renders a `DsSwatchCard`:
   - `name` = `cloth.name`;
-  - `subtitle` = brand, plus ` · ★N` when rated;
+  - `subtitle` = brand, plus ` · N/5` when rated (PlexMono has no ★);
   - `tone` = `garmentTone(swatchColorOf(c), brightness)`;
   - `badge` = `tr('card.review')` when an image is pending review (`bgAccepted == 'pending' || enhanceStatus == 'ready'`);
   - `trailing` = a column with the favourite heart (44×44, semantic label from `wardrobe.favoriteTooltip`) and, when both sides exist, a 32×40 thumbnail of the other side that swaps front and back.
