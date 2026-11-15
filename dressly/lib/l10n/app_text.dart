@@ -169,6 +169,8 @@ const Map<String, Map<String, String>> _strings = {
     'filter.noRatingFilter': 'No rating filter',
     // Create outfit
     'create.title': 'Create outfit',
+    'create.title1': 'Outfit of',
+    'create.title2': 'the day',
     // --- manual (non-AI) outfit builder ---
     'builder.ai': 'AI',
     'builder.manual': 'Manual',
@@ -909,6 +911,8 @@ const Map<String, Map<String, String>> _strings = {
         'N\'afficher que les habits notés au moins ainsi (exclut les non notés).',
     'filter.noRatingFilter': 'Pas de filtre de note',
     'create.title': 'Créer une tenue',
+    'create.title1': 'Tenue du',
+    'create.title2': 'jour',
     // --- créateur de tenue manuel (sans IA) ---
     'builder.ai': 'IA',
     'builder.manual': 'Manuel',

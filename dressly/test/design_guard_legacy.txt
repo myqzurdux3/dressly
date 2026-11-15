@@ -13,7 +13,6 @@ lib/screens/outfit/cloth_picker_screen.dart
 lib/screens/outfit/favorites_screen.dart
 lib/screens/outfit/manual_builder_screen.dart
 lib/screens/outfit/outfit_result_dialog.dart
-lib/screens/outfit/outfit_screen.dart
 lib/screens/profile/profile_screen.dart
 lib/screens/settings/api_credits_screen.dart
 lib/screens/settings/change_password_screen.dart
@@ -22,8 +21,6 @@ lib/screens/settings/weather_location_screen.dart
 lib/widgets/app_image.dart
 lib/widgets/brand_logo.dart
 lib/widgets/filter_sheet.dart
-lib/widgets/model_chip.dart
-lib/widgets/outfit_history_card.dart
 lib/widgets/outfit_sort_sheet.dart
 lib/widgets/outfit_viewer.dart
 lib/widgets/section_header.dart

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 
+import 'package:dressly/design/ds.dart';
 import 'package:dressly/models/user.dart';
 import 'package:dressly/screens/outfit/cloth_picker_screen.dart';
 import 'package:dressly/screens/outfit/outfit_result_dialog.dart';
@@ -100,9 +101,10 @@ void main() {
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider(create: (_) => GenPrefsController()),
       ],
-      child: const MaterialApp(
-        locale: Locale('en'),
-        home: OutfitScreen(),
+      child: MaterialApp(
+        locale: const Locale('en'),
+        theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+        home: const OutfitScreen(),
       ),
     ));
     await tester.pumpAndSettle();
@@ -110,7 +112,7 @@ void main() {
 
   /// Opens the picker, taps the first garment, confirms.
   Future<void> pickFirstCloth(WidgetTester tester) async {
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Pick clothes'));
+    await tester.tap(find.widgetWithText(DsButton, 'Pick clothes'));
     await tester.pumpAndSettle();
     expect(find.byType(ClothPickerScreen), findsOneWidget);
     await tester.tap(find.text('Blue tee'));
@@ -122,7 +124,7 @@ void main() {
   Future<void> tapGenerate(WidgetTester tester) async {
     // The button lives at the bottom of a lazy list: off a test-sized screen it
     // is not merely invisible, it is not built at all.
-    final button = find.widgetWithText(FilledButton, 'Generate outfit');
+    final button = find.widgetWithText(DsButton, 'Generate outfit');
     await tester.scrollUntilVisible(button, 300,
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
@@ -161,7 +163,7 @@ void main() {
     // Still rendering: the button says so and cannot be pressed again.
     expect(find.text('Generating…'), findsOneWidget);
     expect(
-        tester.widget<FilledButton>(find.byType(FilledButton).first).onPressed,
+        tester.widget<DsButton>(find.widgetWithText(DsButton, 'Generating…')).onPressed,
         isNull);
     expect(find.byType(OutfitResultDialog), findsNothing);
 
@@ -201,7 +203,7 @@ void main() {
     // screen to be left and re-entered.
     expect(find.text('Generate outfit'), findsOneWidget);
     expect(
-        tester.widget<FilledButton>(find.byType(FilledButton).first).onPressed,
+        tester.widget<DsButton>(find.widgetWithText(DsButton, 'Generate outfit')).onPressed,
         isNotNull);
   });
 }

@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../design/ds.dart';
 import '../l10n/app_text.dart';
 import '../models/outfit.dart';
 import 'app_image.dart';
 
-/// One card in an outfit grid (history, favourites).
-///
-/// Pulled out of the 2200-line outfit screen: as an inline closure this ~150
-/// line subtree was rebuilt for every card on every `setState` of the parent,
-/// including ones that only touched the prompt field.
+/// One past outfit in a grid: its image (or a failure mark), delete and
+/// favourite buttons, and who/what it shows. Long-press also deletes.
 class OutfitHistoryCard extends StatelessWidget {
   const OutfitHistoryCard({
     super.key,
@@ -25,138 +23,146 @@ class OutfitHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
     final failed = outfit.status == 'failed';
-    return GestureDetector(
+    final caption = failed
+        ? '${tr(context, 'history.failed')} (${outfit.tierLabel})'
+        : [
+            if (outfit.view == 'back') tr(context, 'history.back'),
+            ?outfit.modelName,
+            if (outfit.cloths.isNotEmpty)
+              outfit.cloths.map((c) => c.name).join(', '),
+          ].join(' · ');
+
+    return DsPressable(
       onTap: onTap,
       onLongPress: onDelete,
-      child: Card(
+      child: Container(
         clipBehavior: Clip.antiAlias,
-        margin: EdgeInsets.zero,
-        child: Stack(children: [
-          if (failed)
-            Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: Colors.red.shade900,
-              child: const Center(
-                child: Icon(Icons.error_outline, size: 36, color: Colors.white),
-              ),
-            )
-          else
-            Positioned.fill(
-              child: AppImage(
-                // Grid-sized copy, not the full render.
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(ds.shape.card),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (failed)
+              Center(
+                child: Icon(Icons.error_outline, size: 36, color: c.danger),
+              )
+            else
+              AppImage(
                 url: outfitThumbUrl(outfit),
                 cacheKey: outfitThumbUrl(outfit),
                 fit: BoxFit.cover,
                 memWidth: 600,
               ),
-            ),
-          // Delete (bin) — favoriting is handled by the heart, so the overflow
-          // menu is gone: just the two clear actions.
-          Positioned(
-            top: 4,
-            left: 4,
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                  color: Colors.black54, shape: BoxShape.circle),
-              child: IconButton(
-                iconSize: 20,
-                padding: const EdgeInsets.all(6),
-                constraints: const BoxConstraints(),
-                visualDensity: VisualDensity.compact,
-                tooltip: tr(context, 'common.delete'),
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                onPressed: onDelete,
+            Positioned(
+              top: ds.space.s,
+              left: ds.space.s,
+              child: _RoundIcon(
+                icon: Icons.delete_outline,
+                label: tr(context, 'common.delete'),
+                onTap: onDelete,
               ),
             ),
-          ),
-          if (!failed)
-            Positioned(
-              top: 4,
-              right: 4,
-              // Dark disc behind the heart so it stays visible over bright
-              // generated images.
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                    color: Colors.black54, shape: BoxShape.circle),
-                child: IconButton(
-                  iconSize: 24,
-                  padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: tr(context, outfit.isFavorite
-                      ? 'history.removeFromSaved'
-                      : 'history.saveToFavorites'),
-                  icon: Icon(
-                    outfit.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: outfit.isFavorite ? Colors.redAccent : Colors.white,
+            if (!failed)
+              Positioned(
+                top: ds.space.s,
+                right: ds.space.s,
+                child: _RoundIcon(
+                  icon: outfit.isFavorite
+                      ? Icons.favorite
+                      : Icons.favorite_border,
+                  color: outfit.isFavorite ? c.accent : null,
+                  label: tr(
+                    context,
+                    outfit.isFavorite
+                        ? 'history.removeFromSaved'
+                        : 'history.saveToFavorites',
                   ),
-                  onPressed: onToggleFavorite,
+                  onTap: onToggleFavorite,
                 ),
               ),
-            ),
-          if (outfit.isManual)
+            if (outfit.isManual)
+              Positioned(
+                top: ds.space.m,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: DsBadge(
+                    text: trOr(context, 'builder.manual', 'Manual'),
+                  ),
+                ),
+              ),
             Positioned(
-              top: 6,
               left: 0,
               right: 0,
-              child: Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.brush, size: 12, color: Colors.white),
-                      const SizedBox(width: 4),
-                      Text(trOr(context, 'builder.manual', 'Manual'),
-                          style: const TextStyle(
-                              fontSize: 10, color: Colors.white)),
+              bottom: 0,
+              child: Container(
+                padding: EdgeInsets.fromLTRB(
+                  ds.space.s,
+                  ds.space.l,
+                  ds.space.s,
+                  ds.space.s,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      c.bg.withValues(alpha: 0.9),
+                      c.bg.withValues(alpha: 0),
                     ],
                   ),
                 ),
+                child: Text(
+                  caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ds.typo.label.copyWith(color: c.text),
+                ),
               ),
             ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              // The scrim has to stay dark for the whole height of the text,
-              // not fade out halfway up it: a two-line caption ran off the top
-              // of the old gradient and finished as grey letters on a white
-              // studio background. And the colour below is fixed white for the
-              // same reason the scrim is black — it sits on a photo, not on the
-              // page, so it must not follow the theme.
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    stops: [0.0, 0.75, 1.0],
-                    colors: [Colors.black87, Colors.black54, Colors.transparent]),
-              ),
-              child: Text(
-                failed
-                    ? '${tr(context, 'history.failed')} (${outfit.tierLabel})'
-                    : [
-                        if (outfit.view == 'back') tr(context, 'history.back'),
-                        if (outfit.modelName != null) outfit.modelName!,
-                        if (outfit.cloths.isNotEmpty)
-                          outfit.cloths.map((c) => c.name).join(', '),
-                      ].join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Colors.white),
-              ),
-            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundIcon extends StatelessWidget {
+  const _RoundIcon({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.ds.colors;
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: c.bg.withValues(alpha: 0.7),
+            shape: BoxShape.circle,
           ),
-        ]),
+          child: Icon(icon, size: 20, color: color ?? c.text),
+        ),
       ),
     );
   }
