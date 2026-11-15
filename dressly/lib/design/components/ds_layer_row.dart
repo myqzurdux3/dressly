@@ -27,10 +27,16 @@ class DsLayerRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 52,
-            child: Text(
-              index.toUpperCase(),
-              style: ds.typo.monoSmall.copyWith(color: c.accentText),
+            width: 64,
+            // One line, shrunk if needed: "ACCESSORY" broke as "ACCESSOR/Y".
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                index.toUpperCase(),
+                maxLines: 1,
+                style: ds.typo.monoSmall.copyWith(color: c.accentText),
+              ),
             ),
           ),
           Container(

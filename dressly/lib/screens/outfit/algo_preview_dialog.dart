@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../config/api_config.dart';
+import '../../design/ds.dart';
 import '../../services/outfits_service.dart';
 
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../widgets/app_image.dart';
 import 'algo_sheet.dart';
-import '../../theme/tones.dart';
 
 class AlgoPreviewDialog extends StatefulWidget {
   const AlgoPreviewDialog({
@@ -79,17 +79,23 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final muted = ds.typo.label.copyWith(color: c.textMuted);
     final n = _preview.selections.length;
     final k = _chosen.length;
     return Dialog(
-      insetPadding: const EdgeInsets.all(12),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: ds.space.s,
+        vertical: ds.space.l,
+      ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
+        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 760),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: EdgeInsets.all(ds.space.m),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
@@ -98,98 +104,67 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _preview.algoLabel,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          _preview.algoLabel.toUpperCase(),
+                          style: ds.typo.headline,
                         ),
                         Text(
                           tr(
                             context,
                             'algo.proposed',
-                          ).replaceFirst('{n}', '$n'),
-                          style: TextStyle(
-                            color: secondaryText(context),
-                            fontSize: 12,
-                          ),
+                          ).replaceFirst('{n}', '$n').toUpperCase(),
+                          style: ds.typo.monoSmall.copyWith(color: c.textMuted),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
+                  DsButton.icon(
+                    icon: Icons.close,
+                    semanticLabel: MaterialLocalizations.of(
+                      context,
+                    ).closeButtonTooltip,
                     onPressed: () => Navigator.pop(context, null),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                tr(context, 'algo.pickWhich'),
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
+              SizedBox(height: ds.space.xs),
+              Text(tr(context, 'algo.pickWhich'), style: muted),
+              SizedBox(height: ds.space.s),
               Flexible(
                 child: _reshuffling
-                    ? const Center(child: CircularProgressIndicator())
+                    ? Center(child: CircularProgressIndicator(color: c.accent))
                     : ListView.separated(
                         shrinkWrap: true,
                         itemCount: n,
-                        separatorBuilder: (_, __) => const Divider(height: 24),
-                        itemBuilder: (context, i) {
-                          final sel = _preview.selections[i];
-                          final on = _chosen.contains(i);
-                          return InkWell(
-                            onTap: () => setState(() {
-                              if (on) {
-                                _chosen.remove(i);
-                              } else {
-                                _chosen.add(i);
-                              }
-                            }),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Checkbox(
-                                  value: on,
-                                  onChanged: (v) => setState(() {
-                                    if (v == true) {
-                                      _chosen.add(i);
-                                    } else {
-                                      _chosen.remove(i);
-                                    }
-                                  }),
-                                ),
-                                Expanded(
-                                  child: _AlgoSelectionCard(
-                                    index: i + 1,
-                                    picks: sel,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                        separatorBuilder: (_, _) =>
+                            SizedBox(height: ds.space.s),
+                        itemBuilder: (context, i) => _AlgoSelectionCard(
+                          index: i + 1,
+                          picks: _preview.selections[i],
+                          chosen: _chosen.contains(i),
+                          onToggle: () => setState(() {
+                            if (!_chosen.remove(i)) _chosen.add(i);
+                          }),
+                        ),
                       ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: ds.space.s),
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _reshuffling ? null : _doReshuffle,
-                      icon: const Icon(Icons.refresh),
-                      label: Text(tr(context, 'result.reshuffle')),
-                    ),
+                  DsButton(
+                    label: tr(context, 'result.reshuffle'),
+                    icon: Icons.refresh,
+                    kind: DsButtonKind.secondary,
+                    onPressed: _reshuffling ? null : _doReshuffle,
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: ds.space.xs),
                   Expanded(
-                    child: FilledButton.icon(
+                    child: DsButton(
+                      label:
+                          '${tr(context, 'result.generate')} $k '
+                          '${trPlural(context, 'result.outfit', k)}',
+                      icon: Icons.auto_awesome,
+                      expand: true,
                       onPressed: (_reshuffling || k == 0) ? null : _confirm,
-                      icon: const Icon(Icons.auto_awesome),
-                      label: Text(
-                        '${tr(context, 'result.generate')} $k ${trPlural(context, 'result.outfit', k)}',
-                      ),
                     ),
                   ),
                 ],
@@ -202,88 +177,87 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
   }
 }
 
+/// One proposed outfit, head to toe as layers. Tap anywhere to keep or skip
+/// it: a skipped one costs no render.
 class _AlgoSelectionCard extends StatelessWidget {
-  const _AlgoSelectionCard({required this.index, required this.picks});
+  const _AlgoSelectionCard({
+    required this.index,
+    required this.picks,
+    required this.chosen,
+    required this.onToggle,
+  });
+
   final int index;
   final List<AlgoClothPick> picks;
+  final bool chosen;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
-    // Order head-to-toe: tops first, shoes last.
+    final ds = context.ds;
+    final c = ds.colors;
     final ordered = [...picks]
       ..sort((a, b) => bodyOrder(a.category).compareTo(bodyOrder(b.category)));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${tr(context, 'result.outfitLabel')} #$index',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        ...ordered.map(
-          (c) => Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
+    return Semantics(
+      checked: chosen,
+      child: DsPressable(
+        onTap: onToggle,
+        child: AnimatedContainer(
+          duration: ds.motion.fast,
+          padding: EdgeInsets.all(ds.space.s),
+          decoration: BoxDecoration(
+            color: c.bg,
+            borderRadius: BorderRadius.circular(ds.shape.card),
+            border: Border.all(
+              color: chosen ? c.accent : c.hairline,
+              width: chosen ? 2 : 1,
+            ),
+          ),
+          child: Opacity(
+            opacity: chosen ? 1 : 0.5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: c.thumbUrl.isEmpty
-                      ? Container(
-                          width: 44,
-                          height: 44,
-                          color: Colors.blueGrey.shade900,
-                          child: const Icon(
-                            Icons.checkroom,
-                            color: Colors.white38,
-                            size: 20,
-                          ),
-                        )
-                      : SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: AppImage(
-                            url: imageUrl(c.thumbUrl),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${tr(context, 'result.outfitLabel')} #$index'
+                            .toUpperCase(),
+                        style: ds.typo.mono,
+                      ),
+                    ),
+                    Icon(
+                      chosen ? Icons.check_circle : Icons.circle_outlined,
+                      color: chosen ? c.accent : c.textMuted,
+                    ),
+                  ],
+                ),
+                SizedBox(height: ds.space.xs),
+                for (final p in ordered)
+                  DsLayerRow(
+                    index: p.role.isNotEmpty
+                        ? p.role
+                        : outfitSlotLabel(context, p.category),
+                    image: p.thumbUrl.isEmpty
+                        ? Icon(Icons.checkroom, color: c.textMuted)
+                        : AppImage(
+                            url: imageUrl(p.thumbUrl),
                             fit: BoxFit.contain,
-                            memWidth: 88,
+                            memWidth: 120,
                           ),
-                        ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        c.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      Text(
-                        [
-                          if (c.role.isNotEmpty) c.role,
-                          if (c.brand.isNotEmpty) c.brand,
-                          if (c.category.isNotEmpty) c.category,
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: secondaryText(context),
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+                    name: p.name,
+                    note: [
+                      if (p.brand.isNotEmpty) p.brand,
+                      if (p.category.isNotEmpty)
+                        categoryName(context, p.category),
+                    ].join(' · '),
                   ),
-                ),
               ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
-
-/// Chip with a name (tap to open the cloth's detail page) and an X (tap to
-/// remove the cloth from the outfit and re-render). Replaces InputChip so
-/// tap and delete don't share a single gesture handler.

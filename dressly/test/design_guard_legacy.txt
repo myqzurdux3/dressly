@@ -7,7 +7,6 @@ lib/screens/cloth/dormant_screen.dart
 lib/screens/models/add_model_screen.dart
 lib/screens/models/model_review_screen.dart
 lib/screens/models/models_screen.dart
-lib/screens/outfit/algo_preview_dialog.dart
 lib/screens/outfit/favorites_screen.dart
 lib/screens/outfit/manual_builder_screen.dart
 lib/screens/profile/profile_screen.dart

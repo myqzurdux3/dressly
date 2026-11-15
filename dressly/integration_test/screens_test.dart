@@ -115,5 +115,26 @@ void main() {
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
     await _settle(tester);
     await _shot(tester, '12_result_bottom');
+    await tester.binding.handlePopRoute(); // close the result
+    await _settle(tester);
+
+    // Automatic pick: the sheet, then its preview. Nothing is rendered: the
+    // preview only asks the server which clothes it would choose.
+    final auto = find.byIcon(Icons.casino_outlined);
+    for (var i = 0; i < 20 && auto.hitTestable().evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 400));
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await _settle(tester);
+    await tester.tap(auto);
+    await _settle(tester, const Duration(seconds: 2));
+    await _shot(tester, '13_algo_sheet');
+    await tester.ensureVisible(find.byIcon(Icons.auto_awesome).last);
+    await _settle(tester);
+    await tester.tap(find.byIcon(Icons.auto_awesome).last);
+    await _settle(tester, const Duration(seconds: 4));
+    await _shot(tester, '14_algo_preview');
+    await tester.tap(find.byIcon(Icons.close).last);
+    await _settle(tester);
   });
 }
