@@ -20,6 +20,15 @@ import 'package:integration_test/integration_test.dart';
 const _email = String.fromEnvironment('PERF_EMAIL');
 const _password = String.fromEnvironment('PERF_PASSWORD');
 
+/// Pumps frames for [d]. `pumpAndSettle` never returns on screens that show a
+/// progress spinner, so every wait in this test is bounded.
+Future<void> _frames(WidgetTester t, [int ms = 1500]) async {
+  final end = DateTime.now().add(Duration(milliseconds: ms));
+  while (DateTime.now().isBefore(end)) {
+    await t.pump(const Duration(milliseconds: 16));
+  }
+}
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -38,7 +47,7 @@ void main() {
       }
       await tester.pump(const Duration(milliseconds: 200));
     }
-    await tester.pumpAndSettle();
+    await _frames(tester, 4000);
 
     final apiMs = <String, int>{};
     final clothes = ClothesService(ApiClient(token: auth.token));
@@ -50,26 +59,26 @@ void main() {
       final grid = find.byType(CustomScrollView).first;
       for (var i = 0; i < 3; i++) {
         await tester.fling(grid, const Offset(0, -1200), 3000);
-        await tester.pumpAndSettle();
+        await _frames(tester);
       }
       for (var i = 0; i < 3; i++) {
         await tester.fling(grid, const Offset(0, 1200), 3000);
-        await tester.pumpAndSettle();
+        await _frames(tester);
       }
     }, reportKey: 'wardrobe_scroll');
 
     await binding.traceAction(() async {
       await tester.tap(find.byType(ClothCard).first);
-      await tester.pumpAndSettle();
+      await _frames(tester);
       await tester.pageBack();
-      await tester.pumpAndSettle();
+      await _frames(tester);
     }, reportKey: 'cloth_detail_open');
 
     await binding.traceAction(() async {
       final tabs = find.byType(NavigationDestination);
       for (final i in [1, 2, 3, 4, 0]) {
         await tester.tap(tabs.at(i));
-        await tester.pumpAndSettle();
+        await _frames(tester);
       }
     }, reportKey: 'tab_switch');
 
