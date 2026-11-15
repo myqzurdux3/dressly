@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/api_client.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
+import '../../design/ds.dart';
 
 import '../../l10n/app_text.dart';
 
@@ -12,7 +13,7 @@ import '../agenda/agenda_screen.dart';
 import '../outfit/favorites_screen.dart';
 import '../outfit/outfit_screen.dart';
 import '../profile/profile_screen.dart';
-import 'collection_screen.dart';
+import '../wardrobe/wardrobe_screen.dart';
 import 'lazy_page.dart';
 
 /// Top-level shell: four swipeable pages with a bottom navigation bar
@@ -22,9 +23,26 @@ import 'lazy_page.dart';
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
+  /// One per tab, in order. Public so integration tests find the tabs.
+  static const tabIcons = [
+    Icons.checkroom,
+    Icons.auto_awesome,
+    Icons.calendar_month,
+    Icons.favorite,
+    Icons.person,
+  ];
+
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
+
+const _tabLabels = [
+  'nav.wardrobe',
+  'nav.create',
+  'nav.agenda',
+  'nav.saved',
+  'nav.profile',
+];
 
 class _HomeShellState extends State<HomeShell> {
   final _controller = PageController();
@@ -34,7 +52,7 @@ class _HomeShellState extends State<HomeShell> {
   // page at once, so opening the app fired all five screens' requests together
   // and queued all their images behind one another.
   static final _pages = <WidgetBuilder>[
-    (_) => const CollectionScreen(),
+    (_) => const WardrobeScreen(),
     (_) => const OutfitScreen(),
     (_) => const AgendaScreen(),
     (_) => const FavoritesScreen(),
@@ -109,36 +127,28 @@ class _HomeShellState extends State<HomeShell> {
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _go,
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.checkroom_outlined),
-            selectedIcon: const Icon(Icons.checkroom),
-            label: tr(context, 'nav.wardrobe'),
+      // Not extendBody: the legacy tabs know nothing about a floating bar,
+      // so their content stops above it instead of sliding under it.
+      backgroundColor: context.ds.colors.bg,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: context.ds.space.s),
+          child: Center(
+            heightFactor: 1,
+            child: DsTabBar(
+              index: _index,
+              onTap: _go,
+              items: [
+                for (var i = 0; i < HomeShell.tabIcons.length; i++)
+                  DsTabItem(
+                    icon: HomeShell.tabIcons[i],
+                    label: tr(context, _tabLabels[i]),
+                  ),
+              ],
+            ),
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.auto_awesome_outlined),
-            selectedIcon: const Icon(Icons.auto_awesome),
-            label: tr(context, 'nav.create'),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.calendar_month_outlined),
-            selectedIcon: const Icon(Icons.calendar_month),
-            label: tr(context, 'nav.agenda'),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.favorite_border),
-            selectedIcon: const Icon(Icons.favorite),
-            label: tr(context, 'nav.saved'),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.person_outline),
-            selectedIcon: const Icon(Icons.person),
-            label: tr(context, 'nav.profile'),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -7,7 +7,6 @@ lib/screens/cloth/add_cloth_screen.dart
 lib/screens/cloth/cloth_detail_screen.dart
 lib/screens/cloth/dormant_screen.dart
 lib/screens/cloth/photo_edit_screen.dart
-lib/screens/home/collection_screen.dart
 lib/screens/models/add_model_screen.dart
 lib/screens/models/model_review_screen.dart
 lib/screens/models/models_screen.dart
@@ -25,7 +24,6 @@ lib/screens/settings/settings_screen.dart
 lib/screens/settings/weather_location_screen.dart
 lib/widgets/app_image.dart
 lib/widgets/brand_logo.dart
-lib/widgets/cloth_card.dart
 lib/widgets/filter_sheet.dart
 lib/widgets/image_review.dart
 lib/widgets/image_slot.dart

@@ -13,8 +13,8 @@ import 'dart:io';
 import 'package:dressly/main.dart';
 import 'package:dressly/screens/home/home_shell.dart';
 import 'package:dressly/services/auth_service.dart';
-import 'package:dressly/widgets/cloth_card.dart';
-import 'package:flutter/material.dart';
+import 'package:dressly/design/ds.dart';
+import 'package:dressly/screens/wardrobe/wardrobe_card.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -57,16 +57,19 @@ void main() {
     expect(find.byType(HomeShell), findsOneWidget);
 
     await _shot(tester, '01_wardrobe');
-    final tabs = find.byType(NavigationDestination);
+    Finder tab(int i) => find.descendant(
+      of: find.byType(DsTabBar),
+      matching: find.byIcon(HomeShell.tabIcons[i]),
+    );
     const names = ['02_create', '03_agenda', '04_saved', '05_profile'];
     for (var i = 1; i <= 4; i++) {
-      await tester.tap(tabs.at(i));
+      await tester.tap(tab(i));
       await _settle(tester);
       await _shot(tester, names[i - 1]);
     }
-    await tester.tap(tabs.at(0));
+    await tester.tap(tab(0));
     await _settle(tester);
-    await tester.tap(find.byType(ClothCard).first);
+    await tester.tap(find.byType(WardrobeCard).first);
     await _settle(tester, const Duration(seconds: 4));
     await _shot(tester, '06_cloth_detail');
   });

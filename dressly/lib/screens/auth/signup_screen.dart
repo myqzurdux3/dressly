@@ -33,7 +33,7 @@ class _SignupScreenState extends State<SignupScreen> {
       if (!mounted) return;
       context.read<Session>().setSession(result.user, result.token);
       // SignupScreen is a pushed route. After auth, pop it (and anything above)
-      // so the home gate — which has now switched to CollectionScreen — is shown.
+      // so the home gate — which has now switched to the home shell — is shown.
       // Without this, the pushed SignupScreen sits on top and "nothing happens".
       Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {

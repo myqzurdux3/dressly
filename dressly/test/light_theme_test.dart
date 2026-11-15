@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:dressly/models/cloth.dart';
 import 'package:dressly/theme/tones.dart';
-import 'package:dressly/widgets/cloth_card.dart';
 import 'package:dressly/widgets/star_rating.dart';
 
 import 'support/contrast.dart';
@@ -17,19 +15,6 @@ import 'support/contrast.dart';
 ///
 /// The rule these tests encode: text drawn on the PAGE follows the theme; text
 /// drawn on a PHOTO stays white on purpose.
-
-Cloth _cloth() => Cloth(
-  id: 1,
-  userId: 1,
-  name: 'Blue tee',
-  brand: 'UNIQLO',
-  cut: 'normal',
-  category: 'tshirt',
-  customTags: const ['summer'],
-  colors: const [],
-  images: const [],
-  score: 2,
-);
 
 Widget _app(Brightness brightness, Widget child, {double width = 200}) =>
     MaterialApp(
@@ -55,43 +40,8 @@ void main() {
   for (final brightness in [Brightness.light, Brightness.dark]) {
     final name = brightness == Brightness.light ? 'light' : 'dark';
 
-    testWidgets('card text stays legible in $name', (tester) async {
-      await tester.pumpWidget(
-        _app(brightness, ClothCard(cloth: _cloth(), onTap: () {})),
-      );
-      await tester.pump();
-
-      final background =
-          tester.widget<Material>(find.byType(Material).first).color ??
-          Theme.of(tester.element(find.byType(ClothCard))).colorScheme.surface;
-
-      for (final text in ['UNIQLO', '#summer']) {
-        expect(
-          contrast(_colorOf(tester, text), background),
-          greaterThan(3.0),
-          reason: '"$text" is unreadable on the $name background',
-        );
-      }
-    });
-
-    testWidgets('a badge over the photo stays readable in $name', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _app(brightness, ClothCard(cloth: _cloth(), onTap: () {})),
-      );
-      await tester.pump();
-
-      // The rating badge sits on a fixed black54 disc over the photo. It has to
-      // keep its own light colour: following the theme turned it dark-on-dark
-      // and the number simply vanished in light mode.
-      const scrim = Color(0xFF3F3F3F); // black54 over a mid-tone photo
-      expect(
-        contrast(_colorOf(tester, '2'), scrim),
-        greaterThan(4.5),
-        reason: 'the rating badge is unreadable on its own scrim in $name',
-      );
-    });
+    // ClothCard's two contrast tests left with the widget: WardrobeCard is a
+    // DsSwatchCard, whose text contrast is checked in test/design/content_test.dart.
 
     testWidgets('an unrated star is visible in $name', (tester) async {
       await tester.pumpWidget(

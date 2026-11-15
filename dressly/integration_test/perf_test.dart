@@ -12,7 +12,8 @@ import 'package:dressly/screens/home/home_shell.dart';
 import 'package:dressly/services/api_client.dart';
 import 'package:dressly/services/auth_service.dart';
 import 'package:dressly/services/clothes_service.dart';
-import 'package:dressly/widgets/cloth_card.dart';
+import 'package:dressly/design/ds.dart';
+import 'package:dressly/screens/wardrobe/wardrobe_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -68,16 +69,19 @@ void main() {
     }, reportKey: 'wardrobe_scroll');
 
     await binding.traceAction(() async {
-      await tester.tap(find.byType(ClothCard).first);
+      await tester.tap(find.byType(WardrobeCard).first);
       await _frames(tester);
       await tester.pageBack();
       await _frames(tester);
     }, reportKey: 'cloth_detail_open');
 
     await binding.traceAction(() async {
-      final tabs = find.byType(NavigationDestination);
+      Finder tab(int i) => find.descendant(
+        of: find.byType(DsTabBar),
+        matching: find.byIcon(HomeShell.tabIcons[i]),
+      );
       for (final i in [1, 2, 3, 4, 0]) {
-        await tester.tap(tabs.at(i));
+        await tester.tap(tab(i));
         await _frames(tester);
       }
     }, reportKey: 'tab_switch');
