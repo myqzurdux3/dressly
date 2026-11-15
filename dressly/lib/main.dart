@@ -12,6 +12,13 @@ import 'state/theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  runApp(await bootstrap());
+}
+
+/// Everything [main] does before `runApp`: network setup, persisted
+/// preferences and the session restore. Returns the root widget tree.
+/// Split out so the on-device perf test can start the real app.
+Future<Widget> bootstrap() async {
   // Must happen before the first request: the token restore below already
   // talks to the server, and image widgets create their own clients later.
   installCertificatePinning();
@@ -35,15 +42,13 @@ Future<void> main() async {
     }
   }
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: session),
-        ChangeNotifierProvider.value(value: theme),
-        ChangeNotifierProvider.value(value: locale),
-        ChangeNotifierProvider.value(value: genPrefs),
-      ],
-      child: const Dressly(),
-    ),
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider.value(value: session),
+      ChangeNotifierProvider.value(value: theme),
+      ChangeNotifierProvider.value(value: locale),
+      ChangeNotifierProvider.value(value: genPrefs),
+    ],
+    child: const Dressly(),
   );
 }

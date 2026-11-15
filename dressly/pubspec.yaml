@@ -21,6 +21,10 @@ dependencies:
   image_picker: ^1.2.3
 
 dev_dependencies:
+  flutter_driver:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
