@@ -15,6 +15,7 @@ import 'package:dressly/screens/home/home_shell.dart';
 import 'package:dressly/services/auth_service.dart';
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/screens/wardrobe/wardrobe_card.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -72,5 +73,8 @@ void main() {
     await tester.tap(find.byType(WardrobeCard).first);
     await _settle(tester, const Duration(seconds: 4));
     await _shot(tester, '06_cloth_detail');
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -700));
+    await _settle(tester);
+    await _shot(tester, '07_cloth_detail_photos');
   });
 }

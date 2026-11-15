@@ -18,6 +18,7 @@ export 'components/ds_plan_card.dart';
 export 'components/ds_pressable.dart';
 export 'components/ds_swatch_card.dart';
 export 'components/ds_header.dart';
+export 'components/ds_rating.dart';
 export 'components/ds_scaffold.dart';
 export 'components/ds_search_field.dart';
 export 'components/ds_tab_bar.dart';

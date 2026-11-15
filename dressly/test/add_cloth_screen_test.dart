@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:provider/provider.dart';
+import 'package:dressly/design/ds.dart';
+import 'package:dressly/state/session_scope.dart';
 
 import 'package:dressly/screens/cloth/add_cloth_screen.dart';
 import 'package:dressly/screens/cloth/cloth_detail_screen.dart';
@@ -119,11 +122,18 @@ void main() {
     final session = Session()
       ..setSession(
           AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
-    await tester.pumpWidget(ChangeNotifierProvider.value(
-      value: session,
-      child: const MaterialApp(
-        locale: Locale('en'),
-        home: ClothFormScreen(),
+    // Same stack as the app: the saved garment opens the detail screen,
+    // which reads Riverpod services and the design-system theme.
+    await tester.pumpWidget(ProviderScope(
+      child: ChangeNotifierProvider.value(
+        value: session,
+        child: SessionApiScope(
+          child: MaterialApp(
+            locale: const Locale('en'),
+            theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+            home: const ClothFormScreen(),
+          ),
+        ),
       ),
     ));
     await tester.pumpAndSettle();
