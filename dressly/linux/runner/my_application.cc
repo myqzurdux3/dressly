@@ -1,5 +1,7 @@
 #include "my_application.h"
 
+#include <cstdio>
+
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -52,7 +54,12 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "dressly");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  // DRESSLY_WINDOW_SIZE=WIDTHxHEIGHT opens a phone-sized window, used to
+  // run and screenshot the app headless under Xvfb.
+  int width = 1280, height = 720;
+  const gchar* size = g_getenv("DRESSLY_WINDOW_SIZE");
+  if (size != nullptr) sscanf(size, "%dx%d", &width, &height);
+  gtk_window_set_default_size(window, width, height);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
