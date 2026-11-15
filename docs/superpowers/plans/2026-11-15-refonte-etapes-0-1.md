@@ -80,7 +80,7 @@ test('renders one row per traced action with frame stats', () {
 - [ ] **Step 7: Write `test_driver/perf_driver.dart`.** Use `integrationDriver(responseDataCallback: ...)`. For each key except `api_ms`, call `TimelineSummary.summarize(Timeline.fromJson(data[key]))` and `writeTimelineToFile(key, destinationDirectory: 'build/perf', pretty: true)`. Write `api_ms` to `build/perf/api_ms.json`.
 - [ ] **Step 8: Verify on the device.**
 
-  `flutter drive --profile --driver=test_driver/perf_driver.dart --target=integration_test/perf_test.dart -d R5GYB51AN2J --dart-define=PERF_EMAIL=<user> --dart-define=PERF_PASSWORD=<pass>`
+  `flutter drive --profile --no-dds --driver=test_driver/perf_driver.dart --target=integration_test/perf_test.dart -d R5GYB51AN2J --dart-define=PERF_EMAIL=<user> --dart-define=PERF_PASSWORD=<pass>`
 
   Expected: "All tests passed", and `build/perf/` contains three `*.timeline_summary.json` files plus `api_ms.json`. The user types the credentials themselves (`! <command>`).
 - [ ] **Step 9: Commit.** `feat(perf): banc de mesure en mode profile sur l'appareil`

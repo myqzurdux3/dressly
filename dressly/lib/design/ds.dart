@@ -1,0 +1,20 @@
+/// The Dressly design system. Screens import this file only.
+library;
+
+import 'package:flutter/material.dart';
+
+import 'tokens.dart';
+
+export 'accent.dart';
+export 'ds_theme.dart';
+export 'theme_f.dart';
+export 'tokens.dart';
+
+extension DsContext on BuildContext {
+  /// Tokens of the active theme.
+  DsTokens get ds {
+    final tokens = Theme.of(this).extension<DsTokens>();
+    if (tokens == null) throw StateError('DsTokens missing from Theme');
+    return tokens;
+  }
+}

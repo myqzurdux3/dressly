@@ -1,7 +1,7 @@
 // On-device performance run. Drives the real app (real backend, real images)
 // in profile mode and records frame timings per action.
 //
-//   flutter drive --profile \
+//   flutter drive --profile --no-dds \
 //     --driver=test_driver/perf_driver.dart \
 //     --target=integration_test/perf_test.dart \
 //     --dart-define=PERF_EMAIL=... --dart-define=PERF_PASSWORD=...
