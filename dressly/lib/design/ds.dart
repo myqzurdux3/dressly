@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 import 'tokens.dart';
 
 export 'accent.dart';
+export 'components/ds_badge.dart';
+export 'components/ds_button.dart';
+export 'components/ds_chip.dart';
+export 'garment_tones.dart';
 export 'ds_theme.dart';
 export 'theme_f.dart';
 export 'tokens.dart';

@@ -18,6 +18,15 @@ Future<void> loadDsFonts() async {
   }
 
   await load(DsFonts.display, ['Anton-Regular.ttf']);
+  final sdk = Platform.environment['FLUTTER_ROOT'];
+  if (sdk != null) {
+    final icons = File(
+      '$sdk/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+    );
+    final loader = FontLoader('MaterialIcons')
+      ..addFont(Future.value(ByteData.view(icons.readAsBytesSync().buffer)));
+    await loader.load();
+  }
   await load(DsFonts.body, ['BricolageGrotesque[opsz,wdth,wght].ttf']);
   await load(DsFonts.mono, [
     'IBMPlexMono-Regular.ttf',
@@ -52,7 +61,10 @@ Widget dsFrame(
               width: width,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Material(type: MaterialType.transparency, child: child),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Align(alignment: Alignment.topLeft, child: child),
+                ),
               ),
             ),
           ),

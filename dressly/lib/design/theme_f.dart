@@ -9,8 +9,8 @@ import 'tokens.dart';
 class ThemeF implements DsTheme {
   const ThemeF();
 
-  static const _ink = Color(0xFF17120F);
-  static const _cream = Color(0xFFF1E6D6);
+  static const ink = Color(0xFF17120F);
+  static const cream = Color(0xFFF1E6D6);
 
   @override
   String get id => 'f';
@@ -55,9 +55,9 @@ class ThemeF implements DsTheme {
         primary: c.accent,
         onPrimary: c.onAccent,
         secondary: c.olive,
-        onSecondary: _cream,
+        onSecondary: cream,
         error: c.danger,
-        onError: _cream,
+        onError: cream,
         surface: c.bg,
         onSurface: c.text,
         onSurfaceVariant: c.textMuted,
@@ -87,10 +87,10 @@ class ThemeF implements DsTheme {
     final onAccent = _bestOn(accent.base);
     return switch (brightness) {
       Brightness.dark => DsColors(
-        bg: _ink,
+        bg: ink,
         surface: const Color(0xFF2A221C),
         surfaceHigh: const Color(0xFF362C24),
-        text: _cream,
+        text: cream,
         textMuted: const Color(0xFF9A8877),
         hairline: const Color(0xFF3A3029),
         accent: accent.base,
@@ -100,10 +100,10 @@ class ThemeF implements DsTheme {
         danger: const Color(0xFFFF5A4E),
       ),
       Brightness.light => DsColors(
-        bg: _cream,
+        bg: cream,
         surface: const Color(0xFFE6D8C4),
         surfaceHigh: const Color(0xFFDCCBB3),
-        text: _ink,
+        text: ink,
         textMuted: const Color(0xFF6E5B4A),
         hairline: const Color(0xFFD3C0A6),
         accent: accent.base,
@@ -122,7 +122,7 @@ class ThemeF implements DsTheme {
       return la > lb ? (la + 0.05) / (lb + 0.05) : (lb + 0.05) / (la + 0.05);
     }
 
-    return ratio(_ink, fill) >= ratio(_cream, fill) ? _ink : _cream;
+    return ratio(ink, fill) >= ratio(cream, fill) ? ink : cream;
   }
 
   static DsType _type(DsColors c) {
