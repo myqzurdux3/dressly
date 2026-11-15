@@ -8,9 +8,6 @@ import '../../widgets/app_image.dart';
 /// Draws one image of the card. Injected so tests need no network.
 typedef ImageBuilder = Widget Function(String path, int memWidth);
 
-Widget _networkImage(String path, int memWidth) =>
-    AppImage.path(path, cacheKey: path, memWidth: memWidth);
-
 /// The colour a garment's card is dyed with: its dominant colour, else the
 /// first one listed, else none (neutral card).
 String swatchColorOf(Cloth c) {
@@ -30,10 +27,14 @@ class WardrobeCard extends StatefulWidget {
     required this.onTap,
     this.onLongPress,
     this.onToggleFavorite,
-    this.imageBuilder = _networkImage,
+    this.imageBuilder = networkImage,
   });
 
   static const aspectRatio = DsSwatchCard.aspectRatio;
+
+  /// Default [imageBuilder]: the server image through the shared cache.
+  static Widget networkImage(String path, int memWidth) =>
+      AppImage.path(path, cacheKey: path, memWidth: memWidth);
 
   final Cloth cloth;
   final VoidCallback onTap;

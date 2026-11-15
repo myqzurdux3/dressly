@@ -10,8 +10,12 @@ final apiClientProvider = Provider<ApiClient>(
   (ref) => throw UnimplementedError(
     'apiClientProvider is overridden in HomeShell; read it below the shell',
   ),
+  // Scoped: overridden in a nested ProviderScope, so it and everything that
+  // depends on it must declare dependencies.
+  dependencies: const [],
 );
 
 final clothesServiceProvider = Provider<ClothesService>(
   (ref) => ClothesService(ref.watch(apiClientProvider)),
+  dependencies: [apiClientProvider],
 );
