@@ -15,7 +15,7 @@ import 'package:dressly/screens/home/home_shell.dart';
 import 'package:dressly/services/auth_service.dart';
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/screens/wardrobe/wardrobe_card.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -76,5 +76,22 @@ void main() {
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -700));
     await _settle(tester);
     await _shot(tester, '07_cloth_detail_photos');
+
+    // Crop & rotate, from the photo panel.
+    await tester.tap(find.byIcon(Icons.crop_rotate).first);
+    await _settle(tester, const Duration(seconds: 3));
+    await _shot(tester, '08_photo_edit');
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    await tester.binding.handlePopRoute(); // back to the wardrobe
+    await _settle(tester);
+
+    // The add form, top then bottom.
+    await tester.tap(find.byIcon(Icons.add).first);
+    await _settle(tester);
+    await _shot(tester, '09_add_form');
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
+    await _settle(tester);
+    await _shot(tester, '10_add_form_bottom');
   });
 }
