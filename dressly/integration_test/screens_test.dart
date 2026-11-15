@@ -136,5 +136,21 @@ void main() {
     await _shot(tester, '14_algo_preview');
     await tester.tap(find.byIcon(Icons.close).last);
     await _settle(tester);
+
+    // Manual builder: switch the Create tab to Manual, open a new canvas.
+    final seg = find.byType(DsSegment<String>).first;
+    for (var i = 0; i < 20 && seg.hitTestable().evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 400));
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await _settle(tester);
+    await tester.tap(
+        find.descendant(of: seg, matching: find.byType(DsChip)).at(1));
+    await _settle(tester);
+    await tester.tap(find.byIcon(Icons.brush));
+    await _settle(tester, const Duration(seconds: 3));
+    await _shot(tester, '15_builder');
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
   });
 }

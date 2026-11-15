@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../design/ds.dart';
 import '../l10n/app_text.dart';
 
 /// Sort + filter options for an outfit list (history / favorites).
@@ -32,17 +33,22 @@ Future<OutfitQuery?> showOutfitSortSheet(
   OutfitQuery current, {
   bool showFavoriteFilter = true,
 }) {
-  return showModalBottomSheet<OutfitQuery>(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) =>
-        _OutfitSortSheet(initial: current, showFavoriteFilter: showFavoriteFilter),
+  return showDsSheet<OutfitQuery>(
+    context,
+    title: tr(context, 'filter.title'),
+    child: _OutfitSortSheet(
+      initial: current,
+      showFavoriteFilter: showFavoriteFilter,
+    ),
   );
 }
 
 class _OutfitSortSheet extends StatefulWidget {
-  const _OutfitSortSheet(
-      {required this.initial, required this.showFavoriteFilter});
+  const _OutfitSortSheet({
+    required this.initial,
+    required this.showFavoriteFilter,
+  });
+
   final OutfitQuery initial;
   final bool showFavoriteFilter;
 
@@ -51,83 +57,72 @@ class _OutfitSortSheet extends StatefulWidget {
 }
 
 class _OutfitSortSheetState extends State<_OutfitSortSheet> {
-  late OutfitQuery _q;
-
-  @override
-  void initState() {
-    super.initState();
-    _q = widget.initial;
-  }
+  late OutfitQuery _q = widget.initial;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Text(tr(context, 'filter.title'),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const Spacer(),
-            if (_q.isActive)
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(context, const OutfitQuery()),
-                child: Text(tr(context, 'filter.reset')),
-              ),
-          ]),
-          const SizedBox(height: 8),
-          Align(
-              alignment: Alignment.centerLeft, child: Text(tr(context, 'filter.sortBy'))),
-          const SizedBox(height: 4),
-          DropdownButtonFormField<String>(
-            initialValue: _q.sort,
-            decoration: const InputDecoration(
-                border: OutlineInputBorder(), isDense: true),
-            items: [
-              DropdownMenuItem(value: 'newest', child: Text(tr(context, 'sort.newest'))),
-              DropdownMenuItem(value: 'oldest', child: Text(tr(context, 'sort.oldest'))),
-              DropdownMenuItem(value: 'most_worn', child: Text(tr(context, 'sort.mostWorn'))),
-              DropdownMenuItem(value: 'least_worn', child: Text(tr(context, 'sort.leastWorn'))),
-            ],
-            onChanged: (v) => setState(() => _q = _q.copyWith(sort: v)),
-          ),
-          ...[
-            const SizedBox(height: 16),
-            Align(
-                alignment: Alignment.centerLeft, child: Text(tr(context, 'sort.show'))),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, children: [
-              if (widget.showFavoriteFilter)
-                FilterChip(
-                  label: Text(tr(context, 'sort.favorites')),
-                  selected: _q.favorite,
-                  onSelected: (v) => setState(() => _q = _q.copyWith(favorite: v)),
-                ),
-              ChoiceChip(
-                label: Text(tr(context, 'sort.withModel')),
-                selected: _q.model == 'with',
-                onSelected: (v) =>
-                    setState(() => _q = _q.copyWith(model: v ? 'with' : 'any')),
-              ),
-              ChoiceChip(
-                label: Text(tr(context, 'sort.noModel')),
-                selected: _q.model == 'none',
-                onSelected: (v) =>
-                    setState(() => _q = _q.copyWith(model: v ? 'none' : 'any')),
-              ),
-            ]),
+    final ds = context.ds;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DsSectionTitle(tr(context, 'filter.sortBy')),
+        DsSegment<String>(
+          options: [
+            ('newest', tr(context, 'sort.newest')),
+            ('oldest', tr(context, 'sort.oldest')),
+            ('most_worn', tr(context, 'sort.mostWorn')),
+            ('least_worn', tr(context, 'sort.leastWorn')),
           ],
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => Navigator.pop(context, _q),
-              child: Text(tr(context, 'filter.apply')),
+          value: _q.sort,
+          onChanged: (v) => setState(() => _q = _q.copyWith(sort: v)),
+        ),
+        DsSectionTitle(tr(context, 'sort.show')),
+        Wrap(
+          spacing: ds.space.xs,
+          runSpacing: ds.space.xs,
+          children: [
+            if (widget.showFavoriteFilter)
+              DsChip(
+                label: tr(context, 'sort.favorites'),
+                selected: _q.favorite,
+                onTap: () =>
+                    setState(() => _q = _q.copyWith(favorite: !_q.favorite)),
+              ),
+            for (final (m, key) in const [
+              ('with', 'sort.withModel'),
+              ('none', 'sort.noModel'),
+            ])
+              DsChip(
+                label: tr(context, key),
+                selected: _q.model == m,
+                onTap: () => setState(
+                  () => _q = _q.copyWith(model: _q.model == m ? 'any' : m),
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: ds.space.l),
+        Row(
+          children: [
+            if (_q.isActive || widget.initial.isActive) ...[
+              DsButton(
+                label: tr(context, 'filter.reset'),
+                kind: DsButtonKind.secondary,
+                onPressed: () => Navigator.pop(context, const OutfitQuery()),
+              ),
+              SizedBox(width: ds.space.xs),
+            ],
+            Expanded(
+              child: DsButton(
+                label: tr(context, 'filter.apply'),
+                expand: true,
+                onPressed: () => Navigator.pop(context, _q),
+              ),
             ),
-          ),
-        ]),
-      ),
+          ],
+        ),
+      ],
     );
   }
 }

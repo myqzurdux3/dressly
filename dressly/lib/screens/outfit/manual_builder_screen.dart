@@ -5,6 +5,8 @@ import 'package:flutter/rendering.dart';
 
 import '../../app.dart';
 import '../../config/api_config.dart';
+import '../../design/canvas_backgrounds.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../models/layering.dart';
@@ -70,7 +72,7 @@ class _Bg {
 
   static _Bg fromJson(Map<String, dynamic> j) => _Bg(
     type: (j['type'] ?? 'solid') as String,
-    color: _parseHex(j['color'] as String?) ?? Colors.white,
+    color: _parseHex(j['color'] as String?) ?? kCanvasDefault,
     color2: _parseHex(j['color2'] as String?),
   );
 
@@ -94,37 +96,6 @@ Color? _parseHex(String? s) {
   return v == null ? null : Color(v);
 }
 
-const List<Color> _kSwatches = [
-  Colors.white,
-  Color(0xFFF2EDE4),
-  Color(0xFFD9D9D9),
-  Color(0xFF9E9E9E),
-  Color(0xFF4A4A4A),
-  Colors.black,
-  Color(0xFFEED9C4),
-  Color(0xFFD7B899),
-  Color(0xFFF7C5CC),
-  Color(0xFFF6A6B2),
-  Color(0xFFF3D250),
-  Color(0xFFF0A04B),
-  Color(0xFFA8D5BA),
-  Color(0xFF6DBF9C),
-  Color(0xFF9FB4E8),
-  Color(0xFF5C7AEA),
-  Color(0xFFC9A7EB),
-  Color(0xFF8E6BC4),
-];
-
-const List<List<Color>> _kGradients = [
-  [Color(0xFFFBC2EB), Color(0xFFA6C1EE)],
-  [Color(0xFFFDCB82), Color(0xFFF3777A)],
-  [Color(0xFFA8EDEA), Color(0xFFFED6E3)],
-  [Color(0xFFD4FC79), Color(0xFF96E6A1)],
-  [Color(0xFFE0C3FC), Color(0xFF8EC5FC)],
-  [Color(0xFFF5F7FA), Color(0xFFC3CFE2)],
-  [Color(0xFF434343), Color(0xFF000000)],
-];
-
 /// Non-AI outfit builder: drop garment cutouts on a chosen background, move /
 /// pinch / rotate them, then save the composed image to history (no BFL).
 class ManualBuilderScreen extends StatefulWidget {
@@ -143,7 +114,7 @@ class ManualBuilderScreen extends StatefulWidget {
 class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   final GlobalKey _canvasKey = GlobalKey();
   final List<_Item> _items = [];
-  _Bg _bg = _Bg(type: 'solid', color: Colors.white);
+  _Bg _bg = _Bg(type: 'solid', color: kCanvasDefault);
   Map<int, Cloth> _clothById = {};
   int? _selected; // index in _items of the selected garment
   bool _loading = true;
@@ -428,65 +399,120 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
     final editing = widget.existing != null;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          editing
-              ? trOr(context, 'builder.editTitle', 'Edit manual outfit')
-              : trOr(context, 'builder.title', 'Manual builder'),
-        ),
-        actions: [
-          if (_selected != null) ...[
-            IconButton(
-              tooltip: trOr(context, 'builder.toFront', 'Bring to front'),
-              icon: const Icon(Icons.flip_to_front),
-              onPressed: _bringSelectedToFront,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                ds.space.gutter,
+                ds.space.s,
+                ds.space.gutter,
+                0,
+              ),
+              child: Row(
+                children: [
+                  DsButton.icon(
+                    icon: Icons.close,
+                    semanticLabel: MaterialLocalizations.of(
+                      context,
+                    ).closeButtonTooltip,
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
+                  SizedBox(width: ds.space.s),
+                  Expanded(
+                    child: Text(
+                      (editing
+                              ? trOr(
+                                  context,
+                                  'builder.editTitle',
+                                  'Edit manual outfit',
+                                )
+                              : trOr(
+                                  context,
+                                  'builder.title',
+                                  'Manual builder',
+                                ))
+                          .toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ds.typo.mono,
+                    ),
+                  ),
+                  DsButton.icon(
+                    icon: Icons.auto_awesome,
+                    semanticLabel: trOr(
+                      context,
+                      'builder.toAi',
+                      'Generate with AI',
+                    ),
+                    onPressed: _saving ? null : _toAi,
+                  ),
+                  SizedBox(width: ds.space.xs),
+                  DsButton(
+                    label: tr(context, 'common.save'),
+                    loading: _saving,
+                    onPressed: _saving ? null : _save,
+                  ),
+                ],
+              ),
             ),
-            IconButton(
-              tooltip: tr(context, 'common.delete'),
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _deleteSelected,
-            ),
-          ],
-          IconButton(
-            tooltip: trOr(context, 'builder.toAi', 'Generate with AI'),
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: _saving ? null : _toAi,
-          ),
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(tr(context, 'common.save')),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: RepaintBoundary(
-                          key: _canvasKey,
-                          child: _buildCanvas(),
+            Expanded(
+              child: _loading
+                  ? Center(child: CircularProgressIndicator(color: c.accent))
+                  : Padding(
+                      padding: EdgeInsets.all(ds.space.gutter),
+                      child: Center(
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(ds.shape.card),
+                            child: RepaintBoundary(
+                              key: _canvasKey,
+                              child: _buildCanvas(),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-                _buildToolbar(),
-              ],
             ),
+            // What can be done to the selected piece, right above the tools.
+            AnimatedSwitcher(
+              duration: ds.motion.fast,
+              child: _selected == null
+                  ? SizedBox(height: ds.space.s)
+                  : Padding(
+                      padding: EdgeInsets.only(bottom: ds.space.s),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          DsButton(
+                            label: trOr(
+                              context,
+                              'builder.toFront',
+                              'Bring to front',
+                            ),
+                            icon: Icons.flip_to_front,
+                            kind: DsButtonKind.secondary,
+                            onPressed: _bringSelectedToFront,
+                          ),
+                          SizedBox(width: ds.space.xs),
+                          DsButton.icon(
+                            icon: Icons.delete_outline,
+                            semanticLabel: tr(context, 'common.delete'),
+                            onPressed: _deleteSelected,
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            if (!_loading) _buildToolbar(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -548,10 +574,10 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             decoration: selected
                 ? BoxDecoration(
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: context.ds.colors.accent,
                       width: 2,
                     ),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: context.ds.shape.smallRadius,
                   )
                 : null,
             child: Image(
@@ -567,10 +593,20 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   }
 
   Widget _buildToolbar() {
-    return SafeArea(
-      top: false,
+    final ds = context.ds;
+    return Container(
+      margin: EdgeInsets.fromLTRB(
+        ds.space.gutter,
+        0,
+        ds.space.gutter,
+        ds.space.s,
+      ),
+      decoration: BoxDecoration(
+        color: ds.colors.surface,
+        borderRadius: BorderRadius.circular(ds.shape.pill),
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: EdgeInsets.symmetric(vertical: ds.space.xs),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
@@ -610,25 +646,39 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     VoidCallback onTap, {
     bool busy = false,
   }) {
+    final ds = context.ds;
+    final c = ds.colors;
     return Expanded(
-      child: InkWell(
-        onTap: (_saving || busy) ? null : onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              busy
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(icon),
-              const SizedBox(height: 4),
-              Text(label, style: Theme.of(context).textTheme.labelSmall),
-            ],
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: (_saving || busy) ? null : onTap,
+          borderRadius: BorderRadius.circular(ds.shape.pill),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: ds.space.xs),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                busy
+                    ? SizedBox.square(
+                        dimension: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: c.accent,
+                        ),
+                      )
+                    : Icon(icon, color: c.text),
+                SizedBox(height: ds.space.xs),
+                Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -662,21 +712,22 @@ class _BackgroundSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: EdgeInsets.fromLTRB(
+          context.ds.space.gutter,
+          0,
+          context.ds.space.gutter,
+          context.ds.space.m,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              trOr(context, 'builder.solid', 'Solid colour'),
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 8),
+            DsSectionTitle(trOr(context, 'builder.solid', 'Solid colour')),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: context.ds.space.s,
+              runSpacing: context.ds.space.s,
               children: [
-                for (final c in _kSwatches)
+                for (final c in kCanvasSwatches)
                   _Swatch(
                     color: c,
                     onTap: () =>
@@ -684,17 +735,12 @@ class _BackgroundSheet extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              trOr(context, 'builder.gradient', 'Gradient'),
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 8),
+            DsSectionTitle(trOr(context, 'builder.gradient', 'Gradient')),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: context.ds.space.s,
+              runSpacing: context.ds.space.s,
               children: [
-                for (final g in _kGradients)
+                for (final g in kCanvasGradients)
                   _Swatch(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -723,17 +769,18 @@ class _Swatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      customBorder: const CircleBorder(),
       child: Container(
         width: 46,
         height: 46,
         decoration: BoxDecoration(
           color: color,
           gradient: gradient,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.black12),
+          shape: BoxShape.circle,
+          border: Border.all(color: ds.colors.hairline),
         ),
       ),
     );

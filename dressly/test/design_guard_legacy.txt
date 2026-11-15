@@ -8,7 +8,6 @@ lib/screens/models/add_model_screen.dart
 lib/screens/models/model_review_screen.dart
 lib/screens/models/models_screen.dart
 lib/screens/outfit/favorites_screen.dart
-lib/screens/outfit/manual_builder_screen.dart
 lib/screens/profile/profile_screen.dart
 lib/screens/settings/api_credits_screen.dart
 lib/screens/settings/change_password_screen.dart
@@ -17,7 +16,5 @@ lib/screens/settings/weather_location_screen.dart
 lib/widgets/app_image.dart
 lib/widgets/brand_logo.dart
 lib/widgets/filter_sheet.dart
-lib/widgets/outfit_sort_sheet.dart
-lib/widgets/outfit_viewer.dart
 lib/widgets/section_header.dart
 lib/widgets/star_rating.dart
