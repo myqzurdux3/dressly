@@ -126,16 +126,19 @@ class _WardrobeCardState extends State<WardrobeCard> {
               excludeSemantics: true,
               child: GestureDetector(
                 onTap: () => setState(() => _showBack = !_showBack),
-                child: ClipRRect(
-                  borderRadius: ds.shape.smallRadius,
-                  child: ColoredBox(
-                    color: tone.shade.withValues(alpha: 0.25),
-                    child: SizedBox(
-                      width: 32,
-                      height: 40,
-                      child: widget.imageBuilder(otherPath, 80),
-                    ),
+                // On the contrast colour of the card: the swatch is the
+                // garment's own colour, so a pink back on a pink card
+                // vanished.
+                child: Container(
+                  width: 36,
+                  height: 44,
+                  padding: const EdgeInsets.all(2),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: tone.onFill,
+                    borderRadius: ds.shape.smallRadius,
                   ),
+                  child: widget.imageBuilder(otherPath, 80),
                 ),
               ),
             ),

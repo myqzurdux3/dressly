@@ -55,11 +55,15 @@ class DsSwatchCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Centred: in a start-aligned column the box
+                        // would sit against the left edge.
                         Expanded(
-                          child: FractionallySizedBox(
-                            heightFactor: 0.88,
-                            widthFactor: 0.8,
-                            child: FittedBox(child: image),
+                          child: Center(
+                            child: FractionallySizedBox(
+                              heightFactor: 0.88,
+                              widthFactor: 0.8,
+                              child: FittedBox(child: image),
+                            ),
                           ),
                         ),
                         Text(
