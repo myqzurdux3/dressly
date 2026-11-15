@@ -45,6 +45,20 @@ flutter:
   # assets/icon*.png stay: they are read at build time by
   # flutter_launcher_icons, not at runtime.
   fonts:
+    # Design-system fonts, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
+    - family: Anton
+      fonts:
+        - asset: assets/fonts/Anton-Regular.ttf
+    - family: Bricolage
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque[opsz,wdth,wght].ttf
+    - family: PlexMono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-Regular.ttf
+        - asset: assets/fonts/IBMPlexMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexMono-SemiBold.ttf
+          weight: 600
     # Manrope, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
     # Used by the logo only.
     - family: Manrope

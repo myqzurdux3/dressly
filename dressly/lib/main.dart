@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
+import 'design/gallery/ds_gallery.dart';
 import 'services/auth_service.dart';
 import 'services/image_cache_config.dart';
 import 'services/pinned_http.dart';
@@ -12,6 +13,10 @@ import 'state/theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (const bool.fromEnvironment('DS_GALLERY')) {
+    runApp(const DsGalleryApp());
+    return;
+  }
   runApp(await bootstrap());
 }
 
