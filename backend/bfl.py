@@ -9,7 +9,7 @@ sent (bfl accepts an empty prompt for the FLUX 2 family).
 Cloth-photo enhancement uses the three-tier FLUX 2 multi-image cascade, cheap
 to expensive:
 
-  flex (flux-2-klein-4b) -> pro (flux-2-pro) -> max (flux-2-max)
+  flex (flux-3-image-klein) -> pro (flux-3-image) -> max (flux-2-max)
 
 Outfit generation slots FLUX Virtual Try-On (VTO) into that cascade after flex:
 
@@ -86,6 +86,10 @@ _SLUG_MAX_IMAGES = {
     "flux-2-pro-preview": 8,
     "flux-2-max": 8,
     "flux-2-flex": 8,
+    # FLUX 3 Image takes one array, `images`, of one to ten references.
+    # https://docs.bfl.ml/api-reference/utility/generate-an-image-with-flux-3
+    "flux-3-image": 10,
+    "flux-3-image-klein": 10,
 }
 # Unknown slug: assume the smaller cap. Sending too few images is a poorer
 # reference; sending too many is a rejected request.
@@ -97,8 +101,15 @@ def max_images_for(slug: str) -> int:
     name = (slug or "").strip().lower().lstrip("/")
     if name in _SLUG_MAX_IMAGES:
         return _SLUG_MAX_IMAGES[name]
+    if _is_flux3(name):
+        return 10
     # A slug nobody listed: klein is the family with the small cap.
     return 4 if "klein" in name else _DEFAULT_MAX_IMAGES
+
+
+def _is_flux3(slug: str) -> bool:
+    """FLUX 3 endpoints take `images: [...]` instead of input_image_N."""
+    return (slug or "").strip().lower().lstrip("/").startswith("flux-3")
 
 TIER_ORDER = ("flex", "pro", "max")
 TIER_SLUGS = {
@@ -510,13 +521,21 @@ def _submit(slug: str, prompt: str, image_data_uris: List[str], *, width: int, h
     # default of 2 with no way to loosen it — see BFL_SAFETY_TOLERANCE.
     body: dict = {"prompt": prompt or "", "width": width, "height": height,
                   "safety_tolerance": BFL_SAFETY_TOLERANCE}
-    # input_image, input_image_2, ... up to the tier's cap.
     # Keyed on the slug, not on the tier name: the slug is what the request is
     # going to, and it is the thing with a documented limit.
     cap = max_images_for(slug)
-    for i, uri in enumerate(image_data_uris[:cap]):
-        key = "input_image" if i == 0 else f"input_image_{i + 1}"
-        body[key] = uri
+    refs = image_data_uris[:cap]
+    if _is_flux3(slug):
+        # One array. Grounding (web and image search on the prompt) is off:
+        # the prompt describes the user's own photos, nothing to look up.
+        if refs:
+            body["images"] = refs
+        body["grounding"] = False
+    else:
+        # FLUX.2: input_image, input_image_2, ... up to the tier's cap.
+        for i, uri in enumerate(refs):
+            key = "input_image" if i == 0 else f"input_image_{i + 1}"
+            body[key] = uri
     try:
         payload = _post_json(slug, body)
     except Exception:

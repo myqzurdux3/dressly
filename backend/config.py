@@ -145,8 +145,11 @@ BFL_BASE_URL = os.environ.get("BFL_BASE_URL", "https://api.bfl.ai/v1")
 # Cascade order, cheap -> expensive (FLUX 2 family, multi-image). Each slug is
 # env-configurable to match the exact endpoints bfl exposes.
 #   flex (fast/cheap) -> pro (balanced) -> max (best; fallback when pro fails)
-BFL_MODEL_FLEX = os.environ.get("BFL_MODEL_FLEX", "flux-2-klein-4b")
-BFL_MODEL_PRO = os.environ.get("BFL_MODEL_PRO", "flux-2-pro")
+# Since 2026-11: FLUX 3 Image (Klein for the fast tier, the full model for
+# the balanced one). max stays on FLUX.2 [max]: a different model family, so a
+# FLUX 3 failure still has somewhere to fall back to.
+BFL_MODEL_FLEX = os.environ.get("BFL_MODEL_FLEX", "flux-3-image-klein")
+BFL_MODEL_PRO = os.environ.get("BFL_MODEL_PRO", "flux-3-image")
 BFL_MODEL_MAX = os.environ.get("BFL_MODEL_MAX", "flux-2-max")
 # FLUX Virtual Try-On (VTO). Highest-quality path for outfit generation, but it
 # REQUIRES a person image (the model) — it renders the garment onto that person.
