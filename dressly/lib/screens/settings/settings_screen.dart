@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../design/ds.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_text.dart';
@@ -37,62 +39,77 @@ class SettingsScreen extends StatelessWidget {
         children: [
           _SectionLabel(tr(context, 'settings.appearance')),
           const SizedBox(height: 8),
-          Text(tr(context, 'settings.accentColor'),
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            tr(context, 'settings.accentColor'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              for (final c in ThemeController.presets)
+              for (final a in DsAccent.values)
                 _ColorSwatch(
-                  color: c,
-                  selected: c.toARGB32() == theme.seed.toARGB32(),
-                  onTap: () => context.read<ThemeController>().setSeed(c),
+                  key: ValueKey('accent-${a.name}'),
+                  color: a.base,
+                  label: tr(context, 'accent.${a.name}'),
+                  selected: a == theme.accent,
+                  onTap: () => context.read<ThemeController>().setAccent(a),
                 ),
             ],
           ),
           const SizedBox(height: 24),
-          Text(tr(context, 'settings.theme'),
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            tr(context, 'settings.theme'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           SegmentedButton<ThemeMode>(
             segments: [
               ButtonSegment(
-                  value: ThemeMode.light,
-                  label: Text(tr(context, 'settings.themeLight')),
-                  icon: const Icon(Icons.light_mode)),
+                value: ThemeMode.light,
+                label: Text(tr(context, 'settings.themeLight')),
+                icon: const Icon(Icons.light_mode),
+              ),
               ButtonSegment(
-                  value: ThemeMode.dark,
-                  label: Text(tr(context, 'settings.themeDark')),
-                  icon: const Icon(Icons.dark_mode)),
+                value: ThemeMode.dark,
+                label: Text(tr(context, 'settings.themeDark')),
+                icon: const Icon(Icons.dark_mode),
+              ),
               ButtonSegment(
-                  value: ThemeMode.system,
-                  label: Text(tr(context, 'settings.themeSystem')),
-                  icon: const Icon(Icons.brightness_auto)),
+                value: ThemeMode.system,
+                label: Text(tr(context, 'settings.themeSystem')),
+                icon: const Icon(Icons.brightness_auto),
+              ),
             ],
             selected: {theme.mode},
             onSelectionChanged: (s) =>
                 context.read<ThemeController>().setMode(s.first),
           ),
           const SizedBox(height: 24),
-          Text(tr(context, 'settings.language'),
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            tr(context, 'settings.language'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            initialValue: locale.languageCode.isEmpty ? '' : locale.languageCode,
+            initialValue: locale.languageCode.isEmpty
+                ? ''
+                : locale.languageCode,
             isExpanded: true,
             decoration: const InputDecoration(border: OutlineInputBorder()),
             items: [
               DropdownMenuItem(
-                  value: '', child: Text(tr(context, 'settings.languageSystem'))),
+                value: '',
+                child: Text(tr(context, 'settings.languageSystem')),
+              ),
               ...LocaleController.languages.entries.map(
                 (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
               ),
             ],
-            onChanged: (v) => context
-                .read<LocaleController>()
-                .setLanguage((v == null || v.isEmpty) ? null : v),
+            onChanged: (v) => context.read<LocaleController>().setLanguage(
+              (v == null || v.isEmpty) ? null : v,
+            ),
           ),
           const Divider(height: 40),
           _SectionLabel(tr(context, 'settings.generation')),
@@ -153,8 +170,10 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.logout, color: Colors.redAccent),
-            title: Text(tr(context, 'settings.logout'),
-                style: const TextStyle(color: Colors.redAccent)),
+            title: Text(
+              tr(context, 'settings.logout'),
+              style: const TextStyle(color: Colors.redAccent),
+            ),
             onTap: () => _logout(context),
           ),
           const Divider(height: 40),
@@ -185,43 +204,53 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-            color: Colors.grey),
-      );
+    text.toUpperCase(),
+    style: const TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.bold,
+      letterSpacing: 1,
+      color: Colors.grey,
+    ),
+  );
 }
 
 class _ColorSwatch extends StatelessWidget {
   const _ColorSwatch({
+    super.key,
     required this.color,
+    required this.label,
     required this.selected,
     required this.onTap,
   });
   final Color color;
+  final String label;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? Colors.white : Colors.white24,
-            width: selected ? 3 : 1,
+    final c = context.ds.colors;
+    return Semantics(
+      label: label,
+      selected: selected,
+      button: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? c.text : c.hairline,
+              width: selected ? 3 : 1,
+            ),
           ),
+          child: selected
+              ? Icon(Icons.check, color: c.onAccent, size: 22)
+              : null,
         ),
-        child: selected
-            ? const Icon(Icons.check, color: Colors.white, size: 22)
-            : null,
       ),
     );
   }
