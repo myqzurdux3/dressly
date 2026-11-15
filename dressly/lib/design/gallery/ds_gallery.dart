@@ -165,7 +165,7 @@ List<Widget> _primitives(BuildContext context) {
     const _Section(
       'En-tête',
       DsHeader(
-        line1: 'Fit du',
+        line1: 'Tenue du',
         line2: 'jour',
         meta: ['sam 15.11', '9° · pluie'],
       ),
@@ -242,7 +242,7 @@ List<Widget> _content(BuildContext context) {
       Column(
         children: [
           DsPlanCard(
-            title: 'Skate park',
+            title: 'Bureau',
             subtitle: "aujourd'hui · 9°",
             tone: garmentTone('Orange', b),
             thumbs: [_thumb(context, 'Black'), _thumb(context, 'Orange')],

@@ -224,7 +224,7 @@ void main() {
         Column(
           children: [
             DsPlanCard(
-              title: 'Skate park',
+              title: 'Bureau',
               subtitle: "aujourd'hui · 9°",
               tone: o,
               thumbs: [_img(o), _img(garmentTone('Black', Brightness.dark))],

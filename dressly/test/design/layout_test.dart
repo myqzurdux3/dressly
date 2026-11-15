@@ -5,16 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/ds_harness.dart';
 
 const _items = [
-  DsTabItem(icon: Icons.checkroom, label: 'Stock'),
-  DsTabItem(icon: Icons.auto_awesome, label: 'Fit'),
+  DsTabItem(icon: Icons.checkroom, label: 'Garde-robe'),
+  DsTabItem(icon: Icons.auto_awesome, label: 'Tenue'),
   DsTabItem(icon: Icons.calendar_month, label: 'Semaine'),
-  DsTabItem(icon: Icons.favorite, label: 'Sauvés'),
-  DsTabItem(icon: Icons.person, label: 'Moi'),
+  DsTabItem(icon: Icons.favorite, label: 'Favoris'),
+  DsTabItem(icon: Icons.person, label: 'Profil'),
 ];
 
 Widget _header() => const DsHeader(
-  line1: 'Ma',
-  line2: 'drip',
+  line1: 'Garde-',
+  line2: 'robe',
   meta: ['87 pièces', '+3 ce mois'],
 );
 
@@ -26,8 +26,8 @@ void main() {
 
   testWidgets('DsHeader uppercases both lines and shows meta', (t) async {
     await t.pumpWidget(dsFrame(_header()));
-    expect(find.text('MA'), findsOneWidget);
-    expect(find.text('DRIP'), findsOneWidget);
+    expect(find.text('GARDE-'), findsOneWidget);
+    expect(find.text('ROBE'), findsOneWidget);
     expect(find.text('87 PIÈCES'), findsOneWidget);
     expect(find.text('+3 CE MOIS'), findsOneWidget);
   });
@@ -42,7 +42,7 @@ void main() {
   testWidgets('inactive tabs expose their label to semantics', (t) async {
     await t.pumpWidget(dsFrame(_bar(0)));
     expect(find.bySemanticsLabel('Semaine'), findsOneWidget);
-    expect(find.text('Stock'), findsOneWidget);
+    expect(find.text('Garde-robe'), findsOneWidget);
   });
 
   testWidgets('header and tab bar do not overflow at text scale 1.6', (

@@ -56,7 +56,7 @@ Référence des maquettes : `.superpowers/brainstorm/…/directions-v2.html` (se
 - **Typo** : titres en **Anton** (condensée, capitales, très grande), texte courant en **Bricolage Grotesque**, métadonnées en **IBM Plex Mono** (comptes, dates, températures, en capitales). Les polices sont embarquées comme assets, sans téléchargement au runtime.
 - **Formes** : cartes très arrondies (20–26 px), pilules pour les puces, les boutons et la barre de navigation flottante.
 - **Cartes vêtement** : la photo détourée (`cutoutUrl`) est posée sur un fond tiré de la couleur principale du vêtement (`colors`), avec une teinte assombrie pour la silhouette, comme un échantillon de tissu. Les badges en mono (TOP, DORT…) remplacent les anciens badges.
-- **En-têtes d'écran** : titre géant sur deux lignes, le second mot en accent (« MA / DRIP », « FIT DU / JOUR »), avec un bloc mono aligné à droite (compte, date, météo).
+- **En-têtes d'écran** : titre géant sur deux lignes, le second mot en accent (« GARDE- / ROBE », « TENUE DU / JOUR »), avec un bloc mono aligné à droite (compte, date, météo).
 - **Animations** : ressorts souples sur les cartes (léger soulèvement à l'appui), transitions d'écran rapides (moins de 250 ms), aucun rebond mou dans les listes.
 
 ## Architecture (décidée)
@@ -93,7 +93,7 @@ Chaque étape est un ou plusieurs commits, avec les tests verts et l'app install
 
 - **Mode clair conservé** en variante de F : fond crème `#F1E6D6`, texte chocolat, même accent. L'utilisateur garde le choix clair/sombre/système. Le sombre reste par défaut.
 - **Sélecteur d'accent** réduit à 5 accents qui vont avec F (orange par défaut, olive, rouge brique, bleu encre, jaune acide). Les 10 couleurs Material actuelles disparaissent.
-- **5 onglets conservés** (garde-robe, créer, agenda, sauvés, profil), avec des libellés plus street : Stock, Fit, Semaine, Sauvés, Moi.
+- **5 onglets conservés** avec des libellés sobres : Garde-robe, Tenue, Agenda, Favoris, Profil. Pas d'argot, pas de références skate (retour utilisateur du 2026-11-15).
 - **Riverpod** plutôt que de rester sur Provider : meilleure testabilité, reconstructions ciblées.
 
 ## Laissé au constructeur
