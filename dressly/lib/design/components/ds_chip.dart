@@ -10,11 +10,15 @@ class DsChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.leading,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Small widget before the label (a colour dot).
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -36,12 +40,21 @@ class DsChip extends StatelessWidget {
               child: Center(
                 widthFactor: 1,
                 heightFactor: 1,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  style: ds.typo.label.copyWith(
-                    color: selected ? c.bg : c.textMuted,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (leading != null) ...[
+                      leading!,
+                      SizedBox(width: ds.space.xs),
+                    ],
+                    Text(
+                      label,
+                      maxLines: 1,
+                      style: ds.typo.label.copyWith(
+                        color: selected ? c.bg : c.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

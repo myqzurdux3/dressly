@@ -79,6 +79,50 @@ class ThemeF implements DsTheme {
           ),
         ),
       ),
+      // Fields: filled surface, no outline until focused (then the accent).
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: c.surface,
+        hintStyle: t.typo.body.copyWith(color: c.textMuted),
+        labelStyle: t.typo.label.copyWith(color: c.textMuted),
+        floatingLabelStyle: t.typo.label.copyWith(color: c.accentText),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: t.space.m,
+          vertical: t.space.m,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: t.shape.smallRadius,
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: t.shape.smallRadius,
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: t.shape.smallRadius,
+          borderSide: BorderSide(color: c.accent, width: 1.5),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.shape.card),
+        ),
+        titleTextStyle: t.typo.title.copyWith(color: c.text),
+        contentTextStyle: t.typo.body.copyWith(color: c.textMuted),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: c.text,
+        contentTextStyle: t.typo.body.copyWith(color: c.bg),
+        shape: RoundedRectangleBorder(borderRadius: t.shape.smallRadius),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: c.text,
+          textStyle: t.typo.bodyStrong,
+        ),
+      ),
       extensions: [t],
     );
   }

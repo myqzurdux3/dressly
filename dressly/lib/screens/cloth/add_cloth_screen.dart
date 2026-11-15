@@ -3,26 +3,26 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../app.dart';
-import '../../config/api_config.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../services/clothes_service.dart';
-import '../../widgets/app_image.dart';
-import '../../widgets/color_row.dart';
+import '../../state/providers.dart';
 import '../../widgets/image_review.dart';
-import '../../widgets/image_slot.dart';
 import 'cloth_detail_screen.dart';
+import 'detail/detail_image_panel.dart' show roleLabel;
+import 'form/color_editor.dart';
+import 'form/form_photos.dart';
 import 'photo_edit_screen.dart';
-import '../../theme/tones.dart';
 
 /// Reused for both adding a new cloth and editing an existing one. When
 /// [initial] is non-null the form is pre-populated and saving PUTs instead of
 /// POSTing — switching an item between add and edit mode in one screen keeps
 /// the field layout in lockstep.
-class ClothFormScreen extends StatefulWidget {
+class ClothFormScreen extends ConsumerStatefulWidget {
   const ClothFormScreen({super.key, this.initial});
 
   final Cloth? initial;
@@ -30,10 +30,12 @@ class ClothFormScreen extends StatefulWidget {
   bool get isEdit => initial != null;
 
   @override
-  State<ClothFormScreen> createState() => _ClothFormScreenState();
+  ConsumerState<ClothFormScreen> createState() => _ClothFormScreenState();
 }
 
-class _ClothFormScreenState extends State<ClothFormScreen> {
+class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
+  ClothesService get _svc => ref.read(clothesServiceProvider);
+
   final _name = TextEditingController();
 
   String? _category;
@@ -41,9 +43,11 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
   int _score = 0;
   final List<ClothColor> _colors = [];
   final List<String> _tags = [];
+
   /// Paths the user picked THIS session (front, back, then extras). Used only
   /// in ADD mode — in edit mode images are managed live against the server.
   final List<String> _newImages = [];
+
   /// Edit mode only: the cloth's current photos. Kept mutable so replace / add
   /// / delete (which hit the server and return the updated cloth) refresh the
   /// thumbnails immediately.
@@ -87,7 +91,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
   }
 
   Future<void> _loadAutocomplete() async {
-    final svc = clothesServiceOf(context);
+    final svc = _svc;
     try {
       final brands = await svc.autocompleteBrands();
       final tags = await svc.autocompleteTags();
@@ -102,7 +106,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
 
   Future<void> _pickImage() async {
     final path = await _pickFilePath();
-    if (!mounted || path == null) return;   // the picker outlives this screen
+    if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _newImages.add(path));
   }
 
@@ -111,28 +115,34 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
   /// Lets the user take a photo with the camera or pick a file, then returns
   /// its local path (or null if cancelled).
   Future<String?> _pickFilePath() async {
-    final source = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: const Icon(Icons.photo_camera),
-            title: Text(tr(context, 'form.takePhoto')),
-            onTap: () => Navigator.pop(ctx, 'camera'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library),
-            title: Text(tr(context, 'form.chooseGallery')),
-            onTap: () => Navigator.pop(ctx, 'gallery'),
-          ),
-        ]),
+    final source = await showDsSheet<String>(
+      context,
+      title: tr(context, 'form.pictures'),
+      child: Builder(
+        builder: (ctx) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (value, icon, key) in [
+              ('camera', Icons.photo_camera_outlined, 'form.takePhoto'),
+              ('gallery', Icons.photo_library_outlined, 'form.chooseGallery'),
+            ])
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(icon, color: ctx.ds.colors.accent),
+                title: Text(tr(context, key), style: ctx.ds.typo.bodyStrong),
+                onTap: () => Navigator.pop(ctx, value),
+              ),
+          ],
+        ),
       ),
     );
     if (source == null) return null;
     try {
       if (source == 'camera') {
-        final x = await ImagePicker()
-            .pickImage(source: ImageSource.camera, imageQuality: 92);
+        final x = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 92,
+        );
         return x?.path;
       }
       final result = await FilePicker.platform.pickFiles(type: FileType.image);
@@ -149,7 +159,8 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     final updated = await Navigator.push<Cloth>(
       context,
       MaterialPageRoute(
-        builder: (_) => PhotoEditScreen(clothId: widget.initial!.id, image: img),
+        builder: (_) =>
+            PhotoEditScreen(clothId: widget.initial!.id, image: img),
       ),
     );
     if (updated != null && mounted) {
@@ -161,13 +172,16 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
   /// on the server), then ask whether to keep the cut-out or the original.
   Future<void> _replaceExistingImage(int imageId) async {
     if (_imgBusy) return;
-    final svc = clothesServiceOf(context);
+    final svc = _svc;
     final path = await _pickFilePath();
-    if (!mounted || path == null) return;   // the picker outlives this screen
+    if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _imgBusy = true);
     try {
-      final updated =
-          await svc.replaceImage(widget.initial!.id, imageId, File(path));
+      final updated = await svc.replaceImage(
+        widget.initial!.id,
+        imageId,
+        File(path),
+      );
       if (!mounted) return;
       setState(() => _existingImages = [...updated.images]);
       await _reviewNewImage(imageId);
@@ -180,9 +194,9 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
 
   Future<void> _addImageNow() async {
     if (_imgBusy) return;
-    final svc = clothesServiceOf(context);
+    final svc = _svc;
     final path = await _pickFilePath();
-    if (!mounted || path == null) return;   // the picker outlives this screen
+    if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _imgBusy = true);
     try {
       final updated = await svc.addImage(widget.initial!.id, File(path));
@@ -217,8 +231,11 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
       tolerance: img.bgTolerance,
       // Let the user try Soft/Balanced/Strong right in the crop decision.
       onChangeTolerance: (level) async {
-        final c = await svc.redoBackground(widget.initial!.id, imageId,
-            tolerance: level);
+        final c = await svc.redoBackground(
+          widget.initial!.id,
+          imageId,
+          tolerance: level,
+        );
         if (mounted) setState(() => _existingImages = [...c.images]);
         // Feeds the same comparison panel as above, so the same size.
         return _imgById(c.images, imageId)?.cutoutPreview;
@@ -241,7 +258,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
   /// Guided review of a freshly added/replaced photo:
   /// 1) decide crop (with preview), 2) optionally enhance (Auto/AI + preview).
   Future<void> _reviewNewImage(int imageId) async {
-    final svc = clothesServiceOf(context);
+    final svc = _svc;
     await _decideCrop(svc, imageId);
     if (!mounted) return;
     final mode = await showEnhanceChoice(context);
@@ -252,7 +269,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
   /// Enhance an existing photo on demand (from the tile's ✨ button).
   Future<void> _enhanceExisting(int imageId) async {
     if (_imgBusy) return;
-    final svc = clothesServiceOf(context);
+    final svc = _svc;
     final mode = await showEnhanceChoice(context);
     if (mode == null) return;
     await _runEnhance(svc, imageId, mode);
@@ -277,11 +294,13 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
           return;
         }
         if (!mounted) return;
-        final choice = await showEnhancePreview(context,
-            currentUrl: img.displayPreviewUrl ?? img.originalPreview,
-            enhancedUrl: img.enhancedPreview,
-            method: mode,
-            nextTier: mode == 'ai' ? img.enhanceNextTier : null);
+        final choice = await showEnhancePreview(
+          context,
+          currentUrl: img.displayPreviewUrl ?? img.originalPreview,
+          enhancedUrl: img.enhancedPreview,
+          method: mode,
+          nextTier: mode == 'ai' ? img.enhanceNextTier : null,
+        );
         if (choice == 'upgrade' && img.enhanceNextTier != null) {
           tier = img.enhanceNextTier!;
           continue; // regenerate with the better model
@@ -307,8 +326,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     if (_imgBusy) return;
     setState(() => _imgBusy = true);
     try {
-      final updated = await clothesServiceOf(context)
-          .deleteImage(widget.initial!.id, imageId);
+      final updated = await _svc.deleteImage(widget.initial!.id, imageId);
       if (!mounted) return;
       setState(() => _existingImages = [...updated.images]);
       _toastKey('form.pictureRemoved');
@@ -319,8 +337,9 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     }
   }
 
-  void _addColor() =>
-      setState(() => _colors.add(ClothColor(color: 'Black', dominance: 'part')));
+  void _addColor() => setState(
+    () => _colors.add(ClothColor(color: 'Black', dominance: 'part')),
+  );
 
   bool _detectingColors = false;
 
@@ -330,8 +349,7 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     if (_detectingColors) return;
     setState(() => _detectingColors = true);
     try {
-      final detected =
-          await clothesServiceOf(context).detectColors(widget.initial!.id);
+      final detected = await _svc.detectColors(widget.initial!.id);
       if (!mounted) return;
       if (detected.isEmpty) {
         _toastKey('form.noColors');
@@ -342,9 +360,11 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
           .where((d) => !existing.contains(d.color.toLowerCase()))
           .toList();
       setState(() => _colors.addAll(added));
-      _toast(added.isEmpty
-          ? tr(context, 'form.colorsAlready')
-          : tr(context, 'form.colorsAdded'));
+      _toast(
+        added.isEmpty
+            ? tr(context, 'form.colorsAlready')
+            : tr(context, 'form.colorsAdded'),
+      );
     } catch (e) {
       _toastKey('form.detectFailed', e);
     } finally {
@@ -368,11 +388,15 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
 
   String _picturesHint(bool isEdit) {
     if (_multiAngle) {
-      return tr(context,
-          isEdit ? 'form.picHintMultiEdit' : 'form.picHintMultiAdd');
+      return tr(
+        context,
+        isEdit ? 'form.picHintMultiEdit' : 'form.picHintMultiAdd',
+      );
     }
-    return tr(context,
-        isEdit ? 'form.picHintGarmentEdit' : 'form.picHintGarmentAdd');
+    return tr(
+      context,
+      isEdit ? 'form.picHintGarmentEdit' : 'form.picHintGarmentAdd',
+    );
   }
 
   Future<void> _save() async {
@@ -386,16 +410,18 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
     }
     final minImages = _multiAngle ? 1 : 2;
     if (!widget.isEdit && _newImages.length < minImages) {
-      _toast(_multiAngle
-          ? tr(context, 'form.minOnePicture')
-          : tr(context, 'form.frontBackRequired'));
+      _toast(
+        _multiAngle
+            ? tr(context, 'form.minOnePicture')
+            : tr(context, 'form.frontBackRequired'),
+      );
       return;
     }
     // No cut for shoes / bags / accessories — send it empty so it's not stored.
     final cut = categoryHasCut(_category) ? _cut : '';
     setState(() => _saving = true);
     try {
-      final svc = clothesServiceOf(context);
+      final svc = _svc;
       final Cloth saved;
       if (widget.isEdit) {
         // Images are already saved live (replace/add/delete against the
@@ -412,15 +438,17 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
           ),
         );
       } else {
-        saved = await svc.create(ClothDraft(
-          name: _name.text.trim(),
-          brand: (_brandField?.text ?? '').trim(),
-          cut: cut,
-          category: _category!,
-          colors: List.of(_colors),
-          tags: List.of(_tags),
-          images: _newImages.map((p) => File(p)).toList(),
-        ));
+        saved = await svc.create(
+          ClothDraft(
+            name: _name.text.trim(),
+            brand: (_brandField?.text ?? '').trim(),
+            cut: cut,
+            category: _category!,
+            colors: List.of(_colors),
+            tags: List.of(_tags),
+            images: _newImages.map((p) => File(p)).toList(),
+          ),
+        );
       }
       // Persist the rating too — update() above ignores score, so do it here.
       if (_score != _scoreBeforeEdit) {
@@ -490,462 +518,323 @@ class _ClothFormScreenState extends State<ClothFormScreen> {
 
   Future<void> _replaceImage(int index) async {
     final path = await _pickFilePath();
-    if (!mounted || path == null) return;   // the picker outlives this screen
+    if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _newImages[index] = path);
   }
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
     final isEdit = widget.isEdit;
+    final gap = SizedBox(height: ds.space.s);
 
     return Scaffold(
-      appBar: AppBar(title: Text(isEdit ? tr(context, 'form.editTitle') : tr(context, 'wardrobe.addClothes'))),
+      backgroundColor: c.bg,
       // Tapping anywhere (or scrolling) drops focus, which dismisses the tag /
       // brand autocomplete overlay so it never gets stuck open.
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
-        child: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(tr(context, 'form.name'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _name,
-              onChanged: _onNameChanged,
-              decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  hintText: tr(context, 'form.nameHint')),
-            ),
-            const SizedBox(height: 24),
-
-            Text(tr(context, 'form.pictures'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 4),
-            Text(_picturesHint(isEdit),
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 8),
-            if (isEdit)
-              // Edit mode: live, server-backed tiles (tap = replace, ✕ = delete).
-              ...[
-              if (_existingImages.isEmpty)
-                Text(tr(context, 'form.noPictures'),
-                    style: const TextStyle(color: Colors.grey)),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (var i = 0; i < _existingImages.length; i++)
-                    _EditablePhotoTile(
-                      label: _multiAngle
-                          ? '${tr(context, 'form.photo')} ${i + 1}'
-                          : _existingImages[i].role == 'front'
-                              ? tr(context, 'form.front')
-                              : _existingImages[i].role == 'back'
-                                  ? tr(context, 'form.back')
-                                  : '${tr(context, 'form.photo')} ${i + 1}',
-                      // A small strip of previews, not the stored files.
-                      imageUrl: _existingImages[i].thumbnailUrl == null
-                          ? null
-                          : imageUrl(_existingImages[i].thumbnailUrl!),
-                      method: _existingImages[i].enhanceMethod,
-                      bgAccepted: _existingImages[i].bgAccepted,
-                      cutoutStatus: _existingImages[i].cutoutStatus,
-                      busy: _imgBusy,
-                      onReplace: () =>
-                          _replaceExistingImage(_existingImages[i].id),
-                      onImprove: () =>
-                          _enhanceExisting(_existingImages[i].id),
-                      onCropRotate: () => _editPhoto(_existingImages[i]),
-                      // Front/back are required — replace-only, no delete. Only
-                      // extra photos can be removed.
-                      onDelete: _existingImages[i].role == 'extra'
-                          ? () => _deleteExistingImage(_existingImages[i].id)
-                          : null,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _imgBusy ? null : _addImageNow,
-                icon: _imgBusy
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.add_a_photo),
-                label: Text(tr(context, 'form.addAnotherPicture')),
-              ),
-            ]
-            else
-              // Add mode: pick files now; they're uploaded when you save.
-              ...[
-              if (_newImages.isEmpty)
-                Text(tr(context, 'form.noPicturesSelected'),
-                    style: const TextStyle(color: Colors.grey)),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (var i = 0; i < _newImages.length; i++)
-                    ImageSlot(
-                      label: _multiAngle
-                          ? '${tr(context, 'form.photo')} ${i + 1}${i == 0 ? '*' : ''}'
-                          : i == 0
-                              ? '${tr(context, 'form.front')}*'
-                              : i == 1
-                                  ? '${tr(context, 'form.back')}*'
-                                  : '${tr(context, 'form.photo')} ${i + 1}',
-                      path: _newImages[i],
-                      required: i < (_multiAngle ? 1 : 2),
-                      onTap: () => _replaceImage(i),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.add_a_photo),
-                label: Text(_multiAngle
-                    ? (_newImages.isEmpty
-                        ? tr(context, 'form.pickPicture')
-                        : tr(context, 'form.addAngleOptional'))
-                    : _newImages.isEmpty
-                        ? tr(context, 'form.pickFront')
-                        : _newImages.length == 1
-                            ? tr(context, 'form.pickBack')
-                            : tr(context, 'form.addPictureOptional')),
-              ),
-            ],
-            const Divider(height: 40),
-
-            Text(tr(context, 'filter.brand'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            Autocomplete<String>(
-              optionsBuilder: (v) {
-                if (v.text.isEmpty) {
-                  // Pre-fill on edit so the field shows the current brand.
-                  return _brandSuggestions;
-                }
-                return _brandSuggestions
-                    .where((b) => b.toLowerCase().contains(v.text.toLowerCase()));
-              },
-              initialValue: widget.isEdit
-                  ? TextEditingValue(text: widget.initial!.brand)
-                  : null,
-              onSelected: (s) {},
-              fieldViewBuilder: (c, ctrl, fn, onSub) {
-                _brandField = ctrl;
-                return TextField(
-                  controller: ctrl,
-                  focusNode: fn,
-                  // Brands are stored uppercase — force it as the user types.
-                  textCapitalization: TextCapitalization.characters,
-                  inputFormatters: [_UpperCaseFormatter()],
-                  decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      labelText: tr(context, 'filter.brand'),
-                      hintText: tr(context, 'form.brandHint')),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-
-            Text(tr(context, 'form.category'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _category,
-              isExpanded: true,
-              decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  hintText: tr(context, 'form.categoryHint')),
-              items: kCategoryOptions
-                  .map((c) => DropdownMenuItem(
-                        value: c,
-                        child: Text(categoryName(context, c)),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _category = v),
-            ),
-            // "Cut" only applies to garments — hidden for shoes, bags, hats, etc.
-            if (categoryHasCut(_category)) ...[
-              const SizedBox(height: 24),
-              Text(tr(context, 'filter.cut'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              SegmentedButton<String>(
-                segments: kCutOptions
-                    .map((c) => ButtonSegment(value: c, label: Text(cutLabel(context, c))))
-                    .toList(),
-                selected: {_cut},
-                onSelectionChanged: (s) => setState(() => _cut = s.first),
-              ),
-            ],
-            const Divider(height: 40),
-
-            Text(tr(context, 'form.rating'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 4),
-            Text(tr(context, 'form.ratingHint'),
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 8),
-            Row(children: [
-              for (int i = 1; i <= 5; i++)
-                IconButton(
-                  icon: Icon(
-                    i <= _score ? Icons.star : Icons.star_border,
-                    color: i <= _score ? Colors.amber : faintText(context),
-                    size: 32,
+        child: SafeArea(
+          bottom: false,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(bottom: ds.space.xxl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DsHeader(
+                  line1: tr(
+                    context,
+                    isEdit ? 'form.title1Edit' : 'form.title1New',
                   ),
-                  onPressed: () => setState(() => _score = _score == i ? 0 : i),
+                  line2: tr(context, 'form.title2'),
+                  trailing: DsButton.icon(
+                    icon: Icons.close,
+                    semanticLabel: MaterialLocalizations.of(
+                      context,
+                    ).closeButtonTooltip,
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
                 ),
-              const SizedBox(width: 8),
-              if (_score == 0)
-                Text(tr(context, 'form.notRated'),
-                    style: const TextStyle(color: Colors.grey)),
-            ]),
-            const Divider(height: 40),
-
-            Text(tr(context, 'form.colors'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            ..._colors.asMap().entries.map((e) => ColorRow(
-                  value: e.value,
-                  onChanged: (c) => setState(() => _colors[e.key] = c),
-                  onDelete: () => setState(() => _colors.removeAt(e.key)),
-                )),
-            Row(children: [
-              OutlinedButton.icon(
-                onPressed: _addColor,
-                icon: const Icon(Icons.color_lens_outlined),
-                label: Text(tr(context, 'form.addColor')),
-              ),
-              // Auto-detect from the cut-out — only once the cloth exists with a
-              // background-removed photo. Suggestions merge in; edit freely after.
-              if (widget.isEdit) ...[
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _detectingColors ? null : _detectColors,
-                  icon: _detectingColors
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.auto_awesome),
-                  label: Text(tr(context, 'form.detectColors')),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DsSectionTitle(tr(context, 'form.name')),
+                      TextField(
+                        controller: _name,
+                        onChanged: _onNameChanged,
+                        style: ds.typo.body,
+                        decoration: InputDecoration(
+                          hintText: tr(context, 'form.nameHint'),
+                        ),
+                      ),
+                      DsSectionTitle(
+                        tr(context, 'form.pictures'),
+                        hint: _picturesHint(isEdit),
+                      ),
+                      Wrap(
+                        spacing: ds.space.s,
+                        runSpacing: ds.space.s,
+                        children: isEdit
+                            ? _existingPhotoTiles(context)
+                            : _newPhotoTiles(context),
+                      ),
+                      DsSectionTitle(tr(context, 'filter.brand')),
+                      Autocomplete<String>(
+                        optionsBuilder: (v) {
+                          // Empty: every brand, so the list is browsable.
+                          if (v.text.isEmpty) return _brandSuggestions;
+                          return _brandSuggestions.where(
+                            (b) =>
+                                b.toLowerCase().contains(v.text.toLowerCase()),
+                          );
+                        },
+                        initialValue: isEdit
+                            ? TextEditingValue(text: widget.initial!.brand)
+                            : null,
+                        onSelected: (_) {},
+                        fieldViewBuilder: (_, ctrl, fn, _) {
+                          _brandField = ctrl;
+                          return TextField(
+                            controller: ctrl,
+                            focusNode: fn,
+                            style: ds.typo.body,
+                            // Brands are stored uppercase — forced as typed.
+                            textCapitalization: TextCapitalization.characters,
+                            inputFormatters: [_UpperCaseFormatter()],
+                            decoration: InputDecoration(
+                              hintText: tr(context, 'form.brandHint'),
+                            ),
+                          );
+                        },
+                      ),
+                      DsSectionTitle(tr(context, 'form.category')),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.only(left: ds.space.gutter),
+                  child: DsSegment<String?>(
+                    options: [
+                      for (final cat in kCategoryOptions)
+                        (cat, categoryName(context, cat)),
+                    ],
+                    value: _category,
+                    onChanged: (v) => setState(() => _category = v),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Cut only applies to garments, not shoes, bags, hats.
+                      if (categoryHasCut(_category)) ...[
+                        DsSectionTitle(tr(context, 'filter.cut')),
+                        DsSegment<String>(
+                          options: [
+                            for (final cut in kCutOptions)
+                              (cut, cutLabel(context, cut)),
+                          ],
+                          value: _cut,
+                          onChanged: (v) => setState(() => _cut = v),
+                        ),
+                      ],
+                      DsSectionTitle(
+                        tr(context, 'form.rating'),
+                        hint: tr(context, 'form.ratingHint'),
+                      ),
+                      DsRating(
+                        score: _score,
+                        onChanged: (v) => setState(() => _score = v),
+                      ),
+                      DsSectionTitle(tr(context, 'form.colors')),
+                      for (var i = 0; i < _colors.length; i++)
+                        ColorEditorRow(
+                          key: ObjectKey(_colors[i]),
+                          value: _colors[i],
+                          onChanged: (v) => setState(() => _colors[i] = v),
+                          onDelete: () => setState(() => _colors.removeAt(i)),
+                        ),
+                      Wrap(
+                        spacing: ds.space.s,
+                        runSpacing: ds.space.s,
+                        children: [
+                          DsButton(
+                            label: tr(context, 'form.addColor'),
+                            icon: Icons.add,
+                            kind: DsButtonKind.secondary,
+                            onPressed: _addColor,
+                          ),
+                          // From the cut-out, so only once the garment exists.
+                          if (isEdit)
+                            DsButton(
+                              label: tr(context, 'form.detectColors'),
+                              icon: Icons.auto_awesome,
+                              kind: DsButtonKind.secondary,
+                              loading: _detectingColors,
+                              onPressed: _detectingColors
+                                  ? null
+                                  : _detectColors,
+                            ),
+                        ],
+                      ),
+                      DsSectionTitle(
+                        tr(context, 'form.customTags'),
+                        hint: tr(context, 'form.tagsHint'),
+                      ),
+                      Autocomplete<String>(
+                        optionsBuilder: (v) {
+                          if (v.text.isEmpty) return _tagSuggestions;
+                          return _tagSuggestions.where(
+                            (t) =>
+                                t.toLowerCase().contains(v.text.toLowerCase()),
+                          );
+                        },
+                        onSelected: (s) {
+                          _addTag(s);
+                          _tagField?.clear();
+                        },
+                        fieldViewBuilder: (_, ctrl, fn, _) {
+                          _tagField = ctrl;
+                          return TextField(
+                            controller: ctrl,
+                            focusNode: fn,
+                            style: ds.typo.body,
+                            textInputAction: TextInputAction.done,
+                            decoration: InputDecoration(
+                              hintText: tr(context, 'form.tagFieldHint'),
+                              prefixIcon: Icon(Icons.tag, color: c.textMuted),
+                              suffixIcon: IconButton(
+                                icon: Icon(Icons.add, color: c.accent),
+                                tooltip: tr(context, 'form.add'),
+                                onPressed: () {
+                                  _addTag(ctrl.text);
+                                  ctrl.clear();
+                                },
+                              ),
+                            ),
+                            // A comma commits the tag at once.
+                            onChanged: (v) {
+                              if (v.endsWith(',')) {
+                                _addTag(v);
+                                ctrl.clear();
+                              }
+                            },
+                            onSubmitted: (v) {
+                              _addTag(v);
+                              ctrl.clear();
+                              fn.requestFocus();
+                            },
+                          );
+                        },
+                      ),
+                      gap,
+                      if (_tags.isEmpty)
+                        Text(
+                          tr(context, 'form.noTags'),
+                          style: ds.typo.label.copyWith(color: c.textMuted),
+                        )
+                      else
+                        Wrap(
+                          spacing: ds.space.xs,
+                          runSpacing: ds.space.xs,
+                          children: [
+                            for (final t in _tags)
+                              DsChip(
+                                label: '#$t',
+                                selected: false,
+                                leading: Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: c.textMuted,
+                                ),
+                                onTap: () => setState(() => _tags.remove(t)),
+                              ),
+                          ],
+                        ),
+                      SizedBox(height: ds.space.xl),
+                      DsButton(
+                        label: tr(
+                          context,
+                          isEdit ? 'form.saveChanges' : 'form.save',
+                        ),
+                        expand: true,
+                        loading: _saving,
+                        onPressed: _saving ? null : _save,
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ]),
-            const Divider(height: 40),
-
-            Text(tr(context, 'form.customTags'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 4),
-            Text(tr(context, 'form.tagsHint'),
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 8),
-            Autocomplete<String>(
-              optionsBuilder: (v) {
-                if (v.text.isEmpty) return _tagSuggestions;
-                return _tagSuggestions
-                    .where((t) => t.toLowerCase().contains(v.text.toLowerCase()));
-              },
-              onSelected: (s) {
-                _addTag(s);
-                _tagField?.clear();
-              },
-              fieldViewBuilder: (c, ctrl, fn, onSub) {
-                _tagField = ctrl;
-                return TextField(
-                  controller: ctrl,
-                  focusNode: fn,
-                  textInputAction: TextInputAction.done,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
-                    labelText: tr(context, 'form.addTag'),
-                    hintText: tr(context, 'form.tagFieldHint'),
-                    prefixIcon: const Icon(Icons.tag, size: 20),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.add),
-                      tooltip: tr(context, 'form.add'),
-                      onPressed: () {
-                        _addTag(ctrl.text);
-                        ctrl.clear();
-                      },
-                    ),
-                  ),
-                  // Commit as soon as a comma is typed → an instant chip.
-                  onChanged: (v) {
-                    if (v.endsWith(',')) {
-                      _addTag(v);
-                      ctrl.clear();
-                    }
-                  },
-                  onSubmitted: (v) {
-                    _addTag(v);
-                    ctrl.clear();
-                    fn.requestFocus();
-                  },
-                );
-              },
             ),
-            const SizedBox(height: 12),
-            if (_tags.isEmpty)
-              Text(tr(context, 'form.noTags'), style: const TextStyle(color: Colors.grey))
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _tags
-                    .map((t) => Chip(
-                          avatar: const Icon(Icons.tag, size: 16),
-                          label: Text(t),
-                          onDeleted: () => setState(() => _tags.remove(t)),
-                        ))
-                    .toList(),
-              ),
-            const Divider(height: 40),
-
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: FilledButton(
-                onPressed: _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text(isEdit ? tr(context, 'form.saveChanges') : tr(context, 'form.save'),
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
-}
 
-/// Editable thumbnail used in edit mode: tap the image to replace it, tap the
-/// ✕ badge to delete it. Both actions hit the server and refresh live.
-class _EditablePhotoTile extends StatelessWidget {
-  const _EditablePhotoTile({
-    required this.label,
-    required this.imageUrl,
-    required this.method,
-    required this.bgAccepted,
-    this.cutoutStatus = 'ready',
-    required this.busy,
-    required this.onReplace,
-    required this.onImprove,
-    required this.onCropRotate,
-    required this.onDelete,
-  });
-  final String label;
-  final String? imageUrl;
-  final String method; // 'none' | 'auto' | 'ai'
-  final String bgAccepted; // 'pending' | 'accepted' | 'rejected'
-  final String cutoutStatus; // 'processing' | 'ready' | 'failed'
-  final bool busy;
-  final VoidCallback onReplace;
-  final VoidCallback onImprove;
-  final VoidCallback onCropRotate;
-  final VoidCallback? onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 110,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Stack(children: [
-          GestureDetector(
-            onTap: busy ? null : onReplace,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 110,
-                height: 110,
-                color: Colors.blueGrey.shade900,
-                child: imageUrl == null
-                    ? const Icon(Icons.image, color: Colors.white38)
-                    : AppImage(url: imageUrl!, fit: BoxFit.contain,
-                        cacheKey: imageUrl, memWidth: 220),
-              ),
-            ),
-          ),
-          // Crop & rotate.
-          Positioned(
-            bottom: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: busy ? null : onCropRotate,
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                    color: Colors.black54, shape: BoxShape.circle),
-                child: const Icon(Icons.crop_rotate, size: 14, color: Colors.white),
-              ),
-            ),
-          ),
-          // "Improve" (✨) — enhance this existing photo.
-          Positioned(
-            bottom: 4,
-            left: 4,
-            child: GestureDetector(
-              onTap: busy ? null : onImprove,
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                    color: Colors.black54, shape: BoxShape.circle),
-                child: const Icon(Icons.auto_fix_high,
-                    size: 14, color: Colors.tealAccent),
-              ),
-            ),
-          ),
-          if (onDelete != null)
-            Positioned(
-              top: 2,
-              left: 2,
-              child: GestureDetector(
-                onTap: busy ? null : onDelete,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                      color: Colors.redAccent, shape: BoxShape.circle),
-                  child: const Icon(Icons.close, size: 14, color: Colors.white),
-                ),
-              ),
-            ),
-        ]),
-        const SizedBox(height: 4),
-        Row(children: [
-          Expanded(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12))),
-        ]),
-        // Cut-out / Original / Review + how the photo was processed.
-        Padding(
-          padding: const EdgeInsets.only(top: 3),
-          child: Wrap(spacing: 4, runSpacing: 4, children: [
-            BgStatusBadge(
-                status: bgAccepted, cutoutStatus: cutoutStatus),
-            if (method != 'none') EnhanceMethodBadge(method: method),
-          ]),
-        ),
-      ]),
-    );
+  String _newLabel(int i) {
+    if (_multiAngle) return '${tr(context, 'form.photo')} ${i + 1}';
+    return switch (i) {
+      0 => tr(context, 'form.front'),
+      1 => tr(context, 'form.back'),
+      _ => '${tr(context, 'form.photo')} ${i + 1}',
+    };
   }
+
+  /// Add mode: the photos picked so far (uploaded on save), then the tile
+  /// that picks the next one, labelled with what is expected.
+  List<Widget> _newPhotoTiles(BuildContext context) => [
+    for (var i = 0; i < _newImages.length; i++)
+      NewPhotoSlot(
+        label: _newLabel(i),
+        path: _newImages[i],
+        onTap: () => _replaceImage(i),
+      ),
+    AddPhotoTile(
+      label: _multiAngle
+          ? tr(
+              context,
+              _newImages.isEmpty ? 'form.pickPicture' : 'form.addAngleOptional',
+            )
+          : tr(context, switch (_newImages.length) {
+              0 => 'form.pickFront',
+              1 => 'form.pickBack',
+              _ => 'form.addPictureOptional',
+            }),
+      onTap: _pickImage,
+    ),
+  ];
+
+  /// Edit mode: live, server-backed tiles, then the tile that adds one.
+  List<Widget> _existingPhotoTiles(BuildContext context) => [
+    for (var i = 0; i < _existingImages.length; i++)
+      ExistingPhotoTile(
+        key: ValueKey(_existingImages[i].id),
+        label: _multiAngle || _existingImages[i].role == 'extra'
+            ? '${tr(context, 'form.photo')} ${i + 1}'
+            : roleLabel(context, _existingImages[i].role),
+        image: _existingImages[i],
+        busy: _imgBusy,
+        onReplace: () => _replaceExistingImage(_existingImages[i].id),
+        onImprove: () => _enhanceExisting(_existingImages[i].id),
+        onCropRotate: () => _editPhoto(_existingImages[i]),
+        // Front and back are required: replace-only. Extras can go.
+        onDelete: _existingImages[i].role == 'extra'
+            ? () => _deleteExistingImage(_existingImages[i].id)
+            : null,
+      ),
+    AddPhotoTile(
+      label: tr(context, 'form.addAnotherPicture'),
+      busy: _imgBusy,
+      onTap: _addImageNow,
+    ),
+  ];
 }
 
 /// Legacy alias kept so any existing call-site that referenced the old name
@@ -957,7 +846,9 @@ typedef AddClothScreen = ClothFormScreen;
 class _UpperCaseFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }

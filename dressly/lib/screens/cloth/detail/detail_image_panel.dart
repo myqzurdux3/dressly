@@ -28,6 +28,39 @@ String roleLabel(BuildContext context, String role) => switch (role) {
   _ => tr(context, 'form.photo'),
 };
 
+/// Where the photo's background removal stands: being made, failed, cut-out
+/// kept, original kept, or waiting for the user's choice (accent).
+Widget photoStatusBadge(BuildContext context, ClothImage image) {
+  if (image.cutoutStatus == 'processing') {
+    return DsBadge(
+      text: tr(context, 'review.badgeProcessing'),
+      tone: DsBadgeTone.accent,
+    );
+  }
+  if (image.cutoutStatus == 'failed') {
+    return DsBadge(
+      text: tr(context, 'review.badgeCutoutFailed'),
+      tone: DsBadgeTone.accent,
+    );
+  }
+  return switch (image.bgAccepted) {
+    'accepted' => DsBadge(text: tr(context, 'review.badgeCutout')),
+    'rejected' => DsBadge(text: tr(context, 'review.badgeOriginal')),
+    _ => DsBadge(
+      text: tr(context, 'review.badgeReview'),
+      tone: DsBadgeTone.accent,
+    ),
+  };
+}
+
+/// How the photo was enhanced, or null when it was not.
+Widget? photoMethodBadge(BuildContext context, ClothImage image) =>
+    switch (image.enhanceMethod) {
+      'ai' => DsBadge(text: tr(context, 'review.methodAi')),
+      'auto' => DsBadge(text: tr(context, 'review.methodAuto')),
+      _ => null,
+    };
+
 /// One photo of the garment and every tool that applies to it: crop, cut-out
 /// strength, the cut-out-or-original decision, enhancement, report.
 class DetailImagePanel extends StatelessWidget {
@@ -90,16 +123,8 @@ class DetailImagePanel extends StatelessWidget {
             runSpacing: ds.space.xs,
             children: [
               DsBadge(text: roleLabel(context, image.role)),
-              _statusBadge(context),
-              if (image.enhanceMethod == 'ai' || image.enhanceMethod == 'auto')
-                DsBadge(
-                  text: tr(
-                    context,
-                    image.enhanceMethod == 'ai'
-                        ? 'review.methodAi'
-                        : 'review.methodAuto',
-                  ),
-                ),
+              photoStatusBadge(context, image),
+              ?photoMethodBadge(context, image),
             ],
           ),
           SizedBox(height: ds.space.s),
@@ -223,29 +248,6 @@ class DetailImagePanel extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Widget _statusBadge(BuildContext context) {
-    if (image.cutoutStatus == 'processing') {
-      return DsBadge(
-        text: tr(context, 'review.badgeProcessing'),
-        tone: DsBadgeTone.accent,
-      );
-    }
-    if (image.cutoutStatus == 'failed') {
-      return DsBadge(
-        text: tr(context, 'review.badgeCutoutFailed'),
-        tone: DsBadgeTone.accent,
-      );
-    }
-    return switch (image.bgAccepted) {
-      'accepted' => DsBadge(text: tr(context, 'review.badgeCutout')),
-      'rejected' => DsBadge(text: tr(context, 'review.badgeOriginal')),
-      _ => DsBadge(
-        text: tr(context, 'review.badgeReview'),
-        tone: DsBadgeTone.accent,
-      ),
-    };
   }
 }
 

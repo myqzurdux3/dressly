@@ -16,7 +16,7 @@ import 'package:dressly/screens/cloth/cloth_detail_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
 import 'package:dressly/state/session.dart';
 import 'package:dressly/models/user.dart';
-import 'package:dressly/widgets/image_slot.dart';
+import 'package:dressly/screens/cloth/form/form_photos.dart';
 
 /// Adding a garment, end to end through the widget tree: pick two photos, name
 /// it, choose a category, save.
@@ -143,10 +143,10 @@ void main() {
   Future<void> fillMetadata(WidgetTester tester,
       {String name = 'Blue tee'}) async {
     await tester.enterText(find.byType(TextField).first, name);
-    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    // Categories are a sideways row of chips.
+    await tester.ensureVisible(find.text('T-shirt'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('T-shirt').last);
+    await tester.tap(find.text('T-shirt'));
     await tester.pumpAndSettle();
   }
 
@@ -156,7 +156,7 @@ void main() {
   /// this lands on shows a CircularProgressIndicator while it loads, which
   /// never stops animating, so settling would wait forever.
   Future<void> save(WidgetTester tester) async {
-    final button = find.widgetWithText(FilledButton, 'Save');
+    final button = find.widgetWithText(DsButton, 'Save');
     await tester.ensureVisible(button);
     await tester.pumpAndSettle();
     await tester.tap(button);
@@ -172,7 +172,9 @@ void main() {
 
   /// Taps "add a picture", then "gallery" in the sheet that opens.
   Future<void> addPhoto(WidgetTester tester) async {
-    await tester.tap(find.byType(OutlinedButton).first);
+    await tester.ensureVisible(find.byType(AddPhotoTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(AddPhotoTile));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Choose from gallery / files'));
     await tester.pumpAndSettle();
@@ -180,12 +182,12 @@ void main() {
 
   testWidgets('each picked photo becomes a tile', (tester) async {
     await pump(tester);
-    expect(find.byType(ImageSlot), findsNothing);
+    expect(find.byType(NewPhotoSlot), findsNothing);
 
     await addPhoto(tester);
-    expect(find.byType(ImageSlot), findsOneWidget);
+    expect(find.byType(NewPhotoSlot), findsOneWidget);
     await addPhoto(tester);
-    expect(find.byType(ImageSlot), findsNWidgets(2));
+    expect(find.byType(NewPhotoSlot), findsNWidgets(2));
   });
 
   testWidgets('one photo is not enough, and saying so costs no request',
@@ -250,7 +252,7 @@ void main() {
     // Still here, still holding the two photos and the name: a failed upload
     // that dropped the form would mean re-taking both pictures.
     expect(find.byType(ClothFormScreen), findsOneWidget);
-    expect(find.byType(ImageSlot), findsNWidgets(2));
+    expect(find.byType(NewPhotoSlot), findsNWidgets(2));
     expect(find.text('Blue tee'), findsOneWidget);
     expect(find.textContaining('Save failed'), findsOneWidget);
   });

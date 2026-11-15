@@ -350,7 +350,7 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
                     for (final t in cloth.customTags) _Pill(text: '#$t'),
                   ],
                 ),
-                _SectionTitle(tr(context, 'detail.rating')),
+                DsSectionTitle(tr(context, 'detail.rating')),
                 DsRating(
                   score: cloth.score,
                   onChanged: (v) => _run(
@@ -358,7 +358,7 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
                     failKey: 'detail.ratingFailed',
                   ),
                 ),
-                _SectionTitle(tr(context, 'detail.worn')),
+                DsSectionTitle(tr(context, 'detail.worn')),
                 Row(
                   children: [
                     Expanded(
@@ -416,7 +416,7 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
                     ),
                   ],
                 ),
-                _SectionTitle(tr(context, 'detail.photos')),
+                DsSectionTitle(tr(context, 'detail.photos')),
                 if (cloth.images.isEmpty)
                   Text(
                     tr(context, 'detail.noImages'),
@@ -478,24 +478,6 @@ class _BackButton extends StatelessWidget {
       onPressed: () => Navigator.maybePop(context),
     ),
   );
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final ds = context.ds;
-    return Padding(
-      padding: EdgeInsets.only(top: ds.space.l, bottom: ds.space.s),
-      child: Text(
-        text.toUpperCase(),
-        style: ds.typo.mono.copyWith(color: ds.colors.textMuted),
-      ),
-    );
-  }
 }
 
 /// A fact about the garment, optionally with a colour dot.
