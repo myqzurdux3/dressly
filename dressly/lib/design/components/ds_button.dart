@@ -85,7 +85,11 @@ class DsButton extends StatelessWidget {
         opacity: onPressed == null ? 0.4 : 1,
         child: Material(
           color: fill,
-          shape: const StadiumBorder(),
+          // Secondary buttons share their fill with cards and dialogs; the
+          // hairline keeps them reading as buttons there, not as links.
+          shape: kind == DsButtonKind.primary
+              ? const StadiumBorder()
+              : StadiumBorder(side: BorderSide(color: c.hairline)),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: enabled ? onPressed : null,
