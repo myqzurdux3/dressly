@@ -5,23 +5,30 @@ import '../ds.dart';
 enum DsBadgeTone { neutral, accent }
 
 /// Small mono label stuck on a card, like a stock tag ("TOP", "DORT").
-/// The neutral badge is cream on ink in both themes: it sits on garment
-/// colours, not on the page.
+/// The neutral badge is cream on ink in both themes, or, when it sits on a
+/// garment swatch ([on]), that swatch's colours inverted so it always reads.
 class DsBadge extends StatelessWidget {
   const DsBadge({
     super.key,
     required this.text,
     this.tone = DsBadgeTone.neutral,
+    this.on,
   });
 
   final String text;
   final DsBadgeTone tone;
 
+  /// Swatch the badge is drawn on; only affects the neutral tone.
+  final GarmentTone? on;
+
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
     final (fill, ink) = switch (tone) {
-      DsBadgeTone.neutral => (ThemeF.ink, ThemeF.cream),
+      DsBadgeTone.neutral => (
+        on?.onFill ?? ThemeF.ink,
+        on?.fill ?? ThemeF.cream,
+      ),
       DsBadgeTone.accent => (ds.colors.accent, ds.colors.onAccent),
     };
     return DecoratedBox(
