@@ -17,6 +17,7 @@ import 'state/session.dart';
 import 'state/theme_controller.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_shell.dart';
+import 'state/session_scope.dart';
 
 class Dressly extends StatelessWidget {
   const Dressly({super.key});
@@ -25,20 +26,22 @@ class Dressly extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
     final locale = context.watch<LocaleController>();
-    return MaterialApp(
-      title: 'Dressly',
-      debugShowCheckedModeBanner: false,
-      theme: theme.themeFor(Brightness.light),
-      darkTheme: theme.themeFor(Brightness.dark),
-      themeMode: theme.mode,
-      locale: locale.locale, // null = follow the device language
-      supportedLocales: LocaleController.supportedLocales,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: const _AuthGate(),
+    return SessionApiScope(
+      child: MaterialApp(
+        title: 'Dressly',
+        debugShowCheckedModeBanner: false,
+        theme: theme.themeFor(Brightness.light),
+        darkTheme: theme.themeFor(Brightness.dark),
+        themeMode: theme.mode,
+        locale: locale.locale, // null = follow the device language
+        supportedLocales: LocaleController.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: const _AuthGate(),
+      ),
     );
   }
 }
@@ -52,9 +55,7 @@ class _AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = context.watch<Session>();
-    return session.isLoggedIn
-        ? const HomeShell()
-        : const LoginScreen();
+    return session.isLoggedIn ? const HomeShell() : const LoginScreen();
   }
 }
 

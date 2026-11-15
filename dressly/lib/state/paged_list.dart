@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 /// Fetches one page. [offset] is the number of items already loaded.
-typedef PageFetcher<T> = Future<List<T>> Function({required int limit, required int offset});
+typedef PageFetcher<T> =
+    Future<List<T>> Function({required int limit, required int offset});
 
 /// Scroll-driven pagination for the grid screens.
 ///

@@ -1,10 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
-import 'package:provider/provider.dart';
 
-import '../../services/api_client.dart';
-import '../../state/providers.dart';
-import '../../state/session.dart';
 import '../../design/ds.dart';
 
 import '../../l10n/app_text.dart';
@@ -83,15 +78,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Services below the shell come from Riverpod, authenticated with the
-    // current session. Keyed by the token: a new login gets a fresh scope
-    // instead of a container still holding the previous account's client.
-    final token = context.watch<Session>().token;
-    return ProviderScope(
-      key: ValueKey(token),
-      overrides: [apiClientProvider.overrideWithValue(ApiClient(token: token))],
-      child: _buildShell(context),
-    );
+    return _buildShell(context);
   }
 
   Widget _buildShell(BuildContext context) {

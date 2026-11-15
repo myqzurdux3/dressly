@@ -28,12 +28,15 @@ class LocaleController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final code = prefs.getString(_kLang);
     return LocaleController(
-        (code != null && languages.containsKey(code)) ? Locale(code) : null);
+      (code != null && languages.containsKey(code)) ? Locale(code) : null,
+    );
   }
 
   /// Pass null to follow the device language.
   Future<void> setLanguage(String? code) async {
-    final next = (code != null && languages.containsKey(code)) ? Locale(code) : null;
+    final next = (code != null && languages.containsKey(code))
+        ? Locale(code)
+        : null;
     if (next?.languageCode == _locale?.languageCode) return;
     _locale = next;
     notifyListeners();
