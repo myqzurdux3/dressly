@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:provider/provider.dart';
 
 import 'app.dart';
@@ -47,13 +48,15 @@ Future<Widget> bootstrap() async {
     }
   }
 
-  return MultiProvider(
-    providers: [
-      ChangeNotifierProvider.value(value: session),
-      ChangeNotifierProvider.value(value: theme),
-      ChangeNotifierProvider.value(value: locale),
-      ChangeNotifierProvider.value(value: genPrefs),
-    ],
-    child: const Dressly(),
+  return ProviderScope(
+    child: MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: session),
+        ChangeNotifierProvider.value(value: theme),
+        ChangeNotifierProvider.value(value: locale),
+        ChangeNotifierProvider.value(value: genPrefs),
+      ],
+      child: const Dressly(),
+    ),
   );
 }

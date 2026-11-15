@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
+import 'package:provider/provider.dart';
+
+import '../../services/api_client.dart';
+import '../../state/providers.dart';
+import '../../state/session.dart';
 
 import '../../l10n/app_text.dart';
 
@@ -59,6 +65,18 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Services below the shell come from Riverpod, authenticated with the
+    // current session. Keyed by the token: a new login gets a fresh scope
+    // instead of a container still holding the previous account's client.
+    final token = context.watch<Session>().token;
+    return ProviderScope(
+      key: ValueKey(token),
+      overrides: [apiClientProvider.overrideWithValue(ApiClient(token: token))],
+      child: _buildShell(context),
+    );
+  }
+
+  Widget _buildShell(BuildContext context) {
     return Scaffold(
       // A page is marked visited as soon as it starts coming into view, not
       // when the swipe settles: otherwise the page being swiped towards stays
@@ -80,15 +98,15 @@ class _HomeShellState extends State<HomeShell> {
           return false;
         },
         child: PageView(
-        controller: _controller,
-        onPageChanged: (i) => setState(() {
-          _index = i;
-          _visited.add(i);
-        }),
-        children: [
-          for (var i = 0; i < _pages.length; i++)
-            LazyPage(isActive: _visited.contains(i), builder: _pages[i]),
-        ],
+          controller: _controller,
+          onPageChanged: (i) => setState(() {
+            _index = i;
+            _visited.add(i);
+          }),
+          children: [
+            for (var i = 0; i < _pages.length; i++)
+              LazyPage(isActive: _visited.contains(i), builder: _pages[i]),
+          ],
         ),
       ),
       bottomNavigationBar: NavigationBar(
