@@ -22,6 +22,7 @@ export 'components/ds_rating.dart';
 export 'components/ds_scaffold.dart';
 export 'components/ds_search_field.dart';
 export 'components/ds_section_title.dart';
+export 'components/ds_sub_page.dart';
 export 'components/ds_tab_bar.dart';
 export 'garment_tones.dart';
 export 'ds_theme.dart';

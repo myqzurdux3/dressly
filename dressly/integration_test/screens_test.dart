@@ -166,5 +166,28 @@ void main() {
     await _settle(tester);
     await tester.binding.handlePopRoute();
     await _settle(tester);
+
+    // Settings and its sub-pages, from the Profile tab.
+    await tester.tap(tab(4));
+    await _settle(tester);
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _settle(tester);
+    await _shot(tester, '18_settings');
+    var n = 19;
+    for (final icon in const [
+      Icons.wb_sunny_outlined,
+      Icons.account_balance_wallet_outlined,
+      Icons.lock_outline,
+    ]) {
+      await tester.ensureVisible(find.byIcon(icon).first);
+      await _settle(tester);
+      await tester.tap(find.byIcon(icon).first);
+      await _settle(tester, const Duration(seconds: 3));
+      await _shot(tester, '${n++}_settings_sub');
+      await tester.binding.handlePopRoute();
+      await _settle(tester);
+    }
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
   });
 }

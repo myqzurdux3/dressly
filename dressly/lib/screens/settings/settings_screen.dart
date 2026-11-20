@@ -32,186 +32,148 @@ class SettingsScreen extends StatelessWidget {
     final theme = context.watch<ThemeController>();
     final locale = context.watch<LocaleController>();
     final genPrefs = context.watch<GenPrefsController>();
+    final ds = context.ds;
+    final c = ds.colors;
+    final muted = ds.typo.label.copyWith(color: c.textMuted);
+    void push(Widget page) =>
+        Navigator.push(context, MaterialPageRoute(builder: (_) => page));
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'settings.title'))),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _SectionLabel(tr(context, 'settings.appearance')),
-          const SizedBox(height: 8),
-          Text(
-            tr(context, 'settings.accentColor'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              for (final a in DsAccent.values)
-                _ColorSwatch(
-                  key: ValueKey('accent-${a.name}'),
-                  color: a.base,
-                  label: tr(context, 'accent.${a.name}'),
-                  selected: a == theme.accent,
-                  onTap: () => context.read<ThemeController>().setAccent(a),
+      body: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.only(bottom: ds.space.xl),
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                ds.space.gutter,
+                ds.space.s,
+                ds.space.gutter,
+                0,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: DsButton.icon(
+                  icon: Icons.arrow_back,
+                  semanticLabel: MaterialLocalizations.of(
+                    context,
+                  ).backButtonTooltip,
+                  onPressed: () => Navigator.maybePop(context),
                 ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            tr(context, 'settings.theme'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<ThemeMode>(
-            segments: [
-              ButtonSegment(
-                value: ThemeMode.light,
-                label: Text(tr(context, 'settings.themeLight')),
-                icon: const Icon(Icons.light_mode),
               ),
-              ButtonSegment(
-                value: ThemeMode.dark,
-                label: Text(tr(context, 'settings.themeDark')),
-                icon: const Icon(Icons.dark_mode),
-              ),
-              ButtonSegment(
-                value: ThemeMode.system,
-                label: Text(tr(context, 'settings.themeSystem')),
-                icon: const Icon(Icons.brightness_auto),
-              ),
-            ],
-            selected: {theme.mode},
-            onSelectionChanged: (s) =>
-                context.read<ThemeController>().setMode(s.first),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            tr(context, 'settings.language'),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: locale.languageCode.isEmpty
-                ? ''
-                : locale.languageCode,
-            isExpanded: true,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: [
-              DropdownMenuItem(
-                value: '',
-                child: Text(tr(context, 'settings.languageSystem')),
-              ),
-              ...LocaleController.languages.entries.map(
-                (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-              ),
-            ],
-            onChanged: (v) => context.read<LocaleController>().setLanguage(
-              (v == null || v.isEmpty) ? null : v,
             ),
-          ),
-          const Divider(height: 40),
-          _SectionLabel(tr(context, 'settings.generation')),
-          const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: genPrefs.highQualityOnly,
-            onChanged: (v) =>
-                context.read<GenPrefsController>().setHighQualityOnly(v),
-            title: Text(tr(context, 'settings.hqOnly')),
-            subtitle: Text(tr(context, 'settings.hqOnlyHint')),
-          ),
-          // Admin-only, and hidden rather than disabled: a screen you cannot
-          // open is noise on everybody else's settings page.
-          if (context.watch<Session>().user?.isAdmin == true) ...[
-            const Divider(height: 40),
-            _SectionLabel(tr(context, 'settings.admin')),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.account_balance_wallet_outlined),
-              title: Text(tr(context, 'settings.apiCredits')),
-              subtitle: Text(tr(context, 'settings.apiCreditsHint')),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ApiCreditsScreen()),
+            DsHeader(
+              line1: tr(context, 'settings.title1'),
+              line2: tr(context, 'settings.title2'),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DsSectionTitle(tr(context, 'settings.accentColor')),
+                  Wrap(
+                    spacing: ds.space.s,
+                    runSpacing: ds.space.s,
+                    children: [
+                      for (final a in DsAccent.values)
+                        _ColorSwatch(
+                          key: ValueKey('accent-${a.name}'),
+                          color: a.base,
+                          label: tr(context, 'accent.${a.name}'),
+                          selected: a == theme.accent,
+                          onTap: () =>
+                              context.read<ThemeController>().setAccent(a),
+                        ),
+                    ],
+                  ),
+                  DsSectionTitle(tr(context, 'settings.theme')),
+                  DsSegment<ThemeMode>(
+                    options: [
+                      (ThemeMode.light, tr(context, 'settings.themeLight')),
+                      (ThemeMode.dark, tr(context, 'settings.themeDark')),
+                      (ThemeMode.system, tr(context, 'settings.themeSystem')),
+                    ],
+                    value: theme.mode,
+                    onChanged: (m) =>
+                        context.read<ThemeController>().setMode(m),
+                  ),
+                  DsSectionTitle(tr(context, 'settings.language')),
+                  Wrap(
+                    spacing: ds.space.xs,
+                    runSpacing: ds.space.xs,
+                    children: [
+                      for (final (code, name) in [
+                        ('', tr(context, 'settings.languageSystem')),
+                        for (final e in LocaleController.languages.entries)
+                          (e.key, e.value),
+                      ])
+                        DsChip(
+                          label: name,
+                          selected: locale.languageCode == code,
+                          onTap: () => context
+                              .read<LocaleController>()
+                              .setLanguage(code.isEmpty ? null : code),
+                        ),
+                    ],
+                  ),
+                  DsSectionTitle(tr(context, 'settings.generation')),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: genPrefs.highQualityOnly,
+                    onChanged: (v) => context
+                        .read<GenPrefsController>()
+                        .setHighQualityOnly(v),
+                    title: Text(
+                      tr(context, 'settings.hqOnly'),
+                      style: ds.typo.bodyStrong,
+                    ),
+                    subtitle: Text(
+                      tr(context, 'settings.hqOnlyHint'),
+                      style: muted,
+                    ),
+                  ),
+                  DsInfoRow(
+                    icon: Icons.wb_sunny_outlined,
+                    title: tr(context, 'settings.weatherPlace'),
+                    detail: tr(context, 'settings.weatherPlaceHint'),
+                    onTap: () => push(const WeatherLocationScreen()),
+                  ),
+                  // Admin-only, and hidden rather than disabled: a screen you
+                  // cannot open is noise on everybody else's settings page.
+                  if (context.watch<Session>().user?.isAdmin == true) ...[
+                    DsSectionTitle(tr(context, 'settings.admin')),
+                    DsInfoRow(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: tr(context, 'settings.apiCredits'),
+                      detail: tr(context, 'settings.apiCreditsHint'),
+                      onTap: () => push(const ApiCreditsScreen()),
+                    ),
+                  ],
+                  DsSectionTitle(tr(context, 'settings.account')),
+                  DsInfoRow(
+                    icon: Icons.lock_outline,
+                    title: tr(context, 'settings.changePassword'),
+                    onTap: () => push(const ChangePasswordScreen()),
+                  ),
+                  DsInfoRow(
+                    icon: Icons.logout,
+                    title: tr(context, 'settings.logout'),
+                    danger: true,
+                    onTap: () => _logout(context),
+                  ),
+                  SizedBox(height: ds.space.xl),
+                  Text(
+                    'DRESSLY · VERSION 1.0.0 · © 2026',
+                    textAlign: TextAlign.center,
+                    style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+                  ),
+                ],
               ),
             ),
           ],
-          const Divider(height: 40),
-          _SectionLabel(tr(context, 'settings.weather')),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.wb_sunny_outlined),
-            title: Text(tr(context, 'settings.weatherPlace')),
-            subtitle: Text(tr(context, 'settings.weatherPlaceHint')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const WeatherLocationScreen()),
-            ),
-          ),
-          const Divider(height: 40),
-          _SectionLabel(tr(context, 'settings.account')),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.lock_outline),
-            title: Text(tr(context, 'settings.changePassword')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
-            ),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.logout, color: Colors.redAccent),
-            title: Text(
-              tr(context, 'settings.logout'),
-              style: const TextStyle(color: Colors.redAccent),
-            ),
-            onTap: () => _logout(context),
-          ),
-          const Divider(height: 40),
-          _SectionLabel(tr(context, 'settings.credits')),
-          const SizedBox(height: 8),
-          const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.checkroom),
-            title: Text('Dressly'),
-            subtitle: Text('Version 1.0.0'),
-          ),
-          const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.favorite_outline),
-            // TODO: replace with your real name/handle.
-            title: Text('Made by G...'),
-            subtitle: Text('© 2026'),
-          ),
-        ],
+        ),
       ),
     );
   }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Text(
-    text.toUpperCase(),
-    style: const TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.bold,
-      letterSpacing: 1,
-      color: Colors.grey,
-    ),
-  );
 }
 
 class _ColorSwatch extends StatelessWidget {
