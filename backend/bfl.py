@@ -528,9 +528,12 @@ def _submit(slug: str, prompt: str, image_data_uris: List[str], *, width: int, h
     if _is_flux3(slug):
         # One array. Grounding (web and image search on the prompt) is off:
         # the prompt describes the user's own photos, nothing to look up.
+        # Only the full model has the field: Klein answers 422
+        # "extra_forbidden" to it (seen live 2026-11-20).
         if refs:
             body["images"] = refs
-        body["grounding"] = False
+        if "klein" not in slug:
+            body["grounding"] = False
     else:
         # FLUX.2: input_image, input_image_2, ... up to the tier's cap.
         for i, uri in enumerate(refs):

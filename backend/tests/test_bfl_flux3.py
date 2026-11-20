@@ -34,6 +34,15 @@ def test_flux3_without_references_sends_no_images(monkeypatch):
     assert "images" not in sent["body"]
 
 
+def test_klein_gets_no_grounding_field(monkeypatch):
+    # The Klein endpoint rejects the field outright (422 extra_forbidden), so
+    # sending it turned every fast-tier render into a fall-through.
+    sent = _capture(monkeypatch)
+    bfl._submit("flux-3-image-klein", "p", ["a"], width=768, height=1024)
+    assert "grounding" not in sent["body"]
+    assert sent["body"]["images"] == ["a"]
+
+
 def test_flux2_keeps_numbered_fields(monkeypatch):
     sent = _capture(monkeypatch)
     uris = ["a", "b", "c"]
