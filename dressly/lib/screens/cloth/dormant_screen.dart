@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
+import '../wardrobe/wardrobe_card.dart' show swatchColorOf;
 import '../../models/cloth.dart';
 import '../../models/dormant.dart';
 import '../../widgets/app_image.dart';
@@ -184,85 +186,85 @@ class _DormantScreenState extends State<DormantScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'dormant.title'))),
-      body: RefreshIndicator(onRefresh: _load, child: _body()),
+    return DsSubPage(
+      title: tr(context, 'dormant.title'),
+      onRefresh: _load,
+      children: _body(),
     );
   }
 
-  Widget _body() {
+  List<Widget> _body() {
+    final ds = context.ds;
     if (_loading && _report == null) {
-      return const Center(child: CircularProgressIndicator());
+      return [
+        Padding(
+          padding: EdgeInsets.all(ds.space.xl),
+          child: Center(
+            child: CircularProgressIndicator(color: ds.colors.accent),
+          ),
+        ),
+      ];
     }
     if (_error != null) {
-      return ListView(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              '${tr(context, 'dormant.loadError')}: $_error',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      );
+      return [
+        DsError(
+          message: '${tr(context, 'dormant.loadError')}: $_error',
+          retryLabel: tr(context, 'common.retry'),
+          onRetry: _load,
+        ),
+      ];
     }
     final report = _report!;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        _header(report),
-        const SizedBox(height: 12),
-        _thresholdPicker(),
-        const SizedBox(height: 16),
-        if (report.isEmpty)
-          _emptyState(report)
-        else ...[
-          // Two groups, because they are two different problems: something
-          // never once put on is a buying mistake, something dropped months ago
-          // is a habit. Lumping them together made both harder to act on.
-          ..._section(tr(context, 'dormant.neverWornTitle'), report.neverWorn),
-          ..._section(
-            trPlural(context, 'dormant.staleTitle', report.months),
-            report.stale,
-          ),
-        ],
+    return [
+      _header(report),
+      SizedBox(height: ds.space.m),
+      _thresholdPicker(),
+      if (report.isEmpty)
+        _emptyState(report)
+      else ...[
+        // Two groups, because they are two different problems: something
+        // never once put on is a buying mistake, something dropped months ago
+        // is a habit. Lumping them together made both harder to act on.
+        ..._section(tr(context, 'dormant.neverWornTitle'), report.neverWorn),
+        ..._section(
+          trPlural(context, 'dormant.staleTitle', report.months),
+          report.stale,
+        ),
       ],
-    );
+    ];
   }
 
   /// A titled group of cards, or nothing at all when the group is empty — an
   /// empty heading reads as a loading failure.
   List<Widget> _section(String title, List<DormantCloth> items) {
     if (items.isEmpty) return const [];
+    final ds = context.ds;
     return [
-      Padding(
-        padding: const EdgeInsets.only(top: 4, bottom: 8),
-        child: Text(title, style: Theme.of(context).textTheme.titleSmall),
-      ),
-      for (final item in items) ...[
-        _DormantCard(
-          item: item,
-          onOpen: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ClothDetailScreen(clothId: item.cloth.id),
-              ),
-            );
-            if (mounted) await _load();
-          },
-          onWear: () => _wearToday(item),
-          onToggleExclude: () => _toggleExclude(item),
-          onDelete: () => _confirmDelete(item),
+      DsSectionTitle(title),
+      for (final item in items)
+        Padding(
+          padding: EdgeInsets.only(bottom: ds.space.s),
+          child: _DormantCard(
+            item: item,
+            onOpen: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ClothDetailScreen(clothId: item.cloth.id),
+                ),
+              );
+              if (mounted) await _load();
+            },
+            onWear: () => _wearToday(item),
+            onToggleExclude: () => _toggleExclude(item),
+            onDelete: () => _confirmDelete(item),
+          ),
         ),
-        const SizedBox(height: 10),
-      ],
     ];
   }
 
   Widget _header(DormantReport report) {
-    final theme = Theme.of(context);
+    final ds = context.ds;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -271,58 +273,40 @@ class _DormantScreenState extends State<DormantScreen> {
             'count': '${report.count}',
             'total': '${report.wardrobeCount}',
           }),
-          style: theme.textTheme.titleMedium,
+          style: ds.typo.title,
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: ds.space.xs / 2),
         Text(
           tr(context, 'dormant.subhead', {
             'percent': '${report.percentOfWardrobe}',
             'never': '${report.neverWornCount}',
             'stale': '${report.staleCount}',
-          }),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          }).toUpperCase(),
+          style: ds.typo.mono.copyWith(color: ds.colors.textMuted),
         ),
       ],
     );
   }
 
   Widget _thresholdPicker() {
-    return Wrap(
-      spacing: 8,
-      children: [
+    return DsSegment<int>(
+      options: [
         for (final m in _thresholds)
-          ChoiceChip(
-            label: Text(trPlural(context, 'dormant.months', m)),
-            selected: _months == m,
-            onSelected: _loading ? null : (_) => _setMonths(m),
-          ),
+          (m, trPlural(context, 'dormant.months', m)),
       ],
+      value: _months,
+      onChanged: (m) {
+        if (!_loading) _setMonths(m);
+      },
     );
   }
 
   Widget _emptyState(DormantReport report) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Column(
-        children: [
-          Icon(
-            Icons.check_circle_outline,
-            size: 48,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            report.wardrobeCount == 0
-                ? tr(context, 'dormant.emptyWardrobe')
-                : tr(context, 'dormant.nothingDormant'),
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      ),
+    return DsEmpty(
+      title: report.wardrobeCount == 0
+          ? tr(context, 'dormant.emptyWardrobe')
+          : tr(context, 'dormant.nothingDormant'),
+      message: '',
     );
   }
 }
@@ -353,89 +337,133 @@ class _DormantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ds = context.ds;
+    final c = ds.colors;
     final Cloth cloth = item.cloth;
     final url = cloth.thumbImageUrl;
-    return Card(
+    final tone = garmentTone(
+      swatchColorOf(cloth),
+      Theme.of(context).brightness,
+    );
+    return DsPressable(
+      onTap: onOpen,
+      child: Container(
+        padding: EdgeInsets.all(ds.space.s),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: ds.shape.cardRadius,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 80,
+              height: 96,
+              padding: EdgeInsets.all(ds.space.xs),
+              decoration: BoxDecoration(
+                color: tone.fill,
+                borderRadius: ds.shape.smallRadius,
+              ),
+              child: url == null
+                  ? Icon(Icons.checkroom, color: tone.onFill)
+                  : AppImage(url: url, fit: BoxFit.contain),
+            ),
+            SizedBox(width: ds.space.s),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    cloth.name.toUpperCase(),
+                    style: ds.typo.headline,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    (item.neverWorn
+                            ? tr(context, 'dormant.neverWorn', {
+                                'age': _age(context),
+                              })
+                            : tr(context, 'dormant.notWornSince', {
+                                'age': _age(context),
+                                'times': '${item.timesWorn}',
+                              }))
+                        .toUpperCase(),
+                    style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+                  ),
+                  SizedBox(height: ds.space.xs),
+                  Wrap(
+                    spacing: ds.space.xs,
+                    runSpacing: ds.space.xs,
+                    children: [
+                      _Action(
+                        icon: Icons.check,
+                        label: tr(context, 'dormant.wearToday'),
+                        onTap: onWear,
+                      ),
+                      _Action(
+                        icon: cloth.excludeFromAlgo
+                            ? Icons.visibility_outlined
+                            : Icons.block_outlined,
+                        label: cloth.excludeFromAlgo
+                            ? tr(context, 'dormant.includeAgain')
+                            : tr(context, 'dormant.exclude'),
+                        onTap: onToggleExclude,
+                      ),
+                      _Action(
+                        icon: Icons.delete_outline,
+                        label: tr(context, 'dormant.delete'),
+                        onTap: onDelete,
+                        danger: true,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small pill action under a card.
+class _Action extends StatelessWidget {
+  const _Action({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final ink = danger ? c.danger : c.text;
+    return Material(
+      color: c.surfaceHigh,
+      shape: const StadiumBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onOpen,
+        onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: EdgeInsets.symmetric(
+            horizontal: ds.space.s,
+            vertical: ds.space.xs,
+          ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 72,
-                  height: 72,
-                  child: url == null
-                      ? const ColoredBox(color: Colors.black12)
-                      : AppImage(url: url, fit: BoxFit.contain),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      cloth.name,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.neverWorn
-                          ? tr(context, 'dormant.neverWorn', {
-                              'age': _age(context),
-                            })
-                          : tr(context, 'dormant.notWornSince', {
-                              'age': _age(context),
-                              'times': '${item.timesWorn}',
-                            }),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 4,
-                      children: [
-                        TextButton.icon(
-                          onPressed: onWear,
-                          icon: const Icon(Icons.check, size: 18),
-                          label: Text(tr(context, 'dormant.wearToday')),
-                        ),
-                        TextButton.icon(
-                          onPressed: onToggleExclude,
-                          icon: Icon(
-                            cloth.excludeFromAlgo
-                                ? Icons.visibility_outlined
-                                : Icons.block_outlined,
-                            size: 18,
-                          ),
-                          label: Text(
-                            cloth.excludeFromAlgo
-                                ? tr(context, 'dormant.includeAgain')
-                                : tr(context, 'dormant.exclude'),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: onDelete,
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: Text(tr(context, 'dormant.delete')),
-                          style: TextButton.styleFrom(
-                            foregroundColor: theme.colorScheme.error,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              Icon(icon, size: 16, color: ink),
+              SizedBox(width: ds.space.xs / 2),
+              Text(label, style: ds.typo.label.copyWith(color: ink)),
             ],
           ),
         ),

@@ -246,5 +246,16 @@ void main() {
     );
     await _settle(tester, const Duration(seconds: 4));
     await _shot(tester, '24_model_review');
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+
+    // Never worn, from the Profile tab.
+    await tester.tap(tab(4));
+    await _settle(tester);
+    await tester.tap(find.byIcon(Icons.hourglass_empty));
+    await _settle(tester, const Duration(seconds: 4));
+    await _shot(tester, '25_dormant');
   });
 }
