@@ -26,6 +26,7 @@ from config import GENERATE_DEADLINE_S, OUTFITS_DIR
 from db import clamp_page, get_conn
 from routes_thumbs import thumb_url_for
 import imagesign
+import openrouter
 from ratelimit import generation_guard, worker_id
 from generator import (
     ALGOS,
@@ -925,6 +926,8 @@ def _fresh_start_tier(req_tier: Optional[str], person_path: Optional[str]) -> st
     (the first, fast tier); VTO try-on is the next step up via the "try a better
     model" button. An explicit higher tier (vto/pro/max) from the client is
     honoured. Regenerate/upgrade paths pass their own tier and don't use this."""
+    if req_tier == "openrouter" and openrouter.available():
+        return req_tier
     if req_tier in ("vto", "pro", "max"):
         return req_tier if (req_tier != "vto" or person_path) else "flex"
     return "flex"
@@ -1936,3 +1939,14 @@ def delete_outfit(outfit_id: int, user=Depends(get_current_user)):
         Path(path).unlink(missing_ok=True)
     audit_record(user, "outfit.delete", f"#{outfit_id}")
     return {"ok": True}
+
+@router.get("/providers/list")
+def list_providers(user=Depends(get_current_user)):
+    """Which optional image providers the server can use, so the settings
+    screen only offers OpenRouter when a key is configured."""
+    return {
+        "openrouter": {
+            "available": openrouter.available(),
+            "model": openrouter.model(),
+        },
+    }

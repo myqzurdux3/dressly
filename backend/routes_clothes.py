@@ -1624,6 +1624,17 @@ def accept_enhance(cloth_id: int, image_id: int, user=Depends(get_current_user))
         ).fetchone()
         if not img or not img["enhanced_path"] or not Path(img["enhanced_path"]).exists():
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No enhanced image to accept")
+        # Claim the candidate before the slow background removal below. Two
+        # accepts in flight (a double tap) used to both run to the end and
+        # clean up after each other; now the second one finds nothing to take.
+        claimed = conn.execute(
+            "UPDATE cloth_images SET enhance_status = 'accepting' "
+            "WHERE id = ? AND enhanced_path = ? "
+            "AND (enhance_status IS NULL OR enhance_status != 'accepting')",
+            (image_id, img["enhanced_path"]),
+        ).rowcount
+        if not claimed:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Already being accepted")
         old_original = img["original_path"]
         old_cutout = img["cutout_path"]
         new_original = img["enhanced_path"]
@@ -1634,7 +1645,10 @@ def accept_enhance(cloth_id: int, image_id: int, user=Depends(get_current_user))
         remove_background(new_original, str(new_cutout))
     except Exception as e:  # pragma: no cover
         log.warning("bg removal after enhance failed for image %s: %s", image_id, e)
-        new_cutout = Path(new_original)
+        # A copy, not an alias of the photo: every later "drop the old cutout"
+        # would otherwise delete the user's only copy of the picture.
+        new_cutout = canonical_cutout_path(new_original).with_suffix(".jpg")
+        new_cutout.write_bytes(Path(new_original).read_bytes())
 
     with get_conn() as conn:
         conn.execute(

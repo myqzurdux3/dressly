@@ -9,13 +9,18 @@ class AlgoMeta {
   final String label;
   final String needs; // 'none' | 'color' | 'brand'
   final String desc;
-  AlgoMeta({required this.id, required this.label, required this.needs, required this.desc});
+  AlgoMeta({
+    required this.id,
+    required this.label,
+    required this.needs,
+    required this.desc,
+  });
   factory AlgoMeta.fromJson(Map<String, dynamic> j) => AlgoMeta(
-        id: j['id'] as String,
-        label: j['label'] as String,
-        needs: j['needs'] as String,
-        desc: j['desc'] as String,
-      );
+    id: j['id'] as String,
+    label: j['label'] as String,
+    needs: j['needs'] as String,
+    desc: j['desc'] as String,
+  );
 }
 
 class OutfitsService {
@@ -68,14 +73,14 @@ class OutfitsService {
   /// Idempotent server-side: pressing share twice hands back the same link
   /// rather than leaving a second one open.
   Future<({String url, String expiresAt})> share(int outfitId) async {
-    final data = await _api.post('/outfits/$outfitId/share', const {})
-        as Map<String, dynamic>;
+    final data =
+        await _api.post('/outfits/$outfitId/share', const {})
+            as Map<String, dynamic>;
     return (
       url: apiUrl((data['path'] ?? '') as String),
       expiresAt: (data['expires_at'] ?? '') as String,
     );
   }
-
 
   /// Stop every link to this outfit working.
   Future<void> unshare(int outfitId) async {
@@ -101,7 +106,20 @@ class OutfitsService {
   Future<List<AlgoMeta>> listAlgos() async {
     final data = await _api.get('/outfits/algos/list') as Map<String, dynamic>;
     final list = data['algos'] as List;
-    return list.map((e) => AlgoMeta.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => AlgoMeta.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Whether the server has an OpenRouter key, and which model it uses.
+  Future<({bool available, String model})> openRouterInfo() async {
+    final data =
+        await _api.get('/outfits/providers/list') as Map<String, dynamic>;
+    final or = (data['openrouter'] ?? const {}) as Map<String, dynamic>;
+    return (
+      available: or['available'] == true,
+      model: (or['model'] ?? '') as String,
+    );
   }
 
   Future<Outfit> generate({
@@ -142,8 +160,11 @@ class OutfitsService {
 
   /// Swap the person an outfit is rendered on (or drop the model when both
   /// args are null/false) and re-render with the same clothes.
-  Future<Outfit> replaceModel(int outfitId,
-      {int? modelId, bool randomModel = false}) async {
+  Future<Outfit> replaceModel(
+    int outfitId, {
+    int? modelId,
+    bool randomModel = false,
+  }) async {
     final data = await _api.post('/outfits/$outfitId/replace-model', {
       if (modelId != null) 'model_id': modelId,
       'random_model': randomModel,
@@ -158,12 +179,14 @@ class OutfitsService {
     return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
   }
 
-  Future<Outfit> regenerate(int outfitId,
-      {String? tier,
-      bool? describeClothes,
-      String? addDetail,
-      String? imageMode,
-      List<int>? renderClothIds}) async {
+  Future<Outfit> regenerate(
+    int outfitId, {
+    String? tier,
+    bool? describeClothes,
+    String? addDetail,
+    String? imageMode,
+    List<int>? renderClothIds,
+  }) async {
     final data = await _api.post('/outfits/$outfitId/regenerate', {
       if (tier != null) 'tier': tier,
       if (describeClothes != null) 'describe_clothes': describeClothes,
@@ -176,18 +199,22 @@ class OutfitsService {
 
   /// Toggle (or set) favorite. Returns the new favorite state.
   Future<bool> toggleFavorite(int outfitId, {bool? isFavorite}) async {
-    final data = await _api.post('/outfits/$outfitId/favorite', {
-      if (isFavorite != null) 'is_favorite': isFavorite,
-    }) as Map<String, dynamic>;
+    final data =
+        await _api.post('/outfits/$outfitId/favorite', {
+              if (isFavorite != null) 'is_favorite': isFavorite,
+            })
+            as Map<String, dynamic>;
     return data['is_favorite'] as bool? ?? false;
   }
 
   /// Ban (or un-ban) this outfit's cloth combination from the generator.
   /// Returns the new blacklisted state.
   Future<bool> setBlacklist(int outfitId, {bool? blacklisted}) async {
-    final data = await _api.post('/outfits/$outfitId/blacklist', {
-      if (blacklisted != null) 'blacklisted': blacklisted,
-    }) as Map<String, dynamic>;
+    final data =
+        await _api.post('/outfits/$outfitId/blacklist', {
+              if (blacklisted != null) 'blacklisted': blacklisted,
+            })
+            as Map<String, dynamic>;
     return data['is_blacklisted'] as bool? ?? false;
   }
 
@@ -227,10 +254,22 @@ class OutfitsService {
       'layout': jsonEncode(layout),
     };
     final data = outfitId == null
-        ? await _api.multipartBytes('POST', '/outfits/manual',
-            fields: fields, fileField: 'image', bytes: png, filename: 'outfit.png')
-        : await _api.multipartBytes('PUT', '/outfits/$outfitId/manual',
-            fields: fields, fileField: 'image', bytes: png, filename: 'outfit.png');
+        ? await _api.multipartBytes(
+            'POST',
+            '/outfits/manual',
+            fields: fields,
+            fileField: 'image',
+            bytes: png,
+            filename: 'outfit.png',
+          )
+        : await _api.multipartBytes(
+            'PUT',
+            '/outfits/$outfitId/manual',
+            fields: fields,
+            fileField: 'image',
+            bytes: png,
+            filename: 'outfit.png',
+          );
     return Outfit.fromJson(data as Map<String, dynamic>);
   }
 
@@ -252,23 +291,27 @@ class OutfitsService {
     List<int> lockedClothIds = const [],
     bool fillGaps = false,
   }) async {
-    final data = await _api.post('/outfits/preview-algo', {
-      'algo': algo,
-      'min_score': minScore,
-      'color': color,
-      'brand': brand,
-      'tag': tag,
-      'count': count,
-      'model_id': modelId,
-      'weather': weather,
-      'categories': categories,
-      'locked_cloth_ids': lockedClothIds,
-      'fill_gaps': fillGaps,
-    }) as Map<String, dynamic>;
+    final data =
+        await _api.post('/outfits/preview-algo', {
+              'algo': algo,
+              'min_score': minScore,
+              'color': color,
+              'brand': brand,
+              'tag': tag,
+              'count': count,
+              'model_id': modelId,
+              'weather': weather,
+              'categories': categories,
+              'locked_cloth_ids': lockedClothIds,
+              'fill_gaps': fillGaps,
+            })
+            as Map<String, dynamic>;
     final sels = (data['selections'] as List)
-        .map((e) => (e as List)
-            .map((c) => AlgoClothPick.fromJson(c as Map<String, dynamic>))
-            .toList())
+        .map(
+          (e) => (e as List)
+              .map((c) => AlgoClothPick.fromJson(c as Map<String, dynamic>))
+              .toList(),
+        )
         .toList();
     return AlgoPreview(
       algo: data['algo'] as String,
@@ -283,12 +326,16 @@ class OutfitWears {
   final List<String> days;
   final int total;
   final int thisYear;
-  OutfitWears({required this.days, required this.total, required this.thisYear});
+  OutfitWears({
+    required this.days,
+    required this.total,
+    required this.thisYear,
+  });
   factory OutfitWears.fromJson(Map<String, dynamic> j) => OutfitWears(
-        days: (j['days'] as List?)?.map((e) => e.toString()).toList() ?? const [],
-        total: j['total'] as int? ?? 0,
-        thisYear: j['this_year'] as int? ?? 0,
-      );
+    days: (j['days'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+    total: j['total'] as int? ?? 0,
+    thisYear: j['this_year'] as int? ?? 0,
+  );
 }
 
 /// A single cloth picked by an algorithm (preview, no image generated yet).
@@ -308,13 +355,13 @@ class AlgoClothPick {
     required this.thumbUrl,
   });
   factory AlgoClothPick.fromJson(Map<String, dynamic> j) => AlgoClothPick(
-        id: j['id'] as int,
-        name: (j['name'] ?? '') as String,
-        brand: (j['brand'] ?? '') as String,
-        category: (j['category'] ?? '') as String,
-        role: (j['role'] ?? '') as String,
-        thumbUrl: (j['thumb_url'] ?? '') as String,
-      );
+    id: j['id'] as int,
+    name: (j['name'] ?? '') as String,
+    brand: (j['brand'] ?? '') as String,
+    category: (j['category'] ?? '') as String,
+    role: (j['role'] ?? '') as String,
+    thumbUrl: (j['thumb_url'] ?? '') as String,
+  );
 }
 
 /// Result of previewing an algorithm: the proposed selections (each a list of

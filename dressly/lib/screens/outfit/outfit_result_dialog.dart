@@ -579,6 +579,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
           'flex': 'Flex',
           'pro': 'Pro',
           'max': 'Max',
+          'openrouter': 'OpenRouter',
           'klein': 'Flex',
           'flux': 'Pro',
         }[_outfit.nextTier] ??

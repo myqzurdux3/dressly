@@ -20,7 +20,8 @@ String _bust(Outfit o, String path) {
   // render fetched the homepage HTML through the image pipeline.
   if (path.isEmpty) return '';
   final base = apiUrl(path);
-  final bust = '${o.id}-${o.modelTier}-${o.view}-${o.status}-${o.isMock ? 1 : 0}';
+  final bust =
+      '${o.id}-${o.modelTier}-${o.view}-${o.status}-${o.isMock ? 1 : 0}';
   final sep = base.contains('?') ? '&' : '?';
   return '$base${sep}b=$bust';
 }
@@ -31,18 +32,19 @@ class OutfitCloth {
   final String brand;
   final String category;
 
-  OutfitCloth(
-      {required this.id,
-      required this.name,
-      required this.brand,
-      this.category = ''});
+  OutfitCloth({
+    required this.id,
+    required this.name,
+    required this.brand,
+    this.category = '',
+  });
 
   factory OutfitCloth.fromJson(Map<String, dynamic> json) => OutfitCloth(
-        id: json['id'] as int,
-        name: (json['name'] ?? '') as String,
-        brand: (json['brand'] ?? '') as String,
-        category: (json['category'] ?? '') as String,
-      );
+    id: json['id'] as int,
+    name: (json['name'] ?? '') as String,
+    brand: (json['brand'] ?? '') as String,
+    category: (json['category'] ?? '') as String,
+  );
 }
 
 class Outfit {
@@ -134,36 +136,35 @@ class Outfit {
     bool? wornToday,
     String? status,
     String? error,
-  }) =>
-      Outfit(
-        id: id,
-        modelId: modelId,
-        modelName: modelName,
-        clothIds: clothIds,
-        cloths: cloths,
-        prompt: prompt,
-        generatedUrl: generatedUrl,
-        thumbUrl: thumbUrl,
-        previewUrl: previewUrl,
-        status: status ?? this.status,
-        isMock: isMock,
-        modelTier: modelTier,
-        modelSlug: modelSlug,
-        view: view,
-        linkedId: linkedId,
-        isFavorite: isFavorite ?? this.isFavorite,
-        wornToday: wornToday ?? this.wornToday,
-        nextTier: nextTier,
-        describeClothes: describeClothes,
-        imageMode: imageMode,
-        renderClothIds: renderClothIds,
-        isBlacklisted: isBlacklisted ?? this.isBlacklisted,
-        error: error ?? this.error,
-        createdAt: createdAt,
-        algoLabel: algoLabel,
-        kind: kind,
-        layout: layout,
-      );
+  }) => Outfit(
+    id: id,
+    modelId: modelId,
+    modelName: modelName,
+    clothIds: clothIds,
+    cloths: cloths,
+    prompt: prompt,
+    generatedUrl: generatedUrl,
+    thumbUrl: thumbUrl,
+    previewUrl: previewUrl,
+    status: status ?? this.status,
+    isMock: isMock,
+    modelTier: modelTier,
+    modelSlug: modelSlug,
+    view: view,
+    linkedId: linkedId,
+    isFavorite: isFavorite ?? this.isFavorite,
+    wornToday: wornToday ?? this.wornToday,
+    nextTier: nextTier,
+    describeClothes: describeClothes,
+    imageMode: imageMode,
+    renderClothIds: renderClothIds,
+    isBlacklisted: isBlacklisted ?? this.isBlacklisted,
+    error: error ?? this.error,
+    createdAt: createdAt,
+    algoLabel: algoLabel,
+    kind: kind,
+    layout: layout,
+  );
 
   factory Outfit.fromJson(Map<String, dynamic> json) {
     final clothsRaw = (json['cloths'] as List?) ?? [];
@@ -171,7 +172,8 @@ class Outfit {
       id: json['id'] as int,
       modelId: json['model_id'] as int?,
       modelName: json['model_name'] as String?,
-      clothIds: (json['cloth_ids'] as List?)?.map((e) => e as int).toList() ??
+      clothIds:
+          (json['cloth_ids'] as List?)?.map((e) => e as int).toList() ??
           const [],
       cloths: clothsRaw
           .map((e) => OutfitCloth.fromJson(e as Map<String, dynamic>))
@@ -191,9 +193,8 @@ class Outfit {
       nextTier: json['next_tier'] as String?,
       describeClothes: json['describe_clothes'] as bool? ?? false,
       imageMode: (json['image_mode'] ?? 'collage') as String,
-      renderClothIds: (json['render_cloth_ids'] as List?)
-              ?.map((e) => e as int)
-              .toList() ??
+      renderClothIds:
+          (json['render_cloth_ids'] as List?)?.map((e) => e as int).toList() ??
           const [],
       isBlacklisted: json['is_blacklisted'] as bool? ?? false,
       error: (json['error'] ?? '') as String,
@@ -207,40 +208,42 @@ class Outfit {
   /// A copy with a different linked opposite-view outfit (used when a back view
   /// is created for a front already shown in history).
   Outfit withLinkedId(int? linkedId) => Outfit(
-        id: id,
-        modelId: modelId,
-        modelName: modelName,
-        clothIds: clothIds,
-        cloths: cloths,
-        prompt: prompt,
-        generatedUrl: generatedUrl,
-        thumbUrl: thumbUrl,
-        previewUrl: previewUrl,
-        status: status,
-        isMock: isMock,
-        modelTier: modelTier,
-        modelSlug: modelSlug,
-        view: view,
-        linkedId: linkedId,
-        isFavorite: isFavorite,
-        wornToday: wornToday,
-        nextTier: nextTier,
-        describeClothes: describeClothes,
-        imageMode: imageMode,
-        renderClothIds: renderClothIds,
-        isBlacklisted: isBlacklisted,
-        error: error,
-        createdAt: createdAt,
-        algoLabel: algoLabel,
-        kind: kind,
-        layout: layout,
-      );
+    id: id,
+    modelId: modelId,
+    modelName: modelName,
+    clothIds: clothIds,
+    cloths: cloths,
+    prompt: prompt,
+    generatedUrl: generatedUrl,
+    thumbUrl: thumbUrl,
+    previewUrl: previewUrl,
+    status: status,
+    isMock: isMock,
+    modelTier: modelTier,
+    modelSlug: modelSlug,
+    view: view,
+    linkedId: linkedId,
+    isFavorite: isFavorite,
+    wornToday: wornToday,
+    nextTier: nextTier,
+    describeClothes: describeClothes,
+    imageMode: imageMode,
+    renderClothIds: renderClothIds,
+    isBlacklisted: isBlacklisted,
+    error: error,
+    createdAt: createdAt,
+    algoLabel: algoLabel,
+    kind: kind,
+    layout: layout,
+  );
 
-  String get tierLabel => const {
+  String get tierLabel =>
+      const {
         'vto': 'Try-On',
         'flex': 'Flex',
         'pro': 'Pro',
         'max': 'Max',
+        'openrouter': 'OpenRouter',
         'klein': 'Flex', // legacy rows
         'flux': 'Pro', // legacy rows
       }[modelTier] ??

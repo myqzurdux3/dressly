@@ -141,6 +141,10 @@ TIER_MAX_IMAGES = {tier: max_images_for(slug) for tier, slug in TIER_SLUGS.items
 # than this comment having to be believed.
 VTO_TIER = "vto"
 OUTFIT_TIER_ORDER = ("flex", VTO_TIER, "pro", "max")
+
+# Optional OpenRouter model, tried first when the app asks for it; the BFL
+# cascade (from flex) is the fallback. See openrouter.py.
+OPENROUTER_TIER = "openrouter"
 # A safe static prompt if the caller passes none (per the VTO prompting guide).
 DEFAULT_VTO_PROMPT = (
     "The person of image 1, maintaining exactly their face and pose, "
@@ -227,6 +231,7 @@ def generate(
     if not api_key():
         return _mock_image(prompt, width, height), start_tier, "mock"
     
+    use_openrouter = start_tier == OPENROUTER_TIER
     if start_tier not in TIER_ORDER:
         start_tier = "flex"
     start_idx = TIER_ORDER.index(start_tier)
@@ -240,6 +245,10 @@ def generate(
     # spinner. ``deadline_s`` stops starting new attempts past that point: the
     # caller would rather hear "it failed" than keep waiting.
     started = time.monotonic()
+    if use_openrouter:
+        got = _try_openrouter(prompt, prepared, width, height, errors)
+        if got is not None:
+            return got
     for tier in TIER_ORDER[start_idx:]:
         if deadline_s is not None and tier != TIER_ORDER[start_idx] \
                 and time.monotonic() - started >= deadline_s:
@@ -277,6 +286,8 @@ def next_outfit_tier(current: str, can_vto: bool = True) -> Optional[str]:
     ``flex -> vto -> pro -> max``. VTO is skipped for model-less outfits so
     those step ``flex -> pro -> max``. Returns None past the last tier."""
     order = [t for t in OUTFIT_TIER_ORDER if can_vto or t != VTO_TIER]
+    if current == OPENROUTER_TIER:
+        return "pro"
     if current not in order:
         return None
     i = order.index(current)
@@ -353,6 +364,10 @@ def generate_outfit(
     # spinner. The deadline does not abort a tier already in flight — it stops
     # STARTING another one once the budget is spent.
     started = time.monotonic()
+    if start_tier == OPENROUTER_TIER:
+        got = _try_openrouter(prompt, prepared, width, height, errors)
+        if got is not None:
+            return got
     for tier in tiers:
         if deadline_s is not None and tier != tiers[0] \
                 and time.monotonic() - started >= deadline_s:
@@ -515,6 +530,36 @@ def _record_usage(slug: str, ok: bool, payload: Optional[dict] = None) -> None:
     except Exception:  # noqa: BLE001 - metering must never break a render
         pass
 
+
+
+def _try_openrouter(prompt: str, prepared: List[str], width: int, height: int,
+                    errors: List[str]) -> Optional[tuple]:
+    """One OpenRouter render, or None (with the reason in ``errors``) so the
+    caller falls back to the BFL tiers."""
+    import openrouter
+    slug = f"openrouter:{openrouter.model()}"
+    try:
+        raw, mid, cost = openrouter.generate(prompt, prepared,
+                                             width=width, height=height)
+    except Exception as e:  # noqa: BLE001 - fall back to BFL
+        errors.append(f"{OPENROUTER_TIER}({slug}): {e}")
+        _record_openrouter(slug, ok=False)
+        return None
+    _record_openrouter(slug, ok=True, cost_usd=cost)
+    return raw, OPENROUTER_TIER, f"openrouter:{mid}"
+
+
+def _record_openrouter(slug: str, ok: bool, cost_usd: Optional[float] = None) -> None:
+    if usage_recorder is None:
+        return
+    try:
+        extra = {}
+        if cost_usd is not None:
+            # The usage table counts BFL credits (1 credit = $0.01).
+            extra["cost"] = cost_usd * 100
+        usage_recorder(slug=slug, tier=OPENROUTER_TIER, ok=ok, **extra)
+    except Exception:  # noqa: BLE001
+        pass
 
 def _submit(slug: str, prompt: str, image_data_uris: List[str], *, width: int, height: int) -> dict:
     # safety_tolerance was never sent, so every call used the provider's

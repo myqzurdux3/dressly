@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app.dart';
 import '../../design/ds.dart';
 import 'package:provider/provider.dart';
 
@@ -131,6 +132,7 @@ class SettingsScreen extends StatelessWidget {
                       style: muted,
                     ),
                   ),
+                  const _OpenRouterSwitch(),
                   DsInfoRow(
                     icon: Icons.wb_sunny_outlined,
                     title: tr(context, 'settings.weatherPlace'),
@@ -172,6 +174,53 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "Use OpenRouter" — offered only when the server has a key for it.
+class _OpenRouterSwitch extends StatefulWidget {
+  const _OpenRouterSwitch();
+
+  @override
+  State<_OpenRouterSwitch> createState() => _OpenRouterSwitchState();
+}
+
+class _OpenRouterSwitchState extends State<_OpenRouterSwitch> {
+  late final Future<({bool available, String model})> _info = outfitsServiceOf(
+    context,
+  ).openRouterInfo();
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    final prefs = context.watch<GenPrefsController>();
+    final muted = ds.typo.label.copyWith(color: ds.colors.textMuted);
+    return FutureBuilder<({bool available, String model})>(
+      future: _info,
+      builder: (context, snap) {
+        final info = snap.data;
+        final available = info?.available ?? false;
+        return SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: available && prefs.useOpenRouter,
+          onChanged: available
+              ? (v) => context.read<GenPrefsController>().setUseOpenRouter(v)
+              : null,
+          title: Text(
+            tr(context, 'settings.openRouter'),
+            style: ds.typo.bodyStrong,
+          ),
+          subtitle: Text(
+            info == null
+                ? tr(context, 'settings.openRouterChecking')
+                : available
+                ? tr(context, 'settings.openRouterHint', {'model': info.model})
+                : tr(context, 'settings.openRouterOff'),
+            style: muted,
+          ),
+        );
+      },
     );
   }
 }

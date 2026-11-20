@@ -161,6 +161,18 @@ BFL_MODEL_MAX = os.environ.get("BFL_MODEL_MAX", "flux-2-max")
 # nothing but the path changes.
 # https://docs.bfl.ml/api-reference/models/virtual-try-on-v2
 BFL_MODEL_VTO = os.environ.get("BFL_MODEL_VTO", "flux-tools/vto-v2")
+
+# OpenRouter (optional second provider). With a key set, the app can ask for
+# the "openrouter" tier: one call to OPENROUTER_MODEL, then the BFL cascade if
+# it fails. Any image model from https://openrouter.ai/api/v1/images/models
+# that takes input_references works.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_BASE_URL = os.environ.get(
+    "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_MODEL = os.environ.get(
+    "OPENROUTER_MODEL", "google/gemini-3.1-flash-image")
+OPENROUTER_MAX_IMAGES = int(os.environ.get("OPENROUTER_MAX_IMAGES", "8"))
+OPENROUTER_TIMEOUT_S = float(os.environ.get("OPENROUTER_TIMEOUT_S", "180"))
 BFL_POLL_TIMEOUT_S = int(os.environ.get("BFL_POLL_TIMEOUT_S", "60"))
 BFL_POLL_INTERVAL_S = float(os.environ.get("BFL_POLL_INTERVAL_S", "2"))
 # Connect/read timeout per HTTP call. A dead/wrong endpoint should fail fast

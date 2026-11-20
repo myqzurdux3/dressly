@@ -11,20 +11,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// honours an explicit `pro` start and cascades pro -> max from there.
 class GenPrefsController extends ChangeNotifier {
   static const _kHqOnly = 'gen_high_quality_only';
+  static const _kOpenRouter = 'gen_use_openrouter';
 
   bool _highQualityOnly;
 
-  GenPrefsController([this._highQualityOnly = false]);
+  /// Try the server's OpenRouter model first (falls back to the BFL cascade).
+  bool _useOpenRouter;
+
+  GenPrefsController([
+    this._highQualityOnly = false,
+    this._useOpenRouter = false,
+  ]);
+
+  bool get useOpenRouter => _useOpenRouter;
 
   bool get highQualityOnly => _highQualityOnly;
 
   /// The starting tier to request for a fresh outfit render. 'pro' skips flex +
   /// vto (pro -> max); 'flex' is the normal full cascade.
-  String get startTier => _highQualityOnly ? 'pro' : 'flex';
+  String get startTier =>
+      _useOpenRouter ? 'openrouter' : (_highQualityOnly ? 'pro' : 'flex');
 
   static Future<GenPrefsController> load() async {
     final prefs = await SharedPreferences.getInstance();
-    return GenPrefsController(prefs.getBool(_kHqOnly) ?? false);
+    return GenPrefsController(
+      prefs.getBool(_kHqOnly) ?? false,
+      prefs.getBool(_kOpenRouter) ?? false,
+    );
   }
 
   Future<void> setHighQualityOnly(bool value) async {
@@ -33,5 +46,13 @@ class GenPrefsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kHqOnly, value);
+  }
+
+  Future<void> setUseOpenRouter(bool value) async {
+    if (value == _useOpenRouter) return;
+    _useOpenRouter = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kOpenRouter, value);
   }
 }
