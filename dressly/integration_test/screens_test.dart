@@ -17,6 +17,7 @@ import 'package:dressly/design/ds.dart';
 import 'package:dressly/screens/wardrobe/wardrobe_card.dart';
 import 'package:dressly/widgets/outfit_history_card.dart';
 import 'package:flutter/material.dart';
+import 'package:dressly/widgets/model_chip.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -145,7 +146,8 @@ void main() {
     }
     await _settle(tester);
     await tester.tap(
-        find.descendant(of: seg, matching: find.byType(DsChip)).at(1));
+      find.descendant(of: seg, matching: find.byType(DsChip)).at(1),
+    );
     await _settle(tester);
     await tester.tap(find.byIcon(Icons.brush));
     await _settle(tester, const Duration(seconds: 3));
@@ -189,5 +191,50 @@ void main() {
     }
     await tester.binding.handlePopRoute();
     await _settle(tester);
+
+    // Models: list, one model, the add form — from the Create tab.
+    await tester.tap(tab(1));
+    await _settle(tester);
+    // The builder step left this tab on Manual: back to AI, where the
+    // model row lives.
+    final modeSeg = find.byType(DsSegment<String>).first;
+    await tester.ensureVisible(modeSeg);
+    await _settle(tester);
+    await tester.tap(
+      find.descendant(of: modeSeg, matching: find.byType(DsChip)).at(0),
+    );
+    await _settle(tester);
+    // The chip row is a lazy horizontal list: swipe it until "Manage" exists.
+    final manage = find.text('Manage');
+    final chips = find
+        .ancestor(
+          of: find.byType(ModelChip).first,
+          matching: find.byType(ListView),
+        )
+        .first;
+    for (var i = 0; i < 12 && manage.evaluate().isEmpty; i++) {
+      await tester.drag(chips, const Offset(-300, 0));
+      await _settle(tester);
+    }
+    await tester.ensureVisible(manage);
+    await _settle(tester);
+    await tester.tap(manage);
+    await _settle(tester, const Duration(seconds: 3));
+    await _shot(tester, '22_models');
+    await tester.tap(find.byIcon(Icons.add).first);
+    await _settle(tester);
+    await _shot(tester, '23_model_add');
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(GridView),
+            matching: find.byType(DsPressable),
+          )
+          .first,
+    );
+    await _settle(tester, const Duration(seconds: 4));
+    await _shot(tester, '24_model_review');
   });
 }

@@ -1,9 +1,6 @@
 lib/screens/auth/login_screen.dart
 lib/screens/auth/signup_screen.dart
 lib/screens/cloth/dormant_screen.dart
-lib/screens/models/add_model_screen.dart
-lib/screens/models/model_review_screen.dart
-lib/screens/models/models_screen.dart
 lib/widgets/app_image.dart
 lib/widgets/brand_logo.dart
 lib/widgets/filter_sheet.dart

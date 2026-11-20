@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_text.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../models/model.dart';
 import '../../widgets/app_image.dart';
 import 'add_model_screen.dart';
@@ -54,11 +55,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
         content: Text(tr(context, 'models.deleteConfirm')),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr(context, 'common.cancel'))),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr(context, 'common.cancel')),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(tr(context, 'common.delete'))),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(tr(context, 'common.delete')),
+          ),
         ],
       ),
     );
@@ -68,8 +71,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
         _reload();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('${tr(context, 'models.deleteFailed')}: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${tr(context, 'models.deleteFailed')}: $e'),
+            ),
+          );
         }
       }
     }
@@ -77,147 +83,153 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'models.title'))),
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: TextField(
-            controller: _searchCtrl,
-            decoration: InputDecoration(
-              hintText: tr(context, 'models.searchHint'),
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchCtrl.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchCtrl.clear();
-                        _reload();
-                        setState(() {});
-                      },
+    final ds = context.ds;
+    final c = ds.colors;
+    return DsSubPage(
+      title: tr(context, 'models.title'),
+      onRefresh: () async => _reload(),
+      actions: [
+        DsButton.icon(
+          icon: Icons.add,
+          semanticLabel: tr(context, 'models.addTitle'),
+          onPressed: _add,
+        ),
+      ],
+      children: [
+        DsSearchField(
+          controller: _searchCtrl,
+          hint: tr(context, 'models.searchHint'),
+          clearLabel: tr(context, 'common.clear'),
+          onChanged: (v) {
+            // Cleared with the cross: list everything again.
+            if (v.isEmpty) _reload();
+            setState(() {});
+          },
+          onSubmitted: (_) => _reload(),
+        ),
+        SizedBox(height: ds.space.m),
+        FutureBuilder<List<ModelEntity>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return Padding(
+                padding: EdgeInsets.all(ds.space.xl),
+                child: Center(
+                  child: CircularProgressIndicator(color: c.accent),
+                ),
+              );
+            }
+            // A failed request is not an empty list of models: say so,
+            // instead of showing the "nothing matches" state.
+            if (snap.hasError) {
+              return DsError(
+                message: '${tr(context, 'detail.error')}: ${snap.error}',
+                retryLabel: tr(context, 'common.retry'),
+                onRetry: _reload,
+              );
+            }
+            final items = snap.data ?? const [];
+            if (items.isEmpty) {
+              return DsEmpty(
+                title: tr(context, 'models.noMatch'),
+                message: '',
+                actionLabel: tr(context, 'models.addTitle'),
+                onAction: _add,
+              );
+            }
+            return GridView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: ds.space.s,
+                mainAxisSpacing: ds.space.s,
+                childAspectRatio: 0.75,
+              ),
+              itemCount: items.length,
+              itemBuilder: (context, i) => _ModelCard(
+                model: items[i],
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ModelReviewScreen(modelId: items[i].id),
                     ),
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                  );
+                  _reload();
+                },
+                onDelete: () => _delete(items[i]),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _ModelCard extends StatelessWidget {
+  const _ModelCard({
+    required this.model,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final ModelEntity model;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    return DsPressable(
+      onTap: onTap,
+      onLongPress: onDelete,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: ds.shape.cardRadius,
+        ),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: model.thumbImageUrl == null
+                      ? Icon(Icons.person, size: 64, color: c.textMuted)
+                      : AppImage.path(
+                          model.thumbImageUrl,
+                          cacheKey: model.thumbImageUrl,
+                          fit: BoxFit.cover,
+                          memWidth: 300,
+                        ),
+                ),
+                Padding(
+                  padding: EdgeInsets.all(ds.space.s),
+                  child: Text(
+                    model.name.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ds.typo.headline,
+                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              top: ds.space.xs,
+              right: ds.space.xs,
+              child: DsButton.icon(
+                icon: Icons.delete_outline,
+                semanticLabel: tr(context, 'models.deleteTooltip'),
+                onPressed: onDelete,
               ),
             ),
-            onSubmitted: (_) => _reload(),
-            onChanged: (_) => setState(() {}),
-            textInputAction: TextInputAction.search,
-          ),
+          ],
         ),
-        Expanded(
-          child: FutureBuilder<List<ModelEntity>>(
-            future: _future,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              // A failed request is not an empty wardrobe of models: say so,
-              // instead of showing the "nothing matches" state.
-              if (snap.hasError) {
-                return Center(
-                    child: Text('${tr(context, 'detail.error')}: ${snap.error}'));
-              }
-              final items = snap.data ?? const [];
-              if (items.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.person_outline, size: 64, color: Colors.grey),
-                      const SizedBox(height: 12),
-                      Text(tr(context, 'models.noMatch'),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey)),
-                    ]),
-                  ),
-                );
-              }
-              return GridView.builder(
-                padding: const EdgeInsets.all(8),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 0.8,
-                ),
-                itemCount: items.length,
-                itemBuilder: (context, i) {
-                  final m = items[i];
-                  return GestureDetector(
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => ModelReviewScreen(modelId: m.id)),
-                      );
-                      _reload();
-                    },
-                    onLongPress: () => _delete(m),
-                    child: Stack(children: [
-                      Card(
-                        clipBehavior: Clip.antiAlias,
-                        margin: EdgeInsets.zero,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              child: Container(
-                                color: Colors.blueGrey.shade900,
-                                child: m.thumbImageUrl == null
-                                    ? const Icon(Icons.person, size: 64, color: Colors.white38)
-                                    : AppImage.path(
-                                        m.thumbImageUrl,
-                                        cacheKey: m.thumbImageUrl,
-                                        fit: BoxFit.contain,
-                                        memWidth: 300,
-                                      ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Text(
-                                m.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: DecoratedBox(
-                          decoration: const BoxDecoration(
-                              color: Colors.black54, shape: BoxShape.circle),
-                          child: IconButton(
-                            iconSize: 20,
-                            padding: const EdgeInsets.all(6),
-                            constraints: const BoxConstraints(),
-                            visualDensity: VisualDensity.compact,
-                            tooltip: tr(context, 'models.deleteTooltip'),
-                            icon: const Icon(Icons.delete_outline,
-                                color: Colors.redAccent),
-                            onPressed: () => _delete(m),
-                          ),
-                        ),
-                      ),
-                    ]),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ]),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _add,
-        icon: const Icon(Icons.add),
-        label: Text(tr(context, 'models.addTitle')),
       ),
     );
   }
