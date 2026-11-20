@@ -12,13 +12,15 @@ class OutfitHistoryCard extends StatelessWidget {
     super.key,
     required this.outfit,
     required this.onTap,
-    required this.onDelete,
+    this.onDelete,
     required this.onToggleFavorite,
   });
 
   final Outfit outfit;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
+
+  /// Null hides the delete button (the Saved tab only unfavourites).
+  final VoidCallback? onDelete;
   final VoidCallback onToggleFavorite;
 
   @override
@@ -58,15 +60,16 @@ class OutfitHistoryCard extends StatelessWidget {
                 fit: BoxFit.cover,
                 memWidth: 600,
               ),
-            Positioned(
-              top: ds.space.s,
-              left: ds.space.s,
-              child: _RoundIcon(
-                icon: Icons.delete_outline,
-                label: tr(context, 'common.delete'),
-                onTap: onDelete,
+            if (onDelete != null)
+              Positioned(
+                top: ds.space.s,
+                left: ds.space.s,
+                child: _RoundIcon(
+                  icon: Icons.delete_outline,
+                  label: tr(context, 'common.delete'),
+                  onTap: onDelete!,
+                ),
               ),
-            ),
             if (!failed)
               Positioned(
                 top: ds.space.s,

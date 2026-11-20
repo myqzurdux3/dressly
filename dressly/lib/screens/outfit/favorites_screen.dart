@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_text.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../models/outfit.dart';
 import '../../state/paged_list.dart';
-import '../../widgets/app_image.dart';
+import '../../widgets/outfit_history_card.dart';
 import '../../widgets/outfit_sort_sheet.dart';
 import '../../widgets/paged_grid.dart';
 import 'outfit_result_dialog.dart';
@@ -62,59 +63,68 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(tr(context, 'fav.title')),
-        actions: [
-          IconButton(
-            tooltip: tr(context, 'fav.sort'),
-            icon: Icon(
-              Icons.sort,
-              color: _query.isActive
-                  ? Theme.of(context).colorScheme.primary
-                  : null,
-            ),
-            onPressed: _openSort,
-          ),
-        ],
-      ),
-      body: PagedGrid<Outfit>(
-        controller: _outfits,
-        onRefresh: _reload,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
-          childAspectRatio: 0.85,
+    final ds = context.ds;
+    Widget header(int _) => DsHeader(
+      line1: tr(context, 'fav.title1'),
+      line2: tr(context, 'fav.title2'),
+      // A dot when a sort or filter is on, so it is not forgotten.
+      trailing: Badge(
+        isLabelVisible: _query.isActive,
+        backgroundColor: ds.colors.accent,
+        smallSize: 10,
+        child: DsButton.icon(
+          icon: Icons.sort,
+          semanticLabel: tr(context, 'fav.sort'),
+          onPressed: _openSort,
         ),
-        emptyBuilder: (context) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      ),
+    );
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: PagedGrid<Outfit>(
+          controller: _outfits,
+          onRefresh: _reload,
+          header: header,
+          padding: EdgeInsets.fromLTRB(
+            ds.space.gutter,
+            0,
+            ds.space.gutter,
+            ds.space.xl,
+          ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: ds.space.s,
+            mainAxisSpacing: ds.space.s,
+            childAspectRatio: 0.8,
+          ),
+          emptyBuilder: (context) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.favorite_border, size: 64, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(tr(context, 'fav.empty')),
-              const SizedBox(height: 4),
-              Text(
-                tr(context, 'fav.emptyHint'),
-                style: const TextStyle(color: Colors.grey),
+              header(0),
+              Expanded(
+                child: DsEmpty(
+                  title: tr(context, 'fav.empty'),
+                  message: tr(context, 'fav.emptyHint'),
+                ),
               ),
             ],
           ),
-        ),
-        itemBuilder: (context, outfit) => _FavCard(
-          outfit: outfit,
-          onTap: () => _showDetail(outfit),
-          onUnfavorite: () async {
-            try {
-              await outfitsServiceOf(
-                context,
-              ).toggleFavorite(outfit.id, isFavorite: false);
-              // This screen only ever shows favourites, so the card is simply
-              // gone — no need to refetch every page to learn that.
-              _outfits.removeItem((o) => o.id == outfit.id);
-            } catch (_) {}
-          },
+          itemBuilder: (context, outfit) => OutfitHistoryCard(
+            key: ValueKey(outfit.id),
+            outfit: outfit,
+            onTap: () => _showDetail(outfit),
+            onToggleFavorite: () async {
+              try {
+                await outfitsServiceOf(
+                  context,
+                ).toggleFavorite(outfit.id, isFavorite: false);
+                // This screen only ever shows favourites, so the card is
+                // simply gone — no need to refetch every page to learn that.
+                _outfits.removeItem((o) => o.id == outfit.id);
+              } catch (_) {}
+            },
+          ),
         ),
       ),
     );
@@ -129,120 +139,5 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       builder: (_) => OutfitResultDialog(outfit: o, onChanged: (_) {}),
     );
     if (mounted) _reload();
-  }
-}
-
-class _FavCard extends StatelessWidget {
-  const _FavCard({
-    required this.outfit,
-    required this.onTap,
-    required this.onUnfavorite,
-  });
-  final Outfit outfit;
-  final VoidCallback onTap;
-  final VoidCallback onUnfavorite;
-
-  @override
-  Widget build(BuildContext context) {
-    final failed = outfit.status == 'failed';
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        margin: EdgeInsets.zero,
-        child: Stack(
-          children: [
-            if (failed)
-              Container(
-                color: Colors.red.shade900,
-                child: const Center(
-                  child: Icon(Icons.error_outline, color: Colors.white),
-                ),
-              )
-            else
-              Positioned.fill(
-                child: AppImage(
-                  // Grid card: take the server thumbnail rather than the
-                  // full-resolution render.
-                  url: outfitThumbUrl(outfit),
-                  cacheKey: outfitThumbUrl(outfit),
-                  fit: BoxFit.cover,
-                  memWidth: 600,
-                ),
-              ),
-            Positioned(
-              top: 6,
-              left: 6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  outfit.view == 'back'
-                      ? tr(context, 'card.back')
-                      : tr(context, 'card.front'),
-                  style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 4,
-              right: 4,
-              child: GestureDetector(
-                onTap: onUnfavorite,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.favorite,
-                    color: Colors.redAccent,
-                    size: 22,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    stops: [0.0, 0.75, 1.0],
-                    colors: [
-                      Colors.black87,
-                      Colors.black54,
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-                child: Text(
-                  [
-                    if (outfit.modelName != null) outfit.modelName!,
-                    if (outfit.cloths.isNotEmpty)
-                      outfit.cloths.map((c) => c.name).join(', '),
-                  ].join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, color: Colors.white),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

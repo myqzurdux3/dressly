@@ -4,7 +4,6 @@ lib/screens/cloth/dormant_screen.dart
 lib/screens/models/add_model_screen.dart
 lib/screens/models/model_review_screen.dart
 lib/screens/models/models_screen.dart
-lib/screens/outfit/favorites_screen.dart
 lib/screens/profile/profile_screen.dart
 lib/screens/settings/api_credits_screen.dart
 lib/screens/settings/change_password_screen.dart

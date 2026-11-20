@@ -574,6 +574,8 @@ const Map<String, Map<String, String>> _strings = {
     // Favorites
     'fav.title': 'Saved outfits',
     'fav.sort': 'Sort',
+    'fav.title1': 'Saved',
+    'fav.title2': 'outfits',
     'fav.empty': 'No saved outfits yet.',
     'fav.emptyHint': 'Tap the heart on an outfit to save it here.',
     // Cloth picker
@@ -1333,6 +1335,8 @@ const Map<String, Map<String, String>> _strings = {
     'sort.noModel': 'Sans modèle',
     'fav.title': 'Tenues enregistrées',
     'fav.sort': 'Trier',
+    'fav.title1': 'Tenues',
+    'fav.title2': 'favorites',
     'fav.empty': 'Aucune tenue enregistrée.',
     'fav.emptyHint': 'Appuyez sur le cœur d\'une tenue pour l\'enregistrer ici.',
     'picker.selected': 'sélectionné(s)',
