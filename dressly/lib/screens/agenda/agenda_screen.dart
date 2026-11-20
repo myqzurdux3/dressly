@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/agenda.dart';
 import '../../models/outfit.dart';
 import '../../widgets/app_image.dart';
 import '../outfit/outfit_result_dialog.dart';
 import 'week_plan_screen.dart';
-import '../../theme/tones.dart';
 
 /// Plan which outfit to wear on which day. Each entry can reference a generated
 /// outfit; marking it worn stamps last_worn_at on that outfit's clothes (which
@@ -26,6 +26,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
   /// action the button does, so showing both puts "Planifier une tenue" on the
   /// screen twice.
   bool _empty = false;
+
+  /// Day picked in the strip; null shows every upcoming day.
+  DateTime? _day;
 
   @override
   void initState() {
@@ -76,17 +79,20 @@ class _AgendaScreenState extends State<AgendaScreen> {
   /// from the empty state: an unlabelled icon in a corner was not found.
   Future<void> _openWeekPlanner() async {
     final saved = await Navigator.push<bool>(
-        context, MaterialPageRoute(builder: (_) => const WeekPlanScreen()));
+      context,
+      MaterialPageRoute(builder: (_) => const WeekPlanScreen()),
+    );
     if (saved == true && mounted) _reload();
   }
 
-  Future<void> _schedule() async {
+  /// [date] given (a day picked in the strip): no date picker.
+  Future<void> _schedule({DateTime? date}) async {
     // Resolve services up front so they aren't read from `context` after the
     // date/sheet await gaps.
     final outfitsSvc = outfitsServiceOf(context);
     final agendaSvc = agendaServiceOf(context);
     final now = DateTime.now();
-    final date = await showDatePicker(
+    date ??= await showDatePicker(
       context: context,
       initialDate: now,
       firstDate: DateTime(now.year - 1),
@@ -105,7 +111,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     final result = await showModalBottomSheet<_ScheduleResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
       builder: (_) => _ScheduleSheet(outfits: outfits),
     );
     if (result == null) return;
@@ -151,141 +156,211 @@ class _AgendaScreenState extends State<AgendaScreen> {
     if (mounted) _reload();
   }
 
-  Widget _sectionTitle(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-        child: Text(t.toUpperCase(),
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-                color: secondaryText(context))),
-      );
+  /// Next seven days for the strip, each marked when something is planned.
+  List<DsDay> _week(BuildContext context, List<AgendaEntry> items) {
+    final names = tr(context, 'weekday.short').split(',');
+    final now = DateTime.now();
+    final planned = {for (final e in items) e.day};
+    return [
+      for (var i = 0; i < 7; i++)
+        () {
+          final d = DateTime(now.year, now.month, now.day + i);
+          return DsDay(
+            date: d,
+            weekday: names.length == 7 ? names[d.weekday - 1] : '',
+            hasPlan: planned.contains(_iso(d)),
+          );
+        }(),
+    ];
+  }
+
+  static String _iso(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   /// Renders entries grouped by day, with a day header before each new day.
   List<Widget> _dayGroups(List<AgendaEntry> list) {
+    final ds = context.ds;
     final out = <Widget>[];
     String? lastDay;
     for (final e in list) {
       if (e.day != lastDay) {
-        out.add(Padding(
-          padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-          child: Text(_fmtDay(context, e.day),
-              style:
-                  const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        ));
+        out.add(
+          Padding(
+            padding: EdgeInsets.only(top: ds.space.m, bottom: ds.space.xs),
+            child: Text(
+              _fmtDay(context, e.day).toUpperCase(),
+              style: ds.typo.mono.copyWith(color: ds.colors.textMuted),
+            ),
+          ),
+        );
         lastDay = e.day;
       }
-      out.add(_AgendaCard(
-        entry: e,
-        onOpen: e.outfit == null ? null : () => _openOutfit(e.outfit!),
-        onToggleWorn: () => _markWorn(e),
-        onDelete: () => _delete(e),
-      ));
+      out.add(
+        Padding(
+          padding: EdgeInsets.only(bottom: ds.space.s),
+          child: _AgendaCard(
+            entry: e,
+            onOpen: e.outfit == null ? null : () => _openOutfit(e.outfit!),
+            onToggleWorn: () => _markWorn(e),
+            onDelete: () => _delete(e),
+          ),
+        ),
+      );
     }
     return out;
   }
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final pad = EdgeInsets.symmetric(horizontal: ds.space.gutter);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(tr(context, 'nav.agenda')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome_motion_outlined),
-            tooltip: tr(context, 'plan.title'),
-            onPressed: _openWeekPlanner,
-          ),
-        ],
-      ),
-      floatingActionButton: _empty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _schedule,
-              icon: const Icon(Icons.event),
-              label: Text(tr(context, 'agenda.scheduleOutfit')),
-            ),
-      body: FutureBuilder<List<AgendaEntry>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(child: Text('${tr(context, 'detail.error')}: ${snap.error}'));
-          }
-          final items = snap.data ?? [];
-          if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.event_note, size: 64, color: Colors.grey),
-                  const SizedBox(height: 12),
-                  Text(tr(context, 'agenda.empty')),
-                  const SizedBox(height: 4),
-                  Text(tr(context, 'agenda.emptyHint'),
-                      style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  // The hint above names "schedule an outfit", so that is what
-                  // the button under it must do. It used to open the week
-                  // planner instead — a different action, under a label the
-                  // sentence had just told the reader to look for.
-                  FilledButton.icon(
-                    onPressed: _schedule,
-                    icon: const Icon(Icons.event),
-                    label: Text(tr(context, 'agenda.scheduleOutfit')),
-                  ),
-                  TextButton.icon(
-                    onPressed: _openWeekPlanner,
-                    icon: const Icon(Icons.auto_awesome_motion_outlined),
-                    label: Text(tr(context, 'plan.title')),
-                  ),
+      body: SafeArea(
+        bottom: false,
+        child: FutureBuilder<List<AgendaEntry>>(
+          future: _future,
+          builder: (context, snap) {
+            final items = snap.data ?? const <AgendaEntry>[];
+            final today = _iso(DateTime.now());
+            final upcoming = items
+                .where((e) => e.day.compareTo(today) >= 0)
+                .toList();
+            final past = items.where((e) => e.day.compareTo(today) < 0).toList()
+              ..sort((a, b) => b.day.compareTo(a.day));
+            final day = _day;
+            final shown = day == null
+                ? upcoming
+                : upcoming.where((e) => e.day == _iso(day)).toList();
+
+            final header = <Widget>[
+              DsHeader(
+                line1: tr(context, 'agenda.title1'),
+                line2: tr(context, 'agenda.title2'),
+                meta: [
+                  if (upcoming.isNotEmpty)
+                    '${upcoming.length} ${tr(context, 'agenda.upcoming')}',
                 ],
               ),
-            );
-          }
-          // Split into upcoming (today onward, chronological) and past (most
-          // recent first) so today's plan is on top and history is below.
-          final now = DateTime.now();
-          final today =
-              '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-          final upcoming =
-              items.where((e) => e.day.compareTo(today) >= 0).toList();
-          final past = items.where((e) => e.day.compareTo(today) < 0).toList()
-            ..sort((a, b) => b.day.compareTo(a.day));
+            ];
 
-          return RefreshIndicator(
-            onRefresh: () async => _reload(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _openWeekPlanner,
-                    icon: const Icon(Icons.auto_awesome_motion_outlined, size: 18),
-                    label: Text(tr(context, 'plan.title')),
-                  ),
+            Widget body;
+            if (snap.connectionState == ConnectionState.waiting &&
+                !snap.hasData) {
+              body = Padding(
+                padding: EdgeInsets.all(ds.space.xl),
+                child: Center(
+                  child: CircularProgressIndicator(color: c.accent),
                 ),
-                const SizedBox(height: 8),
-                if (upcoming.isNotEmpty) ...[
-                  _sectionTitle(tr(context, 'agenda.upcoming')),
-                  ..._dayGroups(upcoming),
-                ],
-                if (past.isNotEmpty) ...[
-                  _sectionTitle(tr(context, 'agenda.previouslyWorn')),
-                  ..._dayGroups(past),
-                ],
-              ],
-            ),
-          );
-        },
+              );
+            } else if (snap.hasError) {
+              body = DsError(
+                message: '${tr(context, 'detail.error')}: ${snap.error}',
+                retryLabel: tr(context, 'common.retry'),
+                onRetry: _reload,
+              );
+            } else if (items.isEmpty) {
+              // The sentence names "schedule an outfit", so that is what the
+              // main button does; the week planner sits under it.
+              body = Padding(
+                padding: pad,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DsEmpty(
+                      title: tr(context, 'agenda.empty'),
+                      message: tr(context, 'agenda.emptyHint'),
+                      actionLabel: tr(context, 'agenda.scheduleOutfit'),
+                      onAction: _schedule,
+                    ),
+                    SizedBox(height: ds.space.s),
+                    Center(
+                      child: DsButton(
+                        label: tr(context, 'plan.title'),
+                        icon: Icons.auto_awesome_motion_outlined,
+                        kind: DsButtonKind.secondary,
+                        onPressed: _openWeekPlanner,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              body = Padding(
+                padding: pad,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DsButton(
+                            label: tr(context, 'agenda.scheduleOutfit'),
+                            icon: Icons.event,
+                            expand: true,
+                            onPressed: () => _schedule(date: day),
+                          ),
+                        ),
+                        SizedBox(width: ds.space.xs),
+                        DsButton(
+                          label: tr(context, 'plan.short'),
+                          icon: Icons.auto_awesome_motion_outlined,
+                          kind: DsButtonKind.secondary,
+                          onPressed: _openWeekPlanner,
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: ds.space.m),
+                    // Tap a day to see only it; tap it again for everything.
+                    DsDayStrip(
+                      days: _week(context, items),
+                      selected: day ?? DateTime(0),
+                      onSelect: (d) => setState(
+                        () => _day = (day != null && _iso(day) == _iso(d))
+                            ? null
+                            : d,
+                      ),
+                    ),
+                    if (day != null && shown.isEmpty) ...[
+                      SizedBox(height: ds.space.m),
+                      DsPlanCard(
+                        title: _fmtDay(context, _iso(day)),
+                        subtitle: tr(context, 'agenda.nothingThatDay'),
+                        thumbs: const [],
+                        onTap: () => _schedule(date: day),
+                      ),
+                    ],
+                    if (shown.isNotEmpty) ...[
+                      DsSectionTitle(tr(context, 'agenda.upcoming')),
+                      ..._dayGroups(shown),
+                    ],
+                    if (day == null && past.isNotEmpty) ...[
+                      DsSectionTitle(tr(context, 'agenda.previouslyWorn')),
+                      ..._dayGroups(past),
+                    ],
+                  ],
+                ),
+              );
+            }
+
+            return RefreshIndicator(
+              color: c.accent,
+              onRefresh: () async => _reload(),
+              child: ListView(
+                padding: EdgeInsets.only(bottom: ds.space.xl),
+                children: [...header, body],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 }
 
+/// One planned day: the outfit's picture, what it is, and its two actions.
 class _AgendaCard extends StatelessWidget {
   const _AgendaCard({
     required this.entry,
@@ -293,6 +368,7 @@ class _AgendaCard extends StatelessWidget {
     required this.onToggleWorn,
     required this.onDelete,
   });
+
   final AgendaEntry entry;
   final VoidCallback? onOpen;
   final VoidCallback onToggleWorn;
@@ -300,73 +376,59 @@ class _AgendaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
     final o = entry.outfit;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(children: [
-          GestureDetector(
-            onTap: onOpen,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 64,
-                height: 64,
-                color: Colors.blueGrey.shade900,
-                // A planned day holds clothes and no image until you render it:
-                // the tile showed a broken-image glyph, which reads as an error
-                // rather than as "not generated yet".
-                child: o == null || !o.hasRender
-                    ? const Icon(Icons.checkroom, color: Colors.white38)
-                    // A 64 px tile: the grid-sized copy, not the full render.
-                    : AppImage(url: outfitThumbUrl(o),
-                        cacheKey: outfitThumbUrl(o),
-                        fit: BoxFit.cover, memWidth: 128),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.title.isNotEmpty
-                      ? entry.title
-                      : (o == null
-                          ? tr(context, 'agenda.plannedDay')
-                          : [
-                              if (o.modelName != null) o.modelName!,
-                              if (o.cloths.isNotEmpty)
-                                o.cloths.map((c) => c.name).join(', '),
-                            ].join(' · ')),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                if (entry.worn)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(tr(context, 'agenda.wornDone'),
-                        style: TextStyle(
-                            color: Colors.tealAccent, fontSize: 12)),
-                  ),
-              ],
-            ),
-          ),
+    final title = entry.title.isNotEmpty
+        ? entry.title
+        : (o == null
+              ? tr(context, 'agenda.plannedDay')
+              : [
+                  ?o.modelName,
+                  if (o.cloths.isNotEmpty)
+                    o.cloths.map((c) => c.name).join(', '),
+                ].join(' · '));
+    final subtitle = [
+      if (o != null && o.cloths.isNotEmpty && entry.title.isNotEmpty)
+        o.cloths.map((c) => c.name).join(', '),
+      if (entry.worn) tr(context, 'agenda.wornDone'),
+    ].join(' · ');
+    return DsPlanCard(
+      title: title,
+      subtitle: subtitle,
+      // A planned day holds clothes and no image until it is rendered: no
+      // tile then, rather than a broken-image glyph that reads as an error.
+      thumbs: [
+        if (o != null && o.hasRender)
+          AppImage(
+            url: outfitThumbUrl(o),
+            cacheKey: outfitThumbUrl(o),
+            fit: BoxFit.cover,
+            memWidth: 128,
+          )
+        else
+          const Icon(Icons.checkroom),
+      ],
+      onTap: onOpen,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           IconButton(
-            tooltip: entry.worn ? tr(context, 'agenda.markNotWorn') : tr(context, 'agenda.markWorn'),
-            icon: Icon(entry.worn ? Icons.check_circle : Icons.check_circle_outline,
-                color: entry.worn ? Colors.tealAccent : null),
+            tooltip: tr(
+              context,
+              entry.worn ? 'agenda.markNotWorn' : 'agenda.markWorn',
+            ),
+            icon: Icon(
+              entry.worn ? Icons.check_circle : Icons.check_circle_outline,
+              color: entry.worn ? ds.colors.accent : null,
+            ),
             onPressed: onToggleWorn,
           ),
           IconButton(
             tooltip: tr(context, 'agenda.remove'),
-            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            icon: const Icon(Icons.delete_outline),
             onPressed: onDelete,
           ),
-        ]),
+        ],
       ),
     );
   }
@@ -378,7 +440,7 @@ class _ScheduleResult {
   _ScheduleResult({this.outfitId, this.title = ''});
 }
 
-/// Bottom sheet: optional title + pick which generated outfit to plan.
+/// Sheet: optional label, then which generated outfit to plan.
 class _ScheduleSheet extends StatefulWidget {
   const _ScheduleSheet({required this.outfits});
   final List<Outfit> outfits;
@@ -417,9 +479,14 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final c = ds.colors;
+    final muted = ds.typo.label.copyWith(color: c.textMuted);
     final outfits = _filtered;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: DraggableScrollableSheet(
         initialChildSize: 0.75,
         maxChildSize: 0.95,
@@ -427,103 +494,105 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
         expand: false,
         builder: (context, scroll) => SingleChildScrollView(
           controller: scroll,
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            ds.space.gutter,
+            0,
+            ds.space.gutter,
+            ds.space.l,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(tr(context, 'agenda.planDay'),
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
+              Text(
+                tr(context, 'agenda.planDay').toUpperCase(),
+                style: ds.typo.headline,
+              ),
+              DsSectionTitle(tr(context, 'agenda.label')),
               TextField(
                 controller: _title,
                 decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: tr(context, 'agenda.label'),
                   hintText: tr(context, 'agenda.labelHint'),
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(tr(context, 'agenda.pickOutfit'),
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
+              DsSectionTitle(tr(context, 'agenda.pickOutfit')),
               if (widget.outfits.isEmpty)
-                Text(tr(context, 'agenda.noOutfits'),
-                    style: TextStyle(color: Colors.grey))
+                Text(tr(context, 'agenda.noOutfits'), style: muted)
               else ...[
-                Row(children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _search,
-                      onChanged: (v) => setState(() => _query = v),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: tr(context, 'agenda.searchHint'),
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DsSearchField(
+                        controller: _search,
+                        hint: tr(context, 'agenda.searchHint'),
+                        clearLabel: tr(context, 'common.clear'),
+                        onChanged: (v) => setState(() => _query = v),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: Text(tr(context, 'agenda.saved')),
-                    selected: _favOnly,
-                    onSelected: (v) => setState(() => _favOnly = v),
-                  ),
-                ]),
-                const SizedBox(height: 10),
+                    SizedBox(width: ds.space.xs),
+                    DsChip(
+                      label: tr(context, 'agenda.saved'),
+                      selected: _favOnly,
+                      onTap: () => setState(() => _favOnly = !_favOnly),
+                    ),
+                  ],
+                ),
+                SizedBox(height: ds.space.s),
                 if (outfits.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(tr(context, 'agenda.noMatch'),
-                        style: TextStyle(color: Colors.grey)),
+                    padding: EdgeInsets.symmetric(vertical: ds.space.m),
+                    child: Text(tr(context, 'agenda.noMatch'), style: muted),
                   )
                 else
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 0.8,
-                  ),
-                  itemCount: outfits.length,
-                  itemBuilder: (context, i) {
-                    final o = outfits[i];
-                    final sel = _selected == o.id;
-                    return GestureDetector(
-                      onTap: () =>
-                          setState(() => _selected = sel ? null : o.id),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: sel ? Colors.tealAccent : Colors.white24,
-                              width: sel ? 3 : 1),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        // Three per row: the grid-sized copy is plenty.
-                        child: AppImage(url: outfitThumbUrl(o),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: ds.space.xs,
+                      mainAxisSpacing: ds.space.xs,
+                      childAspectRatio: 0.8,
+                    ),
+                    itemCount: outfits.length,
+                    itemBuilder: (context, i) {
+                      final o = outfits[i];
+                      final sel = _selected == o.id;
+                      return GestureDetector(
+                        onTap: () =>
+                            setState(() => _selected = sel ? null : o.id),
+                        child: AnimatedContainer(
+                          duration: ds.motion.fast,
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            color: c.surfaceHigh,
+                            borderRadius: ds.shape.smallRadius,
+                            border: Border.all(
+                              color: sel ? c.accent : c.hairline,
+                              width: sel ? 3 : 1,
+                            ),
+                          ),
+                          // Three per row: the grid-sized copy is plenty.
+                          child: AppImage(
+                            url: outfitThumbUrl(o),
                             cacheKey: outfitThumbUrl(o),
-                            fit: BoxFit.cover, memWidth: 160),
-                      ),
-                    );
-                  },
-                ),
-              ],
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(
-                    context,
-                    _ScheduleResult(
-                        outfitId: _selected, title: _title.text.trim()),
+                            fit: BoxFit.cover,
+                            memWidth: 160,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                  child: Text(tr(context, 'agenda.addToAgenda')),
+              ],
+              SizedBox(height: ds.space.l),
+              DsButton(
+                label: tr(context, 'agenda.addToAgenda'),
+                expand: true,
+                onPressed: () => Navigator.pop(
+                  context,
+                  _ScheduleResult(
+                    outfitId: _selected,
+                    title: _title.text.trim(),
+                  ),
                 ),
               ),
             ],

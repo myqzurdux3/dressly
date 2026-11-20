@@ -29,7 +29,11 @@ class DsChip extends StatelessWidget {
       button: true,
       child: Material(
         color: selected ? c.text : c.surface,
-        shape: const StadiumBorder(),
+        // The hairline keeps an unselected chip visible on a surface-coloured
+        // sheet, where its fill alone matches the background.
+        shape: StadiumBorder(
+          side: selected ? BorderSide.none : BorderSide(color: c.hairline),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,

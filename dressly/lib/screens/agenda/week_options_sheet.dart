@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../models/plan.dart';
@@ -39,8 +40,18 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
   bool _forecastLoading = false;
 
   static const _colors = [
-    'Black', 'White', 'Grey', 'Beige', 'Brown', 'Blue',
-    'Red', 'Green', 'Yellow', 'Orange', 'Purple', 'Pink',
+    'Black',
+    'White',
+    'Grey',
+    'Beige',
+    'Brown',
+    'Blue',
+    'Red',
+    'Green',
+    'Yellow',
+    'Orange',
+    'Purple',
+    'Pink',
   ];
   List<String> _brands = [];
   List<String> _tags = [];
@@ -65,7 +76,7 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
   List<String> get _brandsFromClothes {
     final set = <String>{
       for (final c in widget.clothes)
-        if (c.brand.trim().isNotEmpty) c.brand.trim()
+        if (c.brand.trim().isNotEmpty) c.brand.trim(),
     };
     return set.toList()..sort();
   }
@@ -74,7 +85,7 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
     final set = <String>{
       for (final c in widget.clothes)
         for (final t in c.customTags)
-          if (t.trim().isNotEmpty) t.trim()
+          if (t.trim().isNotEmpty) t.trim(),
     };
     return set.toList()..sort();
   }
@@ -127,12 +138,16 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
     }
     final value = await _askValue(meta);
     if (value == null || value.isEmpty || !mounted) return;
-    setState(() => _mix.add(PlanAlgoChoice(
+    setState(
+      () => _mix.add(
+        PlanAlgoChoice(
           algo: meta.id,
           color: meta.needs == 'color' ? value : '',
           brand: meta.needs == 'brand' ? value : '',
           tag: meta.needs == 'tag' ? value : '',
-        )));
+        ),
+      ),
+    );
   }
 
   Future<String?> _askValue(AlgoMeta meta) {
@@ -182,17 +197,18 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
   }
 
   PlanOptions get _result => PlanOptions(
-        algos: _mix,
-        weather: _weather,
-        categories: _cats.toList(),
-        minScore: _minScore,
-        fillGaps: _fillGaps,
-        allowRepeatTheme: _allowRepeatTheme,
-      );
+    algos: _mix,
+    weather: _weather,
+    categories: _cats.toList(),
+    minScore: _minScore,
+    fillGaps: _fillGaps,
+    allowRepeatTheme: _allowRepeatTheme,
+  );
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ds = context.ds;
+    final muted = ds.typo.label.copyWith(color: ds.colors.textMuted);
     return SafeArea(
       child: DraggableScrollableSheet(
         expand: false,
@@ -203,69 +219,84 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
             Expanded(
               child: ListView(
                 controller: controller,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: EdgeInsets.fromLTRB(
+                  ds.space.gutter,
+                  0,
+                  ds.space.gutter,
+                  ds.space.s,
+                ),
                 children: [
-                  Text(tr(context, 'week.title'),
-                      style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 4),
-                  Text(tr(context, 'week.subtitle'),
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: 16),
-                  _sectionTitle(tr(context, 'week.algos')),
-                  Text(tr(context, 'week.algosHint'),
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: 8),
-                  _algoPicker(),
-                  const SizedBox(height: 8),
-                  if (_mix.length > 1)
-                    Text(tr(context, 'week.rotationHint', {
-                      'count': '${_mix.length}',
-                    }),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary)),
-                  const Divider(height: 32),
-                  _sectionTitle(tr(context, 'algo.weather')),
-                  const SizedBox(height: 6),
-                  _weatherChips(),
-                  const SizedBox(height: 16),
-                  _sectionTitle(tr(context, 'algo.clothingTypes')),
-                  Text(tr(context, 'algo.clothingTypesHint'),
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: 6),
-                  Wrap(spacing: 6, runSpacing: 6, children: [
-                    for (final c in [...kCategoryOptions]
-                      ..sort((a, b) => bodyOrder(a).compareTo(bodyOrder(b))))
-                      FilterChip(
-                        label: Text(categoryName(context, c)),
-                        selected: _cats.contains(c),
-                        onSelected: (_) => setState(
-                            () => _cats.contains(c) ? _cats.remove(c) : _cats.add(c)),
-                      ),
-                  ]),
-                  const SizedBox(height: 16),
-                  _sectionTitle(tr(context, 'algo.minRating')),
-                  Slider(
-                    value: _minScore.toDouble(),
-                    min: 0,
-                    max: 5,
-                    divisions: 5,
-                    label: _minScore == 0
-                        ? tr(context, 'algo.noRatingFilter')
-                        : '$_minScore / 5',
-                    onChanged: (v) => setState(() => _minScore = v.round()),
+                  Text(
+                    tr(context, 'week.title').toUpperCase(),
+                    style: ds.typo.headline,
                   ),
+                  SizedBox(height: ds.space.xs / 2),
+                  Text(tr(context, 'week.subtitle'), style: muted),
+                  DsSectionTitle(
+                    tr(context, 'week.algos'),
+                    hint: tr(context, 'week.algosHint'),
+                  ),
+                  _algoPicker(),
+                  if (_mix.length > 1)
+                    Padding(
+                      padding: EdgeInsets.only(top: ds.space.xs),
+                      child: Text(
+                        tr(context, 'week.rotationHint', {
+                          'count': '${_mix.length}',
+                        }),
+                        style: ds.typo.label.copyWith(
+                          color: ds.colors.accentText,
+                        ),
+                      ),
+                    ),
+                  DsSectionTitle(tr(context, 'algo.weather')),
+                  _weatherChips(),
+                  DsSectionTitle(
+                    tr(context, 'algo.clothingTypes'),
+                    hint: tr(context, 'algo.clothingTypesHint'),
+                  ),
+                  Wrap(
+                    spacing: ds.space.xs,
+                    runSpacing: ds.space.xs,
+                    children: [
+                      for (final c in [
+                        ...kCategoryOptions,
+                      ]..sort((a, b) => bodyOrder(a).compareTo(bodyOrder(b))))
+                        DsChip(
+                          label: categoryName(context, c),
+                          selected: _cats.contains(c),
+                          onTap: () => setState(
+                            () => _cats.contains(c)
+                                ? _cats.remove(c)
+                                : _cats.add(c),
+                          ),
+                        ),
+                    ],
+                  ),
+                  DsSectionTitle(tr(context, 'algo.minRating')),
+                  DsSegment<int>(
+                    options: [
+                      (0, tr(context, 'algo.noRatingFilter')),
+                      for (var n = 1; n <= 5; n++) (n, '$n+'),
+                    ],
+                    value: _minScore,
+                    onChanged: (v) => setState(() => _minScore = v),
+                  ),
+                  SizedBox(height: ds.space.s),
                   CheckboxListTile(
                     value: _fillGaps,
                     onChanged: (v) => setState(() => _fillGaps = v ?? false),
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
                     dense: true,
-                    title: Text(tr(context, 'algo.fillGaps')),
-                    subtitle: Text(tr(context, 'algo.fillGapsHint'),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    title: Text(
+                      tr(context, 'algo.fillGaps'),
+                      style: ds.typo.body,
+                    ),
+                    subtitle: Text(
+                      tr(context, 'algo.fillGapsHint'),
+                      style: muted,
+                    ),
                   ),
                   CheckboxListTile(
                     value: _allowRepeatTheme,
@@ -274,37 +305,52 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
                     dense: true,
-                    title: Text(tr(context, 'week.repeatTheme')),
-                    subtitle: Text(tr(context, 'week.repeatThemeHint'),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    title: Text(
+                      tr(context, 'week.repeatTheme'),
+                      style: ds.typo.body,
+                    ),
+                    subtitle: Text(
+                      tr(context, 'week.repeatThemeHint'),
+                      style: muted,
+                    ),
                   ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Row(children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(tr(context, 'common.cancel')),
+              padding: EdgeInsets.fromLTRB(
+                ds.space.gutter,
+                ds.space.xs,
+                ds.space.gutter,
+                ds.space.m,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: DsButton(
+                      label: tr(context, 'common.cancel'),
+                      kind: DsButtonKind.secondary,
+                      expand: true,
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton(
-                    // An empty mix would be a week with no rule at all; the
-                    // button says why it is off rather than failing on tap.
-                    onPressed: _mix.isEmpty
-                        ? null
-                        : () => Navigator.pop(context, _result),
-                    child: Text(_mix.isEmpty
-                        ? tr(context, 'week.pickAtLeastOne')
-                        : tr(context, 'week.apply')),
+                  SizedBox(width: ds.space.s),
+                  Expanded(
+                    flex: 2,
+                    child: DsButton(
+                      // An empty mix would be a week with no rule at all; the
+                      // button says why it is off rather than failing on tap.
+                      label: _mix.isEmpty
+                          ? tr(context, 'week.pickAtLeastOne')
+                          : tr(context, 'week.apply'),
+                      expand: true,
+                      onPressed: _mix.isEmpty
+                          ? null
+                          : () => Navigator.pop(context, _result),
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ),
           ],
         ),
@@ -312,114 +358,143 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
     );
   }
 
-  Widget _sectionTitle(String t) =>
-      Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold));
-
   Widget _algoPicker() {
+    final ds = context.ds;
     return FutureBuilder<List<AlgoMeta>>(
       future: _algosFuture,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
+          return Padding(
+            padding: EdgeInsets.all(ds.space.m),
+            child: Center(
+              child: CircularProgressIndicator(color: ds.colors.accent),
+            ),
           );
         }
         final metas = snap.data ?? const <AlgoMeta>[];
         if (metas.isEmpty) {
-          return Text(tr(context, 'algo.loadFailed'),
-              style: const TextStyle(color: Colors.red));
+          return Text(
+            tr(context, 'algo.loadFailed'),
+            style: ds.typo.label.copyWith(color: ds.colors.danger),
+          );
         }
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // What is in the mix, in the order the days will use it. Removable
-          // one by one, because "start over" is not the usual correction.
-          if (_mix.isNotEmpty) ...[
-            Wrap(spacing: 6, runSpacing: 6, children: [
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // What is in the mix, in the order the days will use it. Removable
+            // one by one, because "start over" is not the usual correction.
+            if (_mix.isNotEmpty) ...[
               for (var i = 0; i < _mix.length; i++)
-                InputChip(
-                  avatar: CircleAvatar(
-                    radius: 10,
-                    child: Text('${i + 1}',
-                        style: const TextStyle(fontSize: 10)),
-                  ),
-                  label: Text(_chipLabel(_mix[i], metas)),
-                  onDeleted: () => setState(() => _mix.removeAt(i)),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        '${i + 1}'.padLeft(2, '0'),
+                        style: ds.typo.mono.copyWith(
+                          color: ds.colors.accentText,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _chipLabel(_mix[i], metas),
+                        style: ds.typo.body,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: tr(context, 'agenda.remove'),
+                      onPressed: () => setState(() => _mix.removeAt(i)),
+                    ),
+                  ],
                 ),
-            ]),
-            const SizedBox(height: 10),
+              SizedBox(height: ds.space.s),
+            ],
+            Wrap(
+              spacing: ds.space.xs,
+              runSpacing: ds.space.xs,
+              children: [
+                for (final m in metas)
+                  DsChip(
+                    label: trOr(context, 'algoName.${m.id}', m.label),
+                    selected: _isInMix(m.id),
+                    onTap: () => _toggleAlgo(m),
+                  ),
+              ],
+            ),
           ],
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final m in metas)
-              FilterChip(
-                label: Text(trOr(context, 'algoName.${m.id}', m.label)),
-                selected: _isInMix(m.id),
-                onSelected: (_) => _toggleAlgo(m),
-              ),
-          ]),
-        ]);
+        );
       },
     );
   }
 
   Widget _weatherChips() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Wrap(spacing: 6, children: [
-        ChoiceChip(
-          label: Text(tr(context, 'algo.any')),
-          selected: _weather == 'any',
-          onSelected: (_) => _setWeather('any'),
+    final ds = context.ds;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: ds.space.xs,
+          runSpacing: ds.space.xs,
+          children: [
+            for (final (w, key) in const [
+              ('any', 'algo.any'),
+              ('hot', 'algo.hot'),
+              ('cold', 'algo.cold'),
+            ])
+              DsChip(
+                label: tr(context, key),
+                selected: _weather == w,
+                onTap: () => _setWeather(w),
+              ),
+            DsChip(
+              leading: _forecastLoading
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.wb_sunny_outlined, size: 16),
+              label: tr(context, 'algo.autoWeather'),
+              selected: _weather == 'auto',
+              onTap: () => _setWeather('auto'),
+            ),
+          ],
         ),
-        ChoiceChip(
-          label: Text(tr(context, 'algo.hot')),
-          selected: _weather == 'hot',
-          onSelected: (_) => _setWeather('hot'),
-        ),
-        ChoiceChip(
-          label: Text(tr(context, 'algo.cold')),
-          selected: _weather == 'cold',
-          onSelected: (_) => _setWeather('cold'),
-        ),
-        ChoiceChip(
-          avatar: _forecastLoading
-              ? const SizedBox(
-                  width: 14, height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.wb_sunny_outlined, size: 16),
-          label: Text(tr(context, 'algo.autoWeather')),
-          selected: _weather == 'auto',
-          onSelected: (_) => _setWeather('auto'),
-        ),
-      ]),
-      if (_weather == 'auto') _forecastLine(),
-    ]);
+        if (_weather == 'auto') _forecastLine(),
+      ],
+    );
   }
 
   /// In a week, 'auto' means a forecast PER DAY — so this line says that
   /// rather than quoting today's temperature as if it applied to all seven.
   Widget _forecastLine() {
-    final theme = Theme.of(context);
+    final ds = context.ds;
+    final muted = ds.typo.label.copyWith(color: ds.colors.textMuted);
     if (_forecastLoading) {
       return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(tr(context, 'algo.autoLoading'),
-            style: TextStyle(
-                fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+        padding: EdgeInsets.only(top: ds.space.xs),
+        child: Text(tr(context, 'algo.autoLoading'), style: muted),
       );
     }
     final f = _forecast;
     if (f == null || !f.available) {
       return Padding(
-        padding: const EdgeInsets.only(top: 4),
+        padding: EdgeInsets.only(top: ds.space.xs),
         child: Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            icon: const Icon(Icons.place_outlined, size: 18),
-            label: Text(tr(context, 'algo.autoNeedsPlace')),
+          child: DsButton(
+            label: tr(context, 'algo.autoNeedsPlace'),
+            icon: Icons.place_outlined,
+            kind: DsButtonKind.secondary,
             onPressed: () async {
               await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const WeatherLocationScreen()));
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const WeatherLocationScreen(),
+                ),
+              );
               if (mounted && _weather == 'auto') await _loadForecast();
             },
           ),
@@ -427,11 +502,10 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
       );
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(top: ds.space.xs),
       child: Text(
         tr(context, 'week.autoPerDay', {'place': f.place}),
-        style: TextStyle(
-            fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+        style: muted,
       ),
     );
   }

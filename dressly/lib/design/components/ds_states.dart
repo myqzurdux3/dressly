@@ -29,12 +29,14 @@ class DsEmpty extends StatelessWidget {
           textAlign: TextAlign.center,
           style: ds.typo.headline,
         ),
-        SizedBox(height: ds.space.s),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: ds.typo.body.copyWith(color: ds.colors.textMuted),
-        ),
+        if (message.isNotEmpty) ...[
+          SizedBox(height: ds.space.s),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: ds.typo.body.copyWith(color: ds.colors.textMuted),
+          ),
+        ],
         if (actionLabel != null && onAction != null) ...[
           SizedBox(height: ds.space.xl),
           DsButton(label: actionLabel!, onPressed: onAction),

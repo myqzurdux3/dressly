@@ -1,6 +1,3 @@
-lib/screens/agenda/agenda_screen.dart
-lib/screens/agenda/week_options_sheet.dart
-lib/screens/agenda/week_plan_screen.dart
 lib/screens/auth/login_screen.dart
 lib/screens/auth/signup_screen.dart
 lib/screens/cloth/dormant_screen.dart

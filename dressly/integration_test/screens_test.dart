@@ -152,5 +152,19 @@ void main() {
     await _shot(tester, '15_builder');
     await tester.binding.handlePopRoute();
     await _settle(tester);
+
+    // The week planner and its options, from the Agenda tab.
+    await tester.tap(tab(2));
+    await _settle(tester);
+    await tester.tap(find.byIcon(Icons.auto_awesome_motion_outlined).first);
+    await _settle(tester, const Duration(seconds: 5));
+    await _shot(tester, '16_week');
+    await tester.tap(find.byIcon(Icons.tune).first);
+    await _settle(tester, const Duration(seconds: 3));
+    await _shot(tester, '17_week_options');
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
   });
 }

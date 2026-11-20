@@ -12,6 +12,7 @@ class DsPlanCard extends StatelessWidget {
     required this.thumbs,
     this.tone,
     this.onTap,
+    this.trailing,
   });
 
   static const int maxThumbs = 3;
@@ -23,6 +24,9 @@ class DsPlanCard extends StatelessWidget {
   /// Card colours; null uses the page surface.
   final GarmentTone? tone;
   final VoidCallback? onTap;
+
+  /// Actions after the thumbnails (e.g. mark worn, remove).
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +88,11 @@ class DsPlanCard extends StatelessWidget {
               tile(Icon(Icons.add, color: c.accentText))
             else
               for (final t in thumbs.take(maxThumbs)) tile(t),
+            if (trailing != null)
+              IconTheme.merge(
+                data: IconThemeData(color: ink),
+                child: trailing!,
+              ),
           ],
         ),
       ),

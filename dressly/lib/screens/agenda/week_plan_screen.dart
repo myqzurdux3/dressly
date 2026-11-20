@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../models/plan.dart';
@@ -49,8 +50,7 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     if (plan == null) return const {};
     return {
       for (final d in plan.days)
-        if (_locked.contains(d.day) && d.clothIds.isNotEmpty)
-          d.day: d.clothIds,
+        if (_locked.contains(d.day) && d.clothIds.isNotEmpty) d.day: d.clothIds,
     };
   }
 
@@ -68,6 +68,7 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     final picked = await showModalBottomSheet<PlanOptions>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       builder: (_) => WeekOptionsSheet(clothes: _clothes, initial: _options),
     );
     if (picked == null || !mounted) return;
@@ -109,14 +110,18 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
       final result = await svc.apply(plan.applicable);
       if (!mounted) return;
       setState(() => _saving = false);
-      messenger.showSnackBar(SnackBar(
-        content: Text(result.skipped.isEmpty
-            ? tr(context, 'plan.saved', {'count': '${result.created}'})
-            : tr(context, 'plan.savedWithSkips', {
-                'count': '${result.created}',
-                'skipped': '${result.skipped.length}',
-              })),
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            result.skipped.isEmpty
+                ? tr(context, 'plan.saved', {'count': '${result.created}'})
+                : tr(context, 'plan.savedWithSkips', {
+                    'count': '${result.created}',
+                    'skipped': '${result.skipped.length}',
+                  }),
+          ),
+        ),
+      );
       navigator.pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -133,40 +138,68 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
     final plan = _plan;
-    final canSave = plan != null && !plan.isEmpty && !_saving && !_loading;
+    final busy = _loading || _saving;
+    final canSave = plan != null && !plan.isEmpty && !busy;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(tr(context, 'plan.title')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: tr(context, 'week.title'),
-            onPressed: _loading || _saving ? null : _openOptions,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: tr(context, 'plan.redraw'),
-            onPressed: _loading || _saving ? null : _draw,
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: FilledButton.icon(
-            onPressed: canSave ? _save : null,
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.event_available),
-            label: Text(tr(context, 'plan.save')),
-          ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                ds.space.gutter,
+                ds.space.s,
+                ds.space.gutter,
+                0,
+              ),
+              child: Row(
+                children: [
+                  DsButton.icon(
+                    icon: Icons.arrow_back,
+                    semanticLabel: MaterialLocalizations.of(
+                      context,
+                    ).backButtonTooltip,
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
+                  const Spacer(),
+                  DsButton.icon(
+                    icon: Icons.tune,
+                    semanticLabel: tr(context, 'week.title'),
+                    onPressed: busy ? null : _openOptions,
+                  ),
+                  SizedBox(width: ds.space.xs),
+                  DsButton.icon(
+                    icon: Icons.refresh,
+                    semanticLabel: tr(context, 'plan.redraw'),
+                    onPressed: busy ? null : _draw,
+                  ),
+                ],
+              ),
+            ),
+            if (_loading && _plan != null)
+              LinearProgressIndicator(minHeight: 2, color: ds.colors.accent)
+            else
+              const SizedBox(height: 2),
+            Expanded(child: _body()),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                ds.space.gutter,
+                ds.space.s,
+                ds.space.gutter,
+                ds.space.m,
+              ),
+              child: DsButton(
+                label: tr(context, 'plan.save'),
+                icon: Icons.event_available,
+                expand: true,
+                loading: _saving,
+                onPressed: canSave ? _save : null,
+              ),
+            ),
+          ],
         ),
       ),
-      body: _body(),
     );
   }
 
@@ -174,11 +207,12 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
   /// it the options live behind an icon and the screen cannot say why it
   /// proposed what it proposed.
   Widget _optionsBar() {
-    final theme = Theme.of(context);
+    final ds = context.ds;
+    final c = ds.colors;
     final names = [
       for (final a in _options.algos)
         trOr(context, 'algoName.${a.algo}', a.algo) +
-            (a.value.isEmpty ? '' : ' · ${a.value}')
+            (a.value.isEmpty ? '' : ' · ${a.value}'),
     ].join(' + ');
     final weather = switch (_options.weather) {
       'hot' => tr(context, 'algo.hot'),
@@ -186,81 +220,111 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
       'auto' => tr(context, 'algo.autoWeather'),
       _ => tr(context, 'algo.any'),
     };
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        dense: true,
-        leading: const Icon(Icons.tune),
-        title: Text(names.isEmpty ? tr(context, 'week.pickAtLeastOne') : names,
-            maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          [
-            weather,
-            if (_options.categories.isNotEmpty)
-              tr(context, 'week.typesCount',
-                  {'count': '${_options.categories.length}'}),
-            if (_options.minScore > 0) '${_options.minScore}★+',
-            if (_options.allowRepeatTheme) tr(context, 'week.repeatTheme'),
-          ].join(' · '),
-          style: theme.textTheme.bodySmall,
+    final details = [
+      weather,
+      if (_options.categories.isNotEmpty)
+        tr(context, 'week.typesCount', {
+          'count': '${_options.categories.length}',
+        }),
+      if (_options.minScore > 0) '${_options.minScore}★+',
+      if (_options.allowRepeatTheme) tr(context, 'week.repeatTheme'),
+    ].join(' · ');
+    return DsPressable(
+      onTap: _loading || _saving ? null : _openOptions,
+      child: Container(
+        padding: EdgeInsets.all(ds.space.m),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: ds.shape.cardRadius,
         ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: _loading || _saving ? null : _openOptions,
+        child: Row(
+          children: [
+            Icon(Icons.tune, color: c.accentText),
+            SizedBox(width: ds.space.s),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    names.isEmpty ? tr(context, 'week.pickAtLeastOne') : names,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: ds.typo.label,
+                  ),
+                  SizedBox(height: ds.space.xs / 2),
+                  Text(
+                    details.toUpperCase(),
+                    style: ds.typo.mono.copyWith(color: c.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: c.textMuted),
+          ],
+        ),
       ),
     );
   }
 
   Widget _body() {
+    final ds = context.ds;
     if (_loading && _plan == null) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator(color: ds.colors.accent));
     }
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('${tr(context, 'plan.loadError')}: $_error',
-              textAlign: TextAlign.center),
-        ),
+      return DsError(
+        message: '${tr(context, 'plan.loadError')}: $_error',
+        retryLabel: tr(context, 'common.retry'),
+        onRetry: _draw,
       );
     }
     final plan = _plan!;
-    if (plan.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(tr(context, 'plan.nothingToPlan'),
-              textAlign: TextAlign.center),
+    return ListView(
+      children: [
+        DsHeader(
+          line1: tr(context, 'plan.title1'),
+          line2: tr(context, 'plan.title2'),
+          meta: [
+            if (!plan.isEmpty)
+              '${plan.days.where((d) => !d.isEmpty).length}/${plan.days.length}',
+          ],
         ),
-      );
-    }
-    return Stack(children: [
-      ListView(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-        children: [
-          _optionsBar(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            child: Text(tr(context, 'plan.hint'),
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (plan.isEmpty)
+                DsEmpty(
+                  title: tr(context, 'plan.nothingToPlan'),
+                  message: '',
+                  actionLabel: tr(context, 'week.title'),
+                  onAction: _openOptions,
+                )
+              else ...[
+                _optionsBar(),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: ds.space.s),
+                  child: Text(
+                    tr(context, 'plan.hint'),
+                    style: ds.typo.label.copyWith(color: ds.colors.textMuted),
+                  ),
+                ),
+                for (final day in plan.days)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: ds.space.s),
+                    child: _DayCard(
+                      day: day,
+                      locked: _locked.contains(day.day),
+                      onToggleLock: () => _toggleLock(day),
+                    ),
+                  ),
+              ],
+            ],
           ),
-          for (final day in plan.days)
-            _DayCard(
-              day: day,
-              locked: _locked.contains(day.day),
-              onToggleLock: () => _toggleLock(day),
-            ),
-        ],
-      ),
-      // A redraw keeps the old week on screen underneath, so the page does not
-      // blank out and jump back to the top on every tap.
-      if (_loading)
-        const Positioned(
-          top: 0, left: 0, right: 0,
-          child: LinearProgressIndicator(minHeight: 2),
         ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -283,9 +347,11 @@ class _DayCard extends StatelessWidget {
     final label = MaterialLocalizations.of(context).formatMediumDate(parsed);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final diff = DateTime(parsed.year, parsed.month, parsed.day)
-        .difference(today)
-        .inDays;
+    final diff = DateTime(
+      parsed.year,
+      parsed.month,
+      parsed.day,
+    ).difference(today).inDays;
     if (diff == 0) return '${tr(context, 'plan.today')} · $label';
     if (diff == 1) return '${tr(context, 'plan.tomorrow')} · $label';
     return label;
@@ -293,110 +359,130 @@ class _DayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      clipBehavior: Clip.antiAlias,
-      shape: locked
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: theme.colorScheme.primary, width: 1.5))
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(_dayLabel(context),
-                      style: theme.textTheme.titleSmall),
-                ),
-                if (day.weatherAvailable) ...[
-                  Icon(
-                      day.weatherMode == 'hot'
-                          ? Icons.wb_sunny_outlined
-                          : Icons.ac_unit,
-                      size: 16,
-                      color: theme.colorScheme.primary),
-                  const SizedBox(width: 4),
-                  Text(day.shortTemp, style: theme.textTheme.bodySmall),
-                ],
-                IconButton(
-                  icon: Icon(locked ? Icons.lock : Icons.lock_open_outlined),
-                  color: locked ? theme.colorScheme.primary : null,
-                  tooltip: locked
-                      ? tr(context, 'plan.unlockDay')
-                      : tr(context, 'plan.lockDay'),
-                  onPressed: onToggleLock,
-                ),
-              ],
-            ),
-            if (day.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(tr(context, 'plan.dayEmpty'),
-                    style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant)),
-              )
-            else
-              SizedBox(
-                height: 76,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: day.cloths.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) => _clothChip(context, day.cloths[i]),
-                ),
-              ),
-            if (day.algo.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, right: 8),
-                child: Text(
-                  trOr(context, 'algoName.${day.algo}', day.algo) +
-                      (day.theme.isEmpty ? '' : ' · ${day.theme}'),
-                  style: TextStyle(
-                      fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ),
-            if (day.repeated)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, right: 8),
-                child: Text(tr(context, 'plan.repeated'),
-                    style: TextStyle(
-                        fontSize: 11, color: theme.colorScheme.tertiary)),
-              ),
-            if (day.alreadyPlanned)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, right: 8),
-                child: Text(tr(context, 'plan.alreadyPlanned'),
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant)),
-              ),
-          ],
+    final ds = context.ds;
+    final c = ds.colors;
+    final note = ds.typo.mono.copyWith(color: c.textMuted);
+    return AnimatedContainer(
+      duration: ds.motion.fast,
+      padding: EdgeInsets.fromLTRB(
+        ds.space.m,
+        ds.space.s,
+        ds.space.xs,
+        ds.space.m,
+      ),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: ds.shape.cardRadius,
+        border: Border.all(
+          color: locked ? c.accent : Colors.transparent,
+          width: 1.5,
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _dayLabel(context).toUpperCase(),
+                  style: ds.typo.headline,
+                ),
+              ),
+              if (day.weatherAvailable) ...[
+                Icon(
+                  day.weatherMode == 'hot'
+                      ? Icons.wb_sunny_outlined
+                      : Icons.ac_unit,
+                  size: 16,
+                  color: c.accentText,
+                ),
+                SizedBox(width: ds.space.xs / 2),
+                Text(day.shortTemp, style: ds.typo.mono),
+              ],
+              IconButton(
+                icon: Icon(locked ? Icons.lock : Icons.lock_open_outlined),
+                color: locked ? c.accent : c.textMuted,
+                tooltip: locked
+                    ? tr(context, 'plan.unlockDay')
+                    : tr(context, 'plan.lockDay'),
+                onPressed: onToggleLock,
+              ),
+            ],
+          ),
+          if (day.isEmpty)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: ds.space.s),
+              child: Text(
+                tr(context, 'plan.dayEmpty'),
+                style: ds.typo.label.copyWith(color: c.textMuted),
+              ),
+            )
+          else
+            SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: day.cloths.length,
+                separatorBuilder: (_, _) => SizedBox(width: ds.space.xs),
+                itemBuilder: (_, i) => _clothTile(context, day.cloths[i]),
+              ),
+            ),
+          if (day.algo.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(top: ds.space.xs),
+              child: Text(
+                (trOr(context, 'algoName.${day.algo}', day.algo) +
+                        (day.theme.isEmpty ? '' : ' · ${day.theme}'))
+                    .toUpperCase(),
+                style: note,
+              ),
+            ),
+          if (day.repeated)
+            Padding(
+              padding: EdgeInsets.only(top: ds.space.xs / 2),
+              child: DsBadge(
+                text: tr(context, 'plan.repeated'),
+                tone: DsBadgeTone.accent,
+              ),
+            ),
+          if (day.alreadyPlanned)
+            Padding(
+              padding: EdgeInsets.only(top: ds.space.xs / 2),
+              child: Text(tr(context, 'plan.alreadyPlanned'), style: note),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _clothChip(BuildContext context, PlanCloth cloth) {
+  Widget _clothTile(BuildContext context, PlanCloth cloth) {
+    final ds = context.ds;
+    final c = ds.colors;
     return SizedBox(
       width: 72,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Expanded(
-            child: cloth.thumbUrl.isEmpty
-                ? const ColoredBox(color: Colors.black12)
-                : AppImage.path(cloth.thumbUrl, fit: BoxFit.contain),
+            child: Container(
+              width: 72,
+              padding: EdgeInsets.all(ds.space.xs / 2),
+              decoration: BoxDecoration(
+                color: c.surfaceHigh,
+                borderRadius: ds.shape.smallRadius,
+              ),
+              child: cloth.thumbUrl.isEmpty
+                  ? Icon(Icons.checkroom, color: c.textMuted)
+                  : AppImage.path(cloth.thumbUrl, fit: BoxFit.contain),
+            ),
           ),
-          const SizedBox(height: 2),
-          Text(cloth.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10)),
+          SizedBox(height: ds.space.xs / 2),
+          Text(
+            cloth.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ds.typo.mono.copyWith(color: c.textMuted, fontSize: 10),
+          ),
         ],
       ),
     );

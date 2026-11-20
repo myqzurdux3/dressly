@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 
+import 'package:dressly/design/ds.dart';
 import 'package:dressly/models/user.dart';
 import 'package:dressly/screens/agenda/agenda_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
@@ -32,7 +33,11 @@ Future<void> _pump(WidgetTester tester, {required bool empty}) async {
     ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
   await tester.pumpWidget(ChangeNotifierProvider.value(
     value: session,
-    child: const MaterialApp(locale: Locale('en'), home: AgendaScreen()),
+    child: MaterialApp(
+      locale: const Locale('en'),
+      theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+      home: const AgendaScreen(),
+    ),
   ));
   await tester.pumpAndSettle();
 }
@@ -44,19 +49,16 @@ void main() {
       (tester) async {
     await _pump(tester, empty: true);
 
-    expect(find.textContaining('Schedule outfit'), findsWidgets);
-    // Named once, offered once: the button under the sentence IS that action,
-    // and the floating button is gone rather than repeating it.
-    expect(find.widgetWithText(FilledButton, 'Schedule outfit'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
-    // The week planner stays reachable, as the secondary it is.
-    expect(find.widgetWithText(TextButton, 'Plan the week'), findsOneWidget);
+    // Named once, offered once: the button under the sentence IS that
+    // action. The week planner stays reachable as the secondary.
+    expect(find.widgetWithText(DsButton, 'Schedule outfit'), findsOneWidget);
+    expect(find.widgetWithText(DsButton, 'Plan the week'), findsOneWidget);
   });
 
-  testWidgets('with entries the floating button is back', (tester) async {
+  testWidgets('with entries the schedule button stays, once', (tester) async {
     await _pump(tester, empty: false);
 
-    expect(find.byType(FloatingActionButton), findsOneWidget);
-    expect(find.text('Dentist'), findsOneWidget);
+    expect(find.widgetWithText(DsButton, 'Schedule outfit'), findsOneWidget);
+    expect(find.text('DENTIST'), findsOneWidget);
   });
 }
