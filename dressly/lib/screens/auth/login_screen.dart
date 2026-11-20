@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
 import '../../state/session.dart';
@@ -26,8 +27,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final result =
-          await const AuthService().login(_email.text.trim(), _password.text);
+      final result = await const AuthService().login(
+        _email.text.trim(),
+        _password.text,
+      );
       if (!mounted) return;
       context.read<Session>().setSession(result.user, result.token);
       // LoginScreen is the home route, but popUntil(isFirst) is a safe no-op
@@ -43,61 +46,69 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final gap = SizedBox(height: ds.space.s);
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Center(
-                  child: DresslyLockup(tileSize: 84, wordmarkSize: 44),
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _email,
-                  decoration: InputDecoration(
-                      border: const OutlineInputBorder(), labelText: tr(context, 'auth.email')),
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  decoration: InputDecoration(
-                      border: const OutlineInputBorder(), labelText: tr(context, 'auth.password')),
-                  obscureText: true,
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!,
-                      style: const TextStyle(color: Colors.redAccent)),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(tr(context, 'auth.signin')),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _loading
-                      ? null
-                      : () => Navigator.push(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(ds.space.gutter),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: DresslyLockup()),
+                  SizedBox(height: ds.space.xl),
+                  TextField(
+                    controller: _email,
+                    decoration: InputDecoration(
+                      labelText: tr(context, 'auth.email'),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    autofillHints: const [AutofillHints.email],
+                  ),
+                  gap,
+                  TextField(
+                    controller: _password,
+                    decoration: InputDecoration(
+                      labelText: tr(context, 'auth.password'),
+                    ),
+                    obscureText: true,
+                    onSubmitted: (_) => _loading ? null : _submit(),
+                  ),
+                  if (_error != null) ...[
+                    gap,
+                    Text(
+                      _error!,
+                      style: ds.typo.label.copyWith(color: ds.colors.danger),
+                    ),
+                  ],
+                  SizedBox(height: ds.space.l),
+                  DsButton(
+                    label: tr(context, 'auth.signin'),
+                    expand: true,
+                    loading: _loading,
+                    onPressed: _loading ? null : _submit,
+                  ),
+                  gap,
+                  DsButton(
+                    label: tr(context, 'auth.noAccount'),
+                    kind: DsButtonKind.secondary,
+                    expand: true,
+                    onPressed: _loading
+                        ? null
+                        : () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const SignupScreen()),
+                              builder: (_) => const SignupScreen(),
+                            ),
                           ),
-                  child: Text(tr(context, 'auth.noAccount')),
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

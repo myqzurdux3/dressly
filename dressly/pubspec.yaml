@@ -42,9 +42,10 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
-  # The logo is drawn (widgets/brand_logo.dart), not shipped as a bitmap.
-  # assets/icon*.png stay: they are read at build time by
-  # flutter_launcher_icons, not at runtime.
+  # assets/icon*.png are read at build time by flutter_launcher_icons; the
+  # in-app logo is a 384 px copy of the same tag (widgets/brand_logo.dart).
+  assets:
+    - assets/brand/mark.png
   fonts:
     # Design-system fonts, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
     - family: Anton

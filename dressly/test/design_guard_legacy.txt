@@ -1,8 +1,5 @@
-lib/screens/auth/login_screen.dart
-lib/screens/auth/signup_screen.dart
 lib/screens/cloth/dormant_screen.dart
 lib/widgets/app_image.dart
-lib/widgets/brand_logo.dart
 lib/widgets/filter_sheet.dart
 lib/widgets/section_header.dart
 lib/widgets/star_rating.dart

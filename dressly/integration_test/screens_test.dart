@@ -11,6 +11,7 @@
 import 'dart:io';
 
 import 'package:dressly/main.dart';
+import 'package:dressly/screens/auth/login_screen.dart';
 import 'package:dressly/screens/home/home_shell.dart';
 import 'package:dressly/services/auth_service.dart';
 import 'package:dressly/design/ds.dart';
@@ -54,6 +55,15 @@ void main() {
     if (_email.isEmpty || _password.isEmpty) {
       fail('Pass --dart-define=PERF_EMAIL=... --dart-define=PERF_PASSWORD=...');
     }
+    // The sign-in page, on its own (the tour signs in through the API).
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+        home: const LoginScreen(),
+      ),
+    );
+    await _settle(tester);
+    await _shot(tester, '00_login');
     await const AuthService().login(_email, _password);
     await tester.pumpWidget(await bootstrap());
     await _settle(tester, const Duration(seconds: 6));

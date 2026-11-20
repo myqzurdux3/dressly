@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
 import '../../state/session.dart';
@@ -28,8 +29,10 @@ class _SignupScreenState extends State<SignupScreen> {
       _error = null;
     });
     try {
-      final result =
-          await const AuthService().signup(_email.text.trim(), _password.text);
+      final result = await const AuthService().signup(
+        _email.text.trim(),
+        _password.text,
+      );
       if (!mounted) return;
       context.read<Session>().setSession(result.user, result.token);
       // SignupScreen is a pushed route. After auth, pop it (and anything above)
@@ -45,47 +48,69 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
+    final gap = SizedBox(height: ds.space.s);
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'auth.signup'))),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: _email,
-                  decoration: InputDecoration(
-                      border: const OutlineInputBorder(), labelText: tr(context, 'auth.email')),
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  decoration: InputDecoration(
-                      border: const OutlineInputBorder(), labelText: tr(context, 'auth.password')),
-                  obscureText: true,
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!,
-                      style: const TextStyle(color: Colors.redAccent)),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(ds.space.gutter),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: DsButton.icon(
+                      icon: Icons.arrow_back,
+                      semanticLabel: MaterialLocalizations.of(
+                        context,
+                      ).backButtonTooltip,
+                      onPressed: () => Navigator.maybePop(context),
+                    ),
+                  ),
+                  SizedBox(height: ds.space.m),
+                  Text(
+                    tr(context, 'auth.signup').toUpperCase(),
+                    style: ds.typo.display,
+                  ),
+                  SizedBox(height: ds.space.l),
+                  TextField(
+                    controller: _email,
+                    decoration: InputDecoration(
+                      labelText: tr(context, 'auth.email'),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    autofillHints: const [AutofillHints.email],
+                  ),
+                  gap,
+                  TextField(
+                    controller: _password,
+                    decoration: InputDecoration(
+                      labelText: tr(context, 'auth.password'),
+                    ),
+                    obscureText: true,
+                    onSubmitted: (_) => _loading ? null : _submit(),
+                  ),
+                  if (_error != null) ...[
+                    gap,
+                    Text(
+                      _error!,
+                      style: ds.typo.label.copyWith(color: ds.colors.danger),
+                    ),
+                  ],
+                  SizedBox(height: ds.space.l),
+                  DsButton(
+                    label: tr(context, 'auth.createAccount'),
+                    expand: true,
+                    loading: _loading,
+                    onPressed: _loading ? null : _submit,
+                  ),
                 ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(tr(context, 'auth.createAccount')),
-                ),
-              ],
+              ),
             ),
           ),
         ),
