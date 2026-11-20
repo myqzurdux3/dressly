@@ -1,4 +1,1 @@
 lib/widgets/app_image.dart
-lib/widgets/filter_sheet.dart
-lib/widgets/section_header.dart
-lib/widgets/star_rating.dart

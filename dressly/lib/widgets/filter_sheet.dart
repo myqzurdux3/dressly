@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../design/ds.dart';
 import '../l10n/app_text.dart';
 import '../models/cloth.dart';
 import '../services/clothes_service.dart';
@@ -56,25 +57,29 @@ class _FilterSheetState extends State<FilterSheet> {
   }
 
   ClothFilter _current() => ClothFilter(
-        search: _search.text.trim().isEmpty ? null : _search.text.trim(),
-        brand: _brand.text.trim().isEmpty ? null : _brand.text.trim(),
-        tag: _tag.text.trim().isEmpty ? null : _tag.text.trim(),
-        color: _color,
-        cut: _cut,
-        category: _category,
-        sort: _sort,
-        minScore: _minScore,
-        // Carried through, not re-derived: favourites-only is toggled from the
-        // app bar heart, not from this sheet, so defaulting it to false made
-        // applying any filter silently turn the heart's mode off.
-        favorite: widget.filter.favorite,
-      );
+    search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+    brand: _brand.text.trim().isEmpty ? null : _brand.text.trim(),
+    tag: _tag.text.trim().isEmpty ? null : _tag.text.trim(),
+    color: _color,
+    cut: _cut,
+    category: _category,
+    sort: _sort,
+    minScore: _minScore,
+    // Carried through, not re-derived: favourites-only is toggled from the
+    // app bar heart, not from this sheet, so defaulting it to false made
+    // applying any filter silently turn the heart's mode off.
+    favorite: widget.filter.favorite,
+  );
 
   @override
   Widget build(BuildContext context) {
+    final ds = context.ds;
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        16, 16, 16, 16 + MediaQuery.of(context).viewInsets.bottom,
+        16,
+        16,
+        16,
+        16 + MediaQuery.of(context).viewInsets.bottom,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -83,9 +88,10 @@ class _FilterSheetState extends State<FilterSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(tr(context, 'filter.title'),
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(
+                  tr(context, 'filter.title').toUpperCase(),
+                  style: ds.typo.headline,
+                ),
                 TextButton(
                   onPressed: () {
                     _search.clear();
@@ -114,29 +120,42 @@ class _FilterSheetState extends State<FilterSheet> {
               // It was the one control left underlined, with its name floating
               // above it as a separate line.
               decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: tr(context, 'filter.sortBy')),
+                border: const OutlineInputBorder(),
+                labelText: tr(context, 'filter.sortBy'),
+              ),
               items: [
                 DropdownMenuItem(
-                    value: 'newest', child: Text(tr(context, 'filter.sortNewest'))),
+                  value: 'newest',
+                  child: Text(tr(context, 'filter.sortNewest')),
+                ),
                 DropdownMenuItem(
-                    value: 'name', child: Text(tr(context, 'filter.sortNameAsc'))),
+                  value: 'name',
+                  child: Text(tr(context, 'filter.sortNameAsc')),
+                ),
                 DropdownMenuItem(
-                    value: 'brand', child: Text(tr(context, 'filter.sortBrandAsc'))),
+                  value: 'brand',
+                  child: Text(tr(context, 'filter.sortBrandAsc')),
+                ),
                 DropdownMenuItem(
-                    value: 'category',
-                    child: Text(tr(context, 'filter.sortCategoryAsc'))),
+                  value: 'category',
+                  child: Text(tr(context, 'filter.sortCategoryAsc')),
+                ),
                 DropdownMenuItem(
-                    value: 'score',
-                    child: Text(tr(context, 'filter.sortRatingHigh'))),
+                  value: 'score',
+                  child: Text(tr(context, 'filter.sortRatingHigh')),
+                ),
                 DropdownMenuItem(
-                    value: 'score_asc',
-                    child: Text(tr(context, 'filter.sortRatingLow'))),
+                  value: 'score_asc',
+                  child: Text(tr(context, 'filter.sortRatingLow')),
+                ),
                 DropdownMenuItem(
-                    value: 'worn', child: Text(tr(context, 'filter.sortMostWorn'))),
+                  value: 'worn',
+                  child: Text(tr(context, 'filter.sortMostWorn')),
+                ),
                 DropdownMenuItem(
-                    value: 'worn_asc',
-                    child: Text(tr(context, 'filter.sortLeastWorn'))),
+                  value: 'worn_asc',
+                  child: Text(tr(context, 'filter.sortLeastWorn')),
+                ),
               ],
               onChanged: (v) => setState(() => _sort = v),
             ),
@@ -144,13 +163,15 @@ class _FilterSheetState extends State<FilterSheet> {
             TextField(
               controller: _search,
               decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: tr(context, 'filter.searchByName')),
+                border: const OutlineInputBorder(),
+                labelText: tr(context, 'filter.searchByName'),
+              ),
             ),
             const SizedBox(height: 12),
             Autocomplete<String>(
-              optionsBuilder: (v) => widget.availableBrands
-                  .where((b) => b.toLowerCase().contains(v.text.toLowerCase())),
+              optionsBuilder: (v) => widget.availableBrands.where(
+                (b) => b.toLowerCase().contains(v.text.toLowerCase()),
+              ),
               fieldViewBuilder: (c, ctrl, fn, onSub) {
                 _brand.text = ctrl.text;
                 ctrl.addListener(() => _brand.text = ctrl.text);
@@ -158,8 +179,9 @@ class _FilterSheetState extends State<FilterSheet> {
                   controller: ctrl,
                   focusNode: fn,
                   decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      labelText: tr(context, 'filter.brand')),
+                    border: const OutlineInputBorder(),
+                    labelText: tr(context, 'filter.brand'),
+                  ),
                   onSubmitted: (_) => onSub(),
                 );
               },
@@ -169,13 +191,20 @@ class _FilterSheetState extends State<FilterSheet> {
               key: ValueKey('color-$_color'),
               initialValue: _color,
               decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: tr(context, 'filter.color')),
+                border: const OutlineInputBorder(),
+                labelText: tr(context, 'filter.color'),
+              ),
               items: [
                 DropdownMenuItem(
-                    value: null, child: Text(tr(context, 'filter.anyColor'))),
-                ...kColorPalette
-                    .map((c) => DropdownMenuItem(value: c, child: Text(colorName(context, c)))),
+                  value: null,
+                  child: Text(tr(context, 'filter.anyColor')),
+                ),
+                ...kColorPalette.map(
+                  (c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(colorName(context, c)),
+                  ),
+                ),
               ],
               onChanged: (v) => setState(() => _color = v),
             ),
@@ -184,13 +213,20 @@ class _FilterSheetState extends State<FilterSheet> {
               key: ValueKey('cut-$_cut'),
               initialValue: _cut,
               decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: tr(context, 'filter.cut')),
+                border: const OutlineInputBorder(),
+                labelText: tr(context, 'filter.cut'),
+              ),
               items: [
                 DropdownMenuItem(
-                    value: null, child: Text(tr(context, 'filter.anyCut'))),
-                ...kCutOptions
-                    .map((c) => DropdownMenuItem(value: c, child: Text(cutLabel(context, c)))),
+                  value: null,
+                  child: Text(tr(context, 'filter.anyCut')),
+                ),
+                ...kCutOptions.map(
+                  (c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(cutLabel(context, c)),
+                  ),
+                ),
               ],
               onChanged: (v) => setState(() => _cut = v),
             ),
@@ -200,20 +236,28 @@ class _FilterSheetState extends State<FilterSheet> {
               initialValue: _category,
               isExpanded: true,
               decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: tr(context, 'filter.category')),
+                border: const OutlineInputBorder(),
+                labelText: tr(context, 'filter.category'),
+              ),
               items: [
                 DropdownMenuItem(
-                    value: null, child: Text(tr(context, 'filter.anyCategory'))),
-                ...kCategoryOptions.map((c) =>
-                    DropdownMenuItem(value: c, child: Text(categoryName(context, c)))),
+                  value: null,
+                  child: Text(tr(context, 'filter.anyCategory')),
+                ),
+                ...kCategoryOptions.map(
+                  (c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(categoryName(context, c)),
+                  ),
+                ),
               ],
               onChanged: (v) => setState(() => _category = v),
             ),
             const SizedBox(height: 12),
             Autocomplete<String>(
-              optionsBuilder: (v) => widget.availableTags
-                  .where((t) => t.toLowerCase().contains(v.text.toLowerCase())),
+              optionsBuilder: (v) => widget.availableTags.where(
+                (t) => t.toLowerCase().contains(v.text.toLowerCase()),
+              ),
               fieldViewBuilder: (c, ctrl, fn, onSub) {
                 _tag.text = ctrl.text;
                 ctrl.addListener(() => _tag.text = ctrl.text);
@@ -221,39 +265,30 @@ class _FilterSheetState extends State<FilterSheet> {
                   controller: ctrl,
                   focusNode: fn,
                   decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      labelText: tr(context, 'filter.tag')),
+                    border: const OutlineInputBorder(),
+                    labelText: tr(context, 'filter.tag'),
+                  ),
                   onSubmitted: (_) => onSub(),
                 );
               },
             ),
-            const SizedBox(height: 12),
-            Text(tr(context, 'filter.minRating'),
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(tr(context, 'filter.minRatingHint'),
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            Slider(
-              value: (_minScore ?? 0).toDouble(),
-              min: 0,
-              max: 5,
-              divisions: 5,
-              label: (_minScore == null || _minScore == 0)
-                  ? tr(context, 'filter.noRatingFilter')
-                  : '$_minScore / 5',
-              onChanged: (v) => setState(() {
-                final r = v.round();
-                _minScore = r == 0 ? null : r;
-              }),
+            DsSectionTitle(
+              tr(context, 'filter.minRating'),
+              hint: tr(context, 'filter.minRatingHint'),
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(context, _current()),
-                child: Text(tr(context, 'filter.apply')),
-              ),
+            DsSegment<int>(
+              options: [
+                (0, tr(context, 'filter.noRatingFilter')),
+                for (var n = 1; n <= 5; n++) (n, '$n+'),
+              ],
+              value: _minScore ?? 0,
+              onChanged: (v) => setState(() => _minScore = v == 0 ? null : v),
+            ),
+            SizedBox(height: ds.space.l),
+            DsButton(
+              label: tr(context, 'filter.apply'),
+              expand: true,
+              onPressed: () => Navigator.pop(context, _current()),
             ),
           ],
         ),

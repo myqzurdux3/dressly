@@ -1,3 +1,4 @@
+import 'package:dressly/design/ds.dart';
 import 'package:dressly/services/clothes_service.dart';
 import 'package:dressly/widgets/filter_sheet.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 Future<ClothFilter?> _applyOn(WidgetTester tester, ClothFilter initial) async {
   ClothFilter? applied;
   await tester.pumpWidget(MaterialApp(
+    theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
     home: Scaffold(
       body: Builder(
         builder: (context) => ElevatedButton(
