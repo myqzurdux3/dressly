@@ -366,7 +366,12 @@ class _DormantCard extends StatelessWidget {
               ),
               child: url == null
                   ? Icon(Icons.checkroom, color: tone.onFill)
-                  : AppImage(url: url, fit: BoxFit.contain),
+                  : AppImage.path(
+                      url,
+                      cacheKey: url,
+                      fit: BoxFit.contain,
+                      memWidth: 200,
+                    ),
             ),
             SizedBox(width: ds.space.s),
             Expanded(
