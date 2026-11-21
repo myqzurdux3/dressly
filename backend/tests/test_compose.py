@@ -90,3 +90,10 @@ def test_same_cut_borrows_shoes():
     pool = _wardrobe()
     o = g._algo_same_cut(pool, weather="hot")
     assert any(c["role"] == "feet" for c in o)
+
+
+def test_cold_always_has_a_warm_layer():
+    pool = _wardrobe()
+    for _ in range(300):
+        cats = _cats(g._compose(pool, "cold"))
+        assert cats & {"hoodie", "jacket"}, cats

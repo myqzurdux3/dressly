@@ -11,7 +11,7 @@ import io
 from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, UploadFile, status)
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from audit import record as audit_record
 from auth import get_current_user
@@ -230,6 +230,7 @@ def _build_outfit(row, cloths, model_name, worn_today=False,
         "view": row["view"] or "front",
         "linked_id": row["linked_id"] if "linked_id" in row.keys() else None,
         "is_favorite": bool(row["is_favorite"]),
+        "rating": int(row["rating"] or 0) if "rating" in row.keys() else 0,
         "describe_clothes": bool(row["describe_clothes"])
         if "describe_clothes" in row.keys() else False,
         "image_mode": _outfit_image_mode(row),
@@ -1073,6 +1074,7 @@ def _outfit_order(sort: str) -> str:
         "oldest": "o.created_at ASC",
         "most_worn": f"{_OUTFIT_WORN} DESC, o.created_at DESC",
         "least_worn": f"{_OUTFIT_WORN} ASC, o.created_at DESC",
+        "best_rated": "o.rating DESC, o.created_at DESC",
     }.get(sort or "", "o.created_at DESC")
 
 
@@ -1637,6 +1639,26 @@ def generate_back(outfit_id: int, background: BackgroundTasks,
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM outfits WHERE id = ?", (new_id,)).fetchone()
         return _hydrate(conn, row)
+
+
+class RatingRequest(BaseModel):
+    rating: int = Field(ge=0, le=5)  # 0 clears it
+
+
+@router.post("/{outfit_id}/rating")
+def rate_outfit(outfit_id: int, req: RatingRequest, user=Depends(get_current_user)):
+    """Rate an outfit 1-5 (0 clears). A linked back view shares the rating."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, linked_id FROM outfits WHERE id = ? AND user_id = ?",
+            (outfit_id, user["id"])).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Outfit not found")
+        ids = [outfit_id] + ([row["linked_id"]] if row["linked_id"] else [])
+        conn.execute(
+            f"UPDATE outfits SET rating = ? WHERE user_id = ? AND id IN "
+            f"({','.join('?' * len(ids))})", (req.rating, user["id"], *ids))
+    return {"ok": True, "rating": req.rating}
 
 
 @router.post("/{outfit_id}/favorite")

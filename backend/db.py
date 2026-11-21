@@ -675,6 +675,14 @@ def _outfit_versions(conn) -> None:
                      "WHERE id = ?", (dst, dst, r[0]))
 
 
+@migration
+def _outfit_rating(conn) -> None:
+    """A 1-5 rating per outfit (0 = not rated), which the generator learns from."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(outfits)")}
+    if "rating" not in cols:
+        conn.execute("ALTER TABLE outfits ADD COLUMN rating INTEGER NOT NULL DEFAULT 0")
+
+
 def fail_stale_cutouts(conn, timeout_s: float) -> int:
     """Mark abandoned background removals as failed. Returns how many.
 

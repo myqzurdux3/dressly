@@ -73,6 +73,9 @@ class Outfit {
   final String view; // 'front' | 'back'
   final int? linkedId; // paired opposite-view outfit, or null
   final bool isFavorite;
+
+  /// The owner's 1-5 rating; 0 = not rated.
+  final int rating;
   final bool wornToday; // worn (via agenda) today
   final String? nextTier; // next cascade tier, or null if on the last tier
   final bool describeClothes; // items' brand/name/type added to the prompt
@@ -123,6 +126,7 @@ class Outfit {
     required this.view,
     this.linkedId,
     required this.isFavorite,
+    this.rating = 0,
     this.wornToday = false,
     required this.nextTier,
     this.describeClothes = false,
@@ -147,6 +151,7 @@ class Outfit {
   /// URLs. One list to keep correct instead of one per call site.
   Outfit copyWith({
     bool? isFavorite,
+    int? rating,
     bool? isBlacklisted,
     bool? wornToday,
     String? status,
@@ -168,6 +173,7 @@ class Outfit {
     view: view,
     linkedId: linkedId,
     isFavorite: isFavorite ?? this.isFavorite,
+    rating: rating ?? this.rating,
     wornToday: wornToday ?? this.wornToday,
     nextTier: nextTier,
     describeClothes: describeClothes,
@@ -206,6 +212,7 @@ class Outfit {
       view: (json['view'] ?? 'front') as String,
       linkedId: json['linked_id'] as int?,
       isFavorite: json['is_favorite'] as bool? ?? false,
+      rating: (json['rating'] as num?)?.toInt() ?? 0,
       wornToday: json['worn_today'] as bool? ?? false,
       nextTier: json['next_tier'] as String?,
       describeClothes: json['describe_clothes'] as bool? ?? false,
@@ -243,6 +250,7 @@ class Outfit {
     view: view,
     linkedId: linkedId,
     isFavorite: isFavorite,
+    rating: rating,
     wornToday: wornToday,
     nextTier: nextTier,
     describeClothes: describeClothes,

@@ -431,30 +431,9 @@ class _OutfitScreenState extends State<OutfitScreen> {
     }
   }
 
-  Outfit _replaceFavorite(Outfit o, bool fav) => Outfit(
-    id: o.id,
-    modelId: o.modelId,
-    modelName: o.modelName,
-    clothIds: o.clothIds,
-    cloths: o.cloths,
-    prompt: o.prompt,
-    generatedUrl: o.generatedUrl,
-    status: o.status,
-    isMock: o.isMock,
-    modelTier: o.modelTier,
-    modelSlug: o.modelSlug,
-    view: o.view,
-    linkedId: o.linkedId,
-    wornToday: o.wornToday,
-    isFavorite: fav,
-    nextTier: o.nextTier,
-    describeClothes: o.describeClothes,
-    isBlacklisted: o.isBlacklisted,
-    imageMode: o.imageMode,
-    renderClothIds: o.renderClothIds,
-    error: o.error,
-    createdAt: o.createdAt,
-  );
+  // copyWith keeps every field: the hand-written copy here dropped the
+  // resized URLs, the kind and the layout.
+  Outfit _replaceFavorite(Outfit o, bool fav) => o.copyWith(isFavorite: fav);
 
   @override
   Widget build(BuildContext context) {
@@ -819,8 +798,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
                   outfit: o,
                   // Manual outfits reopen in the builder; AI ones (failed
                   // included, to retry) open the result.
-                  onTap: () =>
-                      _showResult(o),
+                  onTap: () => _showResult(o),
                   onDelete: () => _confirmDeleteOutfit(o),
                   onToggleFavorite: () => _toggleFavorite(o),
                 );

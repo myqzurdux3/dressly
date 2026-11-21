@@ -98,7 +98,8 @@ see it worn: then a model's id from list_models, or "random";
   - schedule_outfit puts an outfit in the agenda for a day;
   - update_garment changes a garment's rating, favourite or excluded flag;
   - mark_worn records that garments were worn on a day;
-  - favorite_outfit stars or unstars an existing outfit.
+  - favorite_outfit stars or unstars an existing outfit;
+  - rate_outfit gives an existing outfit a 1-5 rating.
   After acting, say in one sentence what you did.
 - Reply in the language the person writes in; in French, use "tu", as the \
 app does. Keep answers short and \
@@ -368,13 +369,29 @@ TOOLS += [
         },
         "strict": True,
     },
+    {
+        "name": "rate_outfit",
+        "description": ("Rate an existing outfit from 1 to 5 (0 clears the "
+                        "rating). Ratings teach the outfit generator which "
+                        "pieces go well together."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "outfit_id": {"type": "integer"},
+                "rating": {"type": "integer", "enum": [0, 1, 2, 3, 4, 5]},
+            },
+            "required": ["outfit_id", "rating"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
 ]
 
 # Tools that change the owner's data, carried out by the route (it has the
 # user and the other routers); see routes_stylist._Actions.
 ACTION_TOOLS = {"save_outfit", "render_outfit", "list_models",
                 "schedule_outfit", "update_garment", "mark_worn",
-                "favorite_outfit"}
+                "favorite_outfit", "rate_outfit"}
 # Tools whose result the owner already sees as a card: a turn that only made
 # cards, and already said something, needs no wrap-up call.
 CARD_TOOLS = {"propose_outfit", "save_outfit", "render_outfit"}
@@ -534,7 +551,7 @@ def _outfits(conn, user_id: int, favorites_only: bool) -> str:
     names = {r["id"]: r["name"] for r in conn.execute(
         "SELECT id, name FROM clothes WHERE user_id = ?", (user_id,))}
     rows = conn.execute(
-        "SELECT id, cloth_ids, is_favorite FROM outfits WHERE user_id = ? "
+        "SELECT id, cloth_ids, is_favorite, rating FROM outfits WHERE user_id = ? "
         "AND status = 'done' AND kind IN ('ai', 'manual') "
         "AND NOT (view = 'back' AND linked_id IS NOT NULL) "
         + ("AND is_favorite = 1 " if favorites_only else "")
@@ -547,7 +564,9 @@ def _outfits(conn, user_id: int, favorites_only: bool) -> str:
             ids = json.loads(r["cloth_ids"] or "[]")
         except (ValueError, TypeError):
             ids = []
-        out.append(f"outfit {r['id']}{' (favourite)' if r['is_favorite'] else ''}: "
+        marks = (" (favourite)" if r["is_favorite"] else "") + (
+            f" (rated {r['rating']}/5)" if r["rating"] else "")
+        out.append(f"outfit {r['id']}{marks}: "
                    + ", ".join(f"{names.get(i, '?')} (id {i})" for i in ids))
     return "\n".join(out)
 

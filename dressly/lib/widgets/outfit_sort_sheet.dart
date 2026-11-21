@@ -5,7 +5,7 @@ import '../l10n/app_text.dart';
 
 /// Sort + filter options for an outfit list (history / favorites).
 class OutfitQuery {
-  final String sort; // newest | oldest | most_worn | least_worn
+  final String sort; // newest | oldest | most_worn | least_worn | best_rated
   final bool favorite; // only favorited outfits
   final String model; // any | with | none
   const OutfitQuery({
@@ -73,6 +73,7 @@ class _OutfitSortSheetState extends State<_OutfitSortSheet> {
             ('oldest', tr(context, 'sort.oldest')),
             ('most_worn', tr(context, 'sort.mostWorn')),
             ('least_worn', tr(context, 'sort.leastWorn')),
+            ('best_rated', tr(context, 'sort.bestRated')),
           ],
           value: _q.sort,
           onChanged: (v) => setState(() => _q = _q.copyWith(sort: v)),

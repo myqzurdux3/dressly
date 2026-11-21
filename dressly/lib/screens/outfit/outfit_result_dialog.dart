@@ -411,6 +411,19 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     _toastKey(newVal ? 'result.favAdded' : 'result.favRemoved');
   }
 
+  Future<void> _rate(int rating) async {
+    final before = _outfit.rating;
+    // Optimistic: the stars move on tap, and go back if the call fails.
+    setState(() => _outfit = _outfit.copyWith(rating: rating));
+    final saved = await _run(
+      'result.rateFailed',
+      () => outfitsServiceOf(context).rate(_outfit.id, rating),
+    );
+    if (!mounted) return;
+    setState(() => _outfit = _outfit.copyWith(rating: saved ?? before));
+    widget.onChanged(_outfit);
+  }
+
   Future<void> _toggleBlacklist() async {
     final newVal = await _run(
       'result.failed',
@@ -1005,6 +1018,17 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                     semanticLabel: tr(context, 'share.action'),
                     onPressed: _busy ? null : _share,
                   ),
+                ],
+              ),
+              gap,
+            ],
+            if (!failed && !_outfit.isProcessing) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(tr(context, 'result.rate'), style: muted),
+                  ),
+                  DsRating(score: _outfit.rating, onChanged: _rate),
                 ],
               ),
               gap,

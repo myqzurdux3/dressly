@@ -123,11 +123,25 @@ class OutfitHistoryCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                child: Text(
-                  caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ds.typo.label.copyWith(color: c.text),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        caption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: ds.typo.label.copyWith(color: c.text),
+                      ),
+                    ),
+                    if (outfit.rating > 0) ...[
+                      Icon(Icons.star_rounded, size: 16, color: c.accent),
+                      Text(
+                        '${outfit.rating}',
+                        style: ds.typo.label.copyWith(color: c.text),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

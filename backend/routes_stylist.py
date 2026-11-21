@@ -389,6 +389,13 @@ class _Actions:
             self.user)
         return f"Outfit {a['outfit_id']} favourite: {out['is_favorite']}."
 
+    def _rate_outfit(self, a):
+        import routes_outfits
+        out = routes_outfits.rate_outfit(
+            int(a["outfit_id"]),
+            routes_outfits.RatingRequest(rating=int(a["rating"])), self.user)
+        return f"Outfit {a['outfit_id']} rated {out['rating']}/5."
+
 
 def record_usage(user_id: int, model: str, usage: dict) -> None:
     """One model call, priced now. Never breaks a turn."""

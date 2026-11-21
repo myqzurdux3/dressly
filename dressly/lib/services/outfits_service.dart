@@ -29,7 +29,8 @@ class OutfitsService {
 
   /// Outfit history. Pass [limit]/[offset] to page it; omit [limit] for all.
   Future<List<Outfit>> list({
-    String sort = 'newest', // newest | oldest | most_worn | least_worn
+    String sort =
+        'newest', // newest | oldest | most_worn | least_worn | best_rated
     bool favorite = false,
     String model = 'any', // any | with | none
     int? limit,
@@ -220,6 +221,14 @@ class OutfitsService {
       if (renderClothIds != null) 'render_cloth_ids': renderClothIds,
     });
     return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
+  }
+
+  /// Rate an outfit 1-5 (0 clears). Returns the stored rating.
+  Future<int> rate(int outfitId, int rating) async {
+    final data =
+        await _api.post('/outfits/$outfitId/rating', {'rating': rating})
+            as Map<String, dynamic>;
+    return (data['rating'] as num?)?.toInt() ?? rating;
   }
 
   /// Toggle (or set) favorite. Returns the new favorite state.

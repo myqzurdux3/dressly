@@ -689,6 +689,10 @@ def _compose(pool: List[dict], weather: str = "any", locked=(),
             take("mid", pool)  # no t-shirt to wear: a sweatshirt will do
     if "outer" not in taken and _random.random() < outer_p:
         take("outer", pool)
+    if climate == "cold" and not taken & {"mid", "outer"}:
+        # A t-shirt on its own is not dressed for the cold: add whichever warm
+        # layer the wardrobe has.
+        take("mid", pool) or take("outer", pool)
     if "feet" not in taken:
         take("feet", side)
     if "socks" not in taken and "feet" in taken:
@@ -701,9 +705,44 @@ def _compose(pool: List[dict], weather: str = "any", locked=(),
     return chosen
 
 
-def outfit_score(picked: List[dict]) -> float:
+def learned_pairs(conn, user_id: int) -> dict:
+    """What the owner's outfit ratings say about garments worn together.
+
+    Each rated outfit votes on every pair of its garments: a 5 adds 2, a 4
+    adds 1, a 2 takes 1 away and a 1 takes 2. Summed over all outfits, a pair
+    that keeps getting good marks is drawn together more often, and one that
+    keeps getting bad ones is drawn apart.
+    """
+    from collections import defaultdict
+    votes: dict = defaultdict(float)
+    for r in conn.execute(
+            "SELECT cloth_ids, rating FROM outfits WHERE user_id = ? "
+            "AND rating > 0 AND rating != 3", (user_id,)).fetchall():
+        try:
+            ids = sorted({int(x) for x in json.loads(r["cloth_ids"] or "[]")})
+        except (TypeError, ValueError):
+            continue
+        w = float(r["rating"] - 3)
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                votes[(a, b)] += w
+    return dict(votes)
+
+
+def _learned_bonus(picked: List[dict], pairs: Optional[dict]) -> float:
+    if not pairs:
+        return 0.0
+    ids = sorted(c["id"] for c in picked)
+    total = sum(pairs.get((a, b), 0.0)
+                for i, a in enumerate(ids) for b in ids[i + 1:])
+    # Bounded, so one loved outfit does not drown the colour rules.
+    return max(-3.0, min(3.0, 0.5 * total))
+
+
+def outfit_score(picked: List[dict], pairs: Optional[dict] = None) -> float:
     """How good an outfit looks on paper: colours that go together, few
-    bright colours, liked and not just-worn pieces, complete feet."""
+    bright colours, liked and not just-worn pieces, complete feet, and what
+    the owner's own outfit ratings say about these pieces together."""
     cols = [x for c in picked for x in _colours(c)]
     clashes = sum(1 for i, a in enumerate(cols) for b in cols[i + 1:]
                   if not _pair_compatible(a, b))
@@ -722,7 +761,7 @@ def outfit_score(picked: List[dict]) -> float:
         s += 1.0
         if "socks" in slots:
             s += 0.2
-    return s
+    return s + _learned_bonus(picked, pairs)
 
 
 # --- algorithms ----------------------------------------------------------
@@ -1285,6 +1324,11 @@ def select(req: GenerateRequest) -> List[dict]:
         feet_pool = [c for c in _essentials if c["role"] == "feet"]
         locked = _fetch_clothes_by_id(conn, req.user_id, locked_ids)
         blacklist = _blacklisted_combos(conn, req.user_id)
+        pairs = learned_pairs(conn, req.user_id)
+        # An outfit rated 1 or 2 is not offered again as is.
+        disliked = {combo_key(json.loads(r["cloth_ids"] or "[]")) for r in conn.execute(
+            "SELECT cloth_ids FROM outfits WHERE user_id = ? "
+            "AND rating BETWEEN 1 AND 2", (req.user_id,)).fetchall()}
 
     locked_id_set = {c["id"] for c in locked}
 
@@ -1360,7 +1404,7 @@ def select(req: GenerateRequest) -> List[dict]:
         if not _is_wearable(last, req):
             continue
         key = combo_key([c["id"] for c in last])
-        if blacklist and key in blacklist:
+        if (blacklist and key in blacklist) or key in disliked:
             continue
         if key not in seen:
             seen.add(key)
@@ -1370,8 +1414,9 @@ def select(req: GenerateRequest) -> List[dict]:
     if not drafts:
         return []  # only blacklisted or unwearable combos were reachable
     import math
-    best = max(outfit_score(d) for d in drafts)
-    weights = [math.exp(2.0 * (outfit_score(d) - best)) for d in drafts]
+    scores = [outfit_score(d, pairs) for d in drafts]
+    best = max(scores)
+    weights = [math.exp(2.0 * (sc - best)) for sc in scores]
     return _random.choices(drafts, weights=weights, k=1)[0]
 
 
