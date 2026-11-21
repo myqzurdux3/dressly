@@ -244,3 +244,15 @@ def test_an_unknown_image_is_a_404(client, auth):
     r = client.patch(f"/clothes/{c['id']}/images/999999/enhance-describe",
                      headers=auth, json={"describe": False})
     assert r.status_code == 404
+
+
+def test_accessories_are_not_pressed_flat():
+    """Caps, shoes and bags keep their volume; only clothes are laid flat."""
+    for cat, want in (("cap", "upright"), ("hat", "upright"),
+                      ("sneakers", "natural shape"), ("bag", "volume"),
+                      ("socks", "pair")):
+        p = enhance._ai_prompt(name="x", category=cat).lower()
+        assert "laid flat with the wrinkles" not in p, (cat, p)
+        assert want in p, (cat, p)
+    assert "laid flat" in enhance._ai_prompt(category="tshirt").lower()
+    assert "a pair of sneakers" in enhance._ai_prompt(category="sneakers")

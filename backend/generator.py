@@ -104,6 +104,9 @@ HOT_CATEGORIES = {
 }
 COLD_CATEGORIES = {
     "hoodie", "sweatshirt", "jacket", "coat",          # warm tops + outers
+    # Worn UNDER the hoodie: without them a cold outfit was a hoodie on bare
+    # skin (measured: no cold outfit was ever layered).
+    "tshirt", "shirt", "polo",
     "jeans", "trousers", "jogging",                    # warm bottoms
     "sneakers", "shoes", "hat", "cap", "socks", "bag",  # feet + accessory
 }
@@ -291,7 +294,8 @@ def _fetch_pool(conn, user_id: int, min_score: int, weather: str = "any",
     # into an outfit by hand, but algorithms never pull them from the pool.
     where_excl = "" if include_excluded else " AND COALESCE(exclude_from_algo, 0) = 0"
     rows = conn.execute(
-        "SELECT id, name, brand, cut, category, custom_tags, score, last_worn_at "
+        "SELECT id, name, brand, cut, category, custom_tags, score, last_worn_at, "
+        "COALESCE(is_favorite, 0) AS is_favorite "
         f"FROM clothes WHERE user_id = ?{where_excl} "
         "ORDER BY id",
         (user_id,),
@@ -336,6 +340,7 @@ def _fetch_pool(conn, user_id: int, min_score: int, weather: str = "any",
             "cut": r["cut"], "category": r["category"], "tags": tags,
             "score": score, "colors": colors, "dom_colors": _dominant(r["id"]),
             "last_worn_at": r["last_worn_at"] if "last_worn_at" in r.keys() else None,
+            "is_favorite": bool(r["is_favorite"]),
             "role": role_of(r["category"]),
         })
     return pool
@@ -492,6 +497,234 @@ def _shuffle(items: List[dict]) -> List[dict]:
     return s
 
 
+
+# --- composing an outfit ---------------------------------------------------
+#
+# Measured on a real 173-piece wardrobe (60 draws per algorithm and weather)
+# before this existed: a t-shirt was never worn under a hoodie (both were the
+# "top" role, one per role), every "any weather" outfit had a jacket even over
+# shorts, random draws clashed in colour one time in five, "least worn" gave
+# the very same outfit every time, and "same cut" / "shared tag" never had
+# shoes. Every algorithm now picks its theme, then hands the themed pool to
+# _compose, which dresses a person slot by slot.
+
+# Where a garment goes on the body. None = never picked on its own (underwear,
+# unknown categories): it only appears when the user locks it in.
+def _slot(category: str) -> Optional[str]:
+    c = (category or "").strip().lower()
+    if c in ONEPIECE_CATS:
+        return "onepiece"
+    if c in _BASE_TOP_CATS:
+        return "top"
+    if c in _MID_TOP_CATS:
+        return "mid"
+    if c in OUTER_CATS:
+        return "outer"
+    if c in BOTTOM_CATS:
+        return "bottom"
+    if c in FEET_CATS:
+        return "feet"
+    if c in ("hat", "cap"):
+        return "headwear"
+    if c in ("socks", "bag"):
+        return c
+    return None
+
+
+_LIGHT_BOTTOMS = {"shorts", "skirt"}
+
+# Per climate: chance of a mid layer, of an outer layer, and how much more a
+# light bottom (shorts, skirt) is wanted than a long one. 0 = never.
+_CLIMATES = {
+    "hot":  {"mid": 0.0, "outer": 0.0, "light": 4.0, "long": 0.0},
+    "warm": {"mid": 0.08, "outer": 0.05, "light": 3.0, "long": 1.0},
+    "mild": {"mid": 0.45, "outer": 0.3, "light": 0.6, "long": 1.5},
+    "cool": {"mid": 0.75, "outer": 0.8, "light": 0.0, "long": 1.0},
+    "cold": {"mid": 0.85, "outer": 0.97, "light": 0.0, "long": 1.0},
+}
+_HEADWEAR_CHANCE = 0.3
+_BAG_CHANCE = 0.15
+_ONEPIECE_CHANCE = 0.25
+# A hoodie or sweatshirt is usually worn over a t-shirt.
+_UNDER_MID_CHANCE = 0.85
+
+
+def _climate_for(weather: str, pool: List[dict]) -> str:
+    """The climate of one draw. 'hot'/'cold' are what was asked; 'any' varies
+    between draws, among the climates this wardrobe can actually dress."""
+    if weather in ("hot", "cold"):
+        return weather
+    cats = {c["category"] for c in pool}
+    options = []
+    if cats & _LIGHT_BOTTOMS:
+        options.append("warm")
+    if cats & (BOTTOM_CATS - _LIGHT_BOTTOMS):
+        options += ["mild", "mild", "cool"]
+    return _random.choice(options) if options else "mild"
+
+
+def _colours(c: dict) -> List[str]:
+    return list(c.get("dom_colors") or ()) or list(c.get("colors") or ())[:1]
+
+
+def _loud(colours) -> set:
+    return {x for x in colours if x not in NEUTRALS}
+
+
+def _days_since(day: Optional[str]) -> Optional[int]:
+    if not day:
+        return None
+    from datetime import date
+    try:
+        return (date.today() - date.fromisoformat(str(day)[:10])).days
+    except ValueError:
+        return None
+
+
+def _item_weight(c: dict, chosen: List[dict], strict_colours: bool) -> float:
+    """How much this garment is wanted next to what is already chosen."""
+    score = c.get("score") or 0
+    w = (1.0 + (score if score > 0 else 2.5)) ** 1.6
+    if c.get("is_favorite"):
+        w *= 1.6
+    days = _days_since(c.get("last_worn_at"))
+    if days is None:
+        w *= 1.15
+    elif days <= 2:
+        w *= 0.2
+    elif days <= 6:
+        w *= 0.6
+    mine = _colours(c)
+    others = [x for o in chosen for x in _colours(o)]
+    if mine and others:
+        if any(not _pair_compatible(a, b) for a in mine for b in others):
+            return 0.0 if strict_colours else w * 0.03
+        loud_mine, loud_others = _loud(mine), _loud(others)
+        if loud_mine and loud_others:
+            # Echoing a colour already worn reads as intended; a second, new
+            # bright colour rarely does.
+            w *= 1.4 if loud_mine & loud_others else 0.35
+    return w
+
+
+def _weighted_pick(cands: List[dict], chosen: List[dict],
+                   strict_colours: bool, stale_first: bool) -> Optional[dict]:
+    if not cands:
+        return None
+    if stale_first:
+        # "Least worn": only the longest-unworn tier competes (never worn,
+        # else the oldest quarter), and the choice inside it varies.
+        never = [c for c in cands if not c.get("last_worn_at")]
+        if never:
+            cands = never
+        else:
+            ordered = sorted(cands, key=lambda c: c["last_worn_at"])
+            cands = ordered[:max(1, len(ordered) // 4)]
+    weights = [_item_weight(c, chosen, strict_colours) for c in cands]
+    if not any(weights):
+        return None
+    return _random.choices(cands, weights=weights, k=1)[0]
+
+
+def _compose(pool: List[dict], weather: str = "any", locked=(),
+             extras: Optional[List[dict]] = None, strict_colours: bool = False,
+             stale_first: bool = False) -> List[dict]:
+    """Dress one person from ``pool``, slot by slot.
+
+    ``locked`` garments are already worn: their slots are taken and colours
+    are matched around them. ``extras`` is where shoes, socks, headwear and a
+    bag come from when a theme does not apply to them (a cut has no shoes);
+    by default the same pool.
+    """
+    climate = _climate_for(weather, pool)
+    rules = _CLIMATES[climate]
+    chosen: List[dict] = list(locked)
+    taken = set()
+    for c in chosen:
+        taken |= slots_of(c["category"])
+    ids = {c["id"] for c in chosen}
+
+    def take(slot: str, src: List[dict], weigh=None) -> Optional[dict]:
+        cands = [c for c in src if _slot(c["category"]) == slot
+                 and c["id"] not in ids and not (slots_of(c["category"]) & taken)]
+        if weigh is not None:
+            cands = [c for c in cands if weigh(c) > 0]
+        pick = _weighted_pick(cands, chosen, strict_colours, stale_first)
+        if pick is not None:
+            chosen.append(pick)
+            ids.add(pick["id"])
+            taken.update(slots_of(pick["category"]))
+        return pick
+
+    side = extras if extras is not None else pool
+    # The body first: a one-piece sometimes, else a top and a bottom.
+    has_onepiece = any(_slot(c["category"]) == "onepiece" for c in pool)
+    if (has_onepiece and "top" not in taken and "bottom" not in taken
+            and _random.random() < _ONEPIECE_CHANCE):
+        take("onepiece", pool)
+    bottom_light = None
+    if "bottom" not in taken:
+        def bottom_ok(c):
+            light = c["category"] in _LIGHT_BOTTOMS
+            return rules["light"] if light else rules["long"]
+        # Weighted by climate: shorts in the heat, long trousers in the cold.
+        cands = [c for c in pool if _slot(c["category"]) == "bottom"]
+        by_climate = [c for c in cands if bottom_ok(c) > 0]
+        b = take("bottom", by_climate or cands)
+        if b is not None:
+            bottom_light = b["category"] in _LIGHT_BOTTOMS
+    else:
+        bottom_light = any(c["category"] in _LIGHT_BOTTOMS for c in chosen)
+    # Layers: fewer over shorts, whatever the forecast says.
+    mid_p, outer_p = rules["mid"], rules["outer"]
+    if bottom_light:
+        mid_p, outer_p = mid_p * 0.15, outer_p * 0.1
+    want_mid = "mid" not in taken and _random.random() < mid_p
+    if want_mid:
+        take("mid", pool)
+    if "top" not in taken:
+        if "mid" not in taken or _random.random() < _UNDER_MID_CHANCE:
+            take("top", pool)
+        if "top" not in taken and "mid" not in taken:
+            take("mid", pool)  # no t-shirt to wear: a sweatshirt will do
+    if "outer" not in taken and _random.random() < outer_p:
+        take("outer", pool)
+    if "feet" not in taken:
+        take("feet", side)
+    if "socks" not in taken and "feet" in taken:
+        take("socks", side)
+    if "headwear" not in taken and _random.random() < (
+            _HEADWEAR_CHANCE * (1.5 if climate in ("hot", "warm") else 1)):
+        take("headwear", side)
+    if "bag" not in taken and _random.random() < _BAG_CHANCE:
+        take("bag", side)
+    return chosen
+
+
+def outfit_score(picked: List[dict]) -> float:
+    """How good an outfit looks on paper: colours that go together, few
+    bright colours, liked and not just-worn pieces, complete feet."""
+    cols = [x for c in picked for x in _colours(c)]
+    clashes = sum(1 for i, a in enumerate(cols) for b in cols[i + 1:]
+                  if not _pair_compatible(a, b))
+    loud = len(_loud(cols))
+    scores = [c.get("score") or 0 for c in picked]
+    rated = [s for s in scores if s > 0]
+    s = 0.0
+    s -= 2.0 * clashes
+    s -= 0.6 * max(0, loud - 1)
+    s += 0.35 * (sum(rated) / len(rated) if rated else 2.5)
+    s += 0.4 * sum(1 for c in picked if c.get("is_favorite"))
+    s -= 0.5 * sum(1 for c in picked
+                   if (_days_since(c.get("last_worn_at")) or 99) <= 2)
+    slots = {_slot(c["category"]) for c in picked}
+    if "feet" in slots:
+        s += 1.0
+        if "socks" in slots:
+            s += 0.2
+    return s
+
+
 # --- algorithms ----------------------------------------------------------
 
 def _theme_from_locked(locked, values_of):
@@ -560,7 +793,11 @@ def _pick_theme(locked, values_of, counts, all_counts=None, avoid=()):
     outfit, and a locked cloth still wins outright.
     """
     known = all_counts if all_counts is not None else counts
-    from_locked = [v for v in _theme_from_locked(locked, values_of) if v in known]
+    pinned = _theme_from_locked(locked, values_of)
+    # A locked cloth the pool filtered out (shorts locked on a cold day) still
+    # names the theme: answering with another one would dress it in clothes
+    # off the theme it set.
+    from_locked = [v for v in pinned if v in known] or pinned
     if from_locked:
         # Several locked clothes can disagree (an Adidas tee and Nike shorts).
         # Honouring one of them beats honouring neither, so pick among those.
@@ -572,7 +809,7 @@ def _pick_theme(locked, values_of, counts, all_counts=None, avoid=()):
     return _random.choices(keys, weights=[counts[k] for k in keys], k=1)[0]
 
 
-def _algo_same_brand(pool, locked=(), avoid=()):
+def _algo_same_brand(pool, locked=(), avoid=(), weather="any"):
     if not pool:
         return []
     from collections import Counter
@@ -589,10 +826,10 @@ def _algo_same_brand(pool, locked=(), avoid=()):
         return []
     themed = [c for c in pool if c["brand"] == target]
     # Complete ONLY from the same brand — never mix in another brand's cloth.
-    return _complete(_pick_one_per_role(_shuffle(themed)), themed)
+    return _compose(themed, weather, locked)
 
 
-def _algo_single_color(pool, locked=(), avoid=()):
+def _algo_single_color(pool, locked=(), avoid=(), weather="any"):
     if not pool:
         return []
     # Use each cloth's DOMINANT colour(s) (highest dominance tier), not just any
@@ -612,7 +849,7 @@ def _algo_single_color(pool, locked=(), avoid=()):
     if target is None:
         return []
     themed = [c for c in pool if target in c.get("dom_colors", ())]
-    return _complete(_pick_one_per_role(_shuffle(themed)), themed)
+    return _compose(themed, weather, locked)
 
 
 def _largest_compatible_set(with_color):
@@ -666,17 +903,30 @@ def _largest_compatible_set(with_color):
     return best
 
 
-def _algo_color_match(pool):
+def _algo_color_match(pool, locked=(), weather="any"):
+    """Colours that go together: every piece is checked against the ones
+    already chosen, clashes are refused and a second bright colour is rare."""
     if not pool:
         return []
     with_color = [c for c in pool if c["colors"]]
     if not with_color:
-        return _algo_random(pool)
-    best = _largest_compatible_set(with_color)
-    return _complete(_pick_one_per_role(_shuffle(best)), best)
+        return _algo_random(pool, weather, locked)
+    return _compose(with_color, weather, locked, strict_colours=True)
 
 
-def _algo_matching_tag(pool, locked=(), avoid=()):
+def _extras_for(themed: List[dict], pool: List[dict]) -> List[dict]:
+    """Shoes, socks, headwear and bag for a themed outfit: the themed ones
+    when the theme has any of that kind, else the wardrobe's."""
+    out = list(themed)
+    have = {_slot(c["category"]) for c in themed}
+    for c in pool:
+        s = _slot(c["category"])
+        if s in ("feet", "socks", "headwear", "bag") and s not in have:
+            out.append(c)
+    return out
+
+
+def _algo_matching_tag(pool, locked=(), avoid=(), weather="any"):
     if not pool:
         return []
     from collections import Counter, defaultdict
@@ -712,10 +962,12 @@ def _algo_matching_tag(pool, locked=(), avoid=()):
     if target is None:
         return []
     themed = [c for c in pool if target in c["tags"]]
-    return _complete(_pick_one_per_role(_shuffle(themed)), themed)
+    # Tags are put on clothes far more than on shoes: when no tagged pair
+    # exists, shoes and socks come from the rest of the wardrobe.
+    return _compose(themed, weather, locked, extras=_extras_for(themed, pool))
 
 
-def _algo_same_cut(pool, locked=(), avoid=()):
+def _algo_same_cut(pool, locked=(), avoid=(), weather="any"):
     if not pool:
         return []
     # Only clothes that actually have a cut count — shoes/bags/accessories are
@@ -734,21 +986,20 @@ def _algo_same_cut(pool, locked=(), avoid=()):
     if target is None:
         return []
     themed = [c for c in candidates if c["cut"] == target]
-    return _complete(_pick_one_per_role(_shuffle(themed)), themed)
+    # Shoes, socks and caps have no cut: they come from the whole wardrobe.
+    return _compose(themed, weather, locked, extras=pool)
 
 
-def _algo_least_worn(pool):
-    """Prefer the clothes worn longest ago (never-worn first). Builds an outfit
-    from the least-recently-worn item in each role, so nothing sits unused."""
+def _algo_least_worn(pool, locked=(), weather="any"):
+    """Prefer the clothes worn longest ago (never-worn first), so nothing sits
+    unused. Each slot draws among its longest-unworn pieces: it used to take
+    the first one, and gave the very same outfit every time."""
     if not pool:
         return []
-    # Never worn (None) sorts before any date; older dates sort before newer.
-    ordered = sorted(pool, key=lambda c: (c["last_worn_at"] is not None,
-                                          c["last_worn_at"] or ""))
-    return _complete(_pick_one_per_role(ordered), pool)
+    return _compose(pool, weather, locked, stale_first=True)
 
 
-def _algo_pick_by_color(pool, color):
+def _algo_pick_by_color(pool, color, locked=(), weather="any"):
     if not color or not pool:
         return []
     # Only clothes whose DOMINANT colour is the chosen one — a black jogging with
@@ -757,20 +1008,20 @@ def _algo_pick_by_color(pool, color):
     if not themed:
         return []
     # Complete only from themed clothes so the "single color" promise holds.
-    return _pick_one_per_role(_shuffle(themed))
+    return _compose(themed, weather, locked)
 
 
-def _algo_pick_by_brand(pool, brand):
+def _algo_pick_by_brand(pool, brand, locked=(), weather="any"):
     if not brand or not pool:
         return []
     themed = [c for c in pool if c["brand"].lower() == brand.lower()]
     if not themed:
         return []
     # Complete only from themed clothes so the "single brand" promise holds.
-    return _pick_one_per_role(_shuffle(themed))
+    return _compose(themed, weather, locked)
 
 
-def _algo_pick_by_tag(pool, tag):
+def _algo_pick_by_tag(pool, tag, locked=(), weather="any"):
     if not tag or not pool:
         return []
     tl = tag.strip().lower()
@@ -778,30 +1029,15 @@ def _algo_pick_by_tag(pool, tag):
     if not themed:
         return []
     # Complete only from clothes carrying the chosen tag.
-    return _pick_one_per_role(_shuffle(themed))
+    return _compose(themed, weather, locked)
 
 
-def _algo_random(pool, weather="any"):
+def _algo_random(pool, weather="any", locked=()):
+    """Any wardrobe piece, but still dressed like a person: layers by the
+    weather, colours that do not clash, liked and rested pieces first."""
     if not pool:
         return []
-    # Weather shapes what _complete fills in. A hot outfit should not get an
-    # outer; a cold outfit should.
-    want_top = "top"
-    want_bottom = "bottom"
-    want_outer = None
-    if weather == "cold":
-        want_outer = "outer"
-        want_bottom = "bottom"
-    elif weather == "hot":
-        want_outer = None
-        want_bottom = "bottom"
-    picked = _pick_one_per_role(_shuffle(pool))
-    picked = _ensure_role(picked, pool, want_top) or picked
-    if not any(p["role"] == "onepiece" for p in picked):
-        picked = _ensure_role(picked, pool, want_bottom) or picked
-    if want_outer:
-        picked = _ensure_role(picked, pool, want_outer) or picked
-    return picked
+    return _compose(pool, weather, locked)
 
 
 def _ensure_role(picked, pool, role):
@@ -845,24 +1081,32 @@ def _ensure_feet(picked, pool):
     return picked + [_random.choice(feet)]
 
 
+def _avoid(r):
+    return getattr(r, "avoid_theme_values", ())
+
+
 _ALGOS = {
     # `locked` is the clothes the user pinned. Themed algorithms take their
     # theme FROM them: locking an Adidas tee and asking for "same brand" must
-    # mean Adidas, not whichever brand the wardrobe weighting landed on.
+    # mean Adidas, not whichever brand the wardrobe weighting landed on. The
+    # locked clothes are also handed to _compose, which dresses around them.
     "same-brand": lambda p, r, locked: _algo_same_brand(
-        p, locked, getattr(r, "avoid_theme_values", ())),
+        p, locked, _avoid(r), r.weather),
     "single-color": lambda p, r, locked: _algo_single_color(
-        p, locked, getattr(r, "avoid_theme_values", ())),
-    "color-match": lambda p, r, locked: _algo_color_match(p),
+        p, locked, _avoid(r), r.weather),
+    "color-match": lambda p, r, locked: _algo_color_match(p, locked, r.weather),
     "matching-tag": lambda p, r, locked: _algo_matching_tag(
-        p, locked, getattr(r, "avoid_theme_values", ())),
+        p, locked, _avoid(r), r.weather),
     "same-cut": lambda p, r, locked: _algo_same_cut(
-        p, locked, getattr(r, "avoid_theme_values", ())),
-    "least-worn": lambda p, r, locked: _algo_least_worn(p),
-    "pick-by-color": lambda p, r, locked: _algo_pick_by_color(p, r.color),
-    "pick-by-brand": lambda p, r, locked: _algo_pick_by_brand(p, r.brand),
-    "pick-by-tag": lambda p, r, locked: _algo_pick_by_tag(p, r.tag),
-    "random": lambda p, r, locked: _algo_random(p, r.weather),
+        p, locked, _avoid(r), r.weather),
+    "least-worn": lambda p, r, locked: _algo_least_worn(p, locked, r.weather),
+    "pick-by-color": lambda p, r, locked: _algo_pick_by_color(
+        p, r.color, locked, r.weather),
+    "pick-by-brand": lambda p, r, locked: _algo_pick_by_brand(
+        p, r.brand, locked, r.weather),
+    "pick-by-tag": lambda p, r, locked: _algo_pick_by_tag(
+        p, r.tag, locked, r.weather),
+    "random": lambda p, r, locked: _algo_random(p, r.weather, locked),
 }
 
 
@@ -1010,6 +1254,10 @@ def theme_value_of(algo: str, picked: List[dict]) -> Optional[str]:
     return None  # untuned algorithms promise no shared property
 
 
+# Wearable drafts drawn per outfit before keeping one.
+_DRAFTS = 5
+
+
 def select(req: GenerateRequest) -> List[dict]:
     """Run an algorithm and return the chosen clothes (list of dicts with id,
     name, brand, category, role). Empty list if nothing matched — or if every
@@ -1039,7 +1287,6 @@ def select(req: GenerateRequest) -> List[dict]:
         blacklist = _blacklisted_combos(conn, req.user_id)
 
     locked_id_set = {c["id"] for c in locked}
-    locked_roles = {c["role"] for c in locked if c["role"] != "other"}
 
     def _pick_once() -> List[dict]:
         # A pick-by-color/brand/tag theme is a HARD filter on the pool, so it's
@@ -1056,14 +1303,18 @@ def select(req: GenerateRequest) -> List[dict]:
             core = [c for c in picked if c["role"] != "other"] or picked
         else:
             picked = _ALGOS[algo](themed_pool, req, locked)
-            core = [c for c in _pick_one_per_role(picked) if c["role"] != "other"] or picked
+            core = _dedupe_slots(picked)
         if not locked:
             result = core
         else:
-            # Locked clothes always stay; the algo only fills roles they don't cover.
-            extra = _pick_one_per_role([
+            # Locked clothes always stay; the algo only fills the slots they
+            # leave free (a locked t-shirt still gets a hoodie over it).
+            locked_slots = set()
+            for c in locked:
+                locked_slots |= slots_of(c["category"])
+            extra = _dedupe_slots([
                 c for c in core if c["id"] not in locked_id_set
-                and (c["role"] == "other" or c["role"] not in locked_roles)
+                and not (slots_of(c["category"]) & locked_slots)
             ])
             result = locked + extra
         # Optionally fill missing core roles (top/bottom/shoes) from ANY cloth —
@@ -1096,15 +1347,32 @@ def select(req: GenerateRequest) -> List[dict]:
     #
     # Deterministic algos converge to empty, which is the honest answer: the
     # caller reports "no outfit" instead of showing a lone pair of shorts.
+    #
+    # Then the best of a few: several wearable drafts are drawn and one is
+    # kept, the better-looking ones (outfit_score) far more likely, so the
+    # result is good without always being the same.
+    drafts: List[List[dict]] = []
+    seen = set()
     for _ in range(30):
         last = _pick_once()
         if not last:
-            return last
+            break
         if not _is_wearable(last, req):
             continue
-        if not blacklist or combo_key([c["id"] for c in last]) not in blacklist:
-            return last
-    return []  # only blacklisted or unwearable combos were reachable
+        key = combo_key([c["id"] for c in last])
+        if blacklist and key in blacklist:
+            continue
+        if key not in seen:
+            seen.add(key)
+            drafts.append(last)
+        if len(drafts) >= _DRAFTS:
+            break
+    if not drafts:
+        return []  # only blacklisted or unwearable combos were reachable
+    import math
+    best = max(outfit_score(d) for d in drafts)
+    weights = [math.exp(2.0 * (outfit_score(d) - best)) for d in drafts]
+    return _random.choices(drafts, weights=weights, k=1)[0]
 
 
 def explain(picked: List[dict], algo: str) -> str:

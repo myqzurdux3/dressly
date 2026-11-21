@@ -87,8 +87,8 @@ def test_it_still_returns_an_outfit_end_to_end():
     pool = _pool(30, 99)
     picked = g._algo_color_match(pool)
     assert picked, "the algorithm must still produce an outfit"
-    roles = [c["role"] for c in picked]
-    assert len(roles) == len(set(roles)), "one garment per role"
+    slots = [g._slot(c["category"]) for c in picked]
+    assert len(slots) == len(set(slots)), "one garment per slot"
 
 
 def test_an_empty_or_colourless_wardrobe_does_not_crash():

@@ -198,7 +198,9 @@ def test_each_day_is_dressed_for_its_own_forecast(client, auth, monkeypatch):
     cold_day = days[tuesday]
     assert cold_day["weather"]["mode"] == "cold"
     cats = {c["category"] for c in cold_day["cloths"]}
-    assert "shorts" not in cats and "tshirt" not in cats, cats
+    # A t-shirt is fine under a hoodie, never alone on a cold day.
+    assert "shorts" not in cats, cats
+    assert "tshirt" not in cats or cats & {"hoodie", "sweatshirt"}, cats
 
     warm_day = days[today.isoformat()]
     assert warm_day["weather"]["mode"] == "hot"

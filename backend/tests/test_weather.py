@@ -292,7 +292,9 @@ def test_auto_dresses_for_a_cold_day(client, auth, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json()["weather"] == "cold"
     cats = {c["category"] for c in r.json()["selections"][0]}
-    assert "shorts" not in cats and "tshirt" not in cats, cats
+    # A t-shirt is fine under a hoodie, never alone on a cold day.
+    assert "shorts" not in cats, cats
+    assert "tshirt" not in cats or cats & {"hoodie", "sweatshirt"}, cats
 
 
 def test_auto_without_a_location_behaves_exactly_as_before(client, auth):

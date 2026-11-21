@@ -44,7 +44,8 @@ def _ai_prompt(name: str = "", category: str = "", role: str = "", *,
 
     desc = ""
     if cat:
-        desc += f", a {cat}"
+        # "a sneakers" reads as noise; plural items come as a pair.
+        desc += (f", a pair of {cat}" if cat in _PAIRS else f", a {cat}")
     if describe:
         if nm:
             desc += f' named "{nm}"'
@@ -65,8 +66,10 @@ def _ai_prompt(name: str = "", category: str = "", role: str = "", *,
             extras.append(", ".join(tg[:3]).lower())
         if extras:
             desc += " (" + "; ".join(extras) + ")"
+    kind = _kind_of(cat)
+    noun = _KIND_NOUN[kind]
     if side:
-        desc += f" (this photo shows the {side} of the garment)"
+        desc += f" (this photo shows the {side} of the {noun})"
     # Positive phrasing throughout: FLUX.2 does not support negative prompts,
     # and its guide says to describe the wanted outcome instead ("sharp focus
     # throughout", not "no blur"). The subject leads, because word order is
@@ -74,13 +77,70 @@ def _ai_prompt(name: str = "", category: str = "", role: str = "", *,
     side_hint = (f" Show this {side} exactly as it is, with only the details "
                  f"this side actually has." if side else "")
     return (
-        f"The exact same clothing item{desc}, as a clean product photo: fabric "
-        f"smooth and laid flat with the wrinkles and creases pressed out, "
-        f"straightened and centred, even soft studio lighting, pure white "
-        f"background.{side_hint} Keep the colours, pattern, text, logos and "
-        f"shape identical to the original."
+        f"The exact same {_KIND_SUBJECT[kind]}{desc}, as a clean product photo: "
+        f"{_KIND_STAGING[kind]}, even soft studio lighting, pure white "
+        f"background.{side_hint} Keep {_KIND_KEEP[kind]} identical to the "
+        f"original."
     )
 
+
+# "Press the wrinkles out and lay it flat" is right for a t-shirt and wrong
+# for nearly everything else: a cap laid flat is a crushed cap, a shoe has no
+# fabric to press, a bag flattened loses its volume. Each kind of item gets the
+# staging a product photo of it would actually use.
+_PAIRS = {"sneakers", "shoes", "socks", "jeans", "trousers", "shorts"}
+
+_KIND_OF = {
+    "cap": "headwear", "hat": "headwear",
+    "sneakers": "footwear", "shoes": "footwear",
+    "socks": "socks",
+    "bag": "bag",
+    "underwear": "underwear",
+}
+
+
+def _kind_of(category: str) -> str:
+    return _KIND_OF.get(category.replace(" ", "-"), "garment")
+
+
+_KIND_SUBJECT = {
+    "garment": "clothing item",
+    "headwear": "headwear item",
+    "footwear": "footwear",
+    "socks": "socks",
+    "bag": "bag",
+    "underwear": "underwear item",
+}
+_KIND_NOUN = {
+    "garment": "garment", "headwear": "item", "footwear": "shoe",
+    "socks": "socks", "bag": "bag", "underwear": "item",
+}
+_KIND_STAGING = {
+    "garment": ("fabric smooth and laid flat with the wrinkles and creases "
+                "pressed out, straightened and centred"),
+    "headwear": ("standing upright in its natural three-dimensional shape, "
+                 "crown full and rounded, brim or peak straight and even, "
+                 "seen from the same angle as the photo, centred"),
+    "footwear": ("in its natural shape, seen from the same angle as the "
+                 "photo, laces neat, upper clean with the creases smoothed "
+                 "out, a soft shadow beneath it, centred"),
+    "socks": ("laid flat side by side as a pair, fabric smooth and "
+              "straightened, heels and toes clearly visible, centred"),
+    "bag": ("standing upright and filled out to its natural volume, straps "
+            "and handles arranged neatly, seen from the same angle as the "
+            "photo, centred"),
+    "underwear": ("laid flat with the fabric smooth and the elastic "
+                  "straight, centred"),
+}
+_KIND_KEEP = {
+    "garment": "the colours, pattern, text, logos and shape",
+    "headwear": ("the colours, embroidery, logos, stitching, eyelets and "
+                 "shape"),
+    "footwear": ("the colours, materials, logos, stitching, sole and laces"),
+    "socks": "the colours, pattern, logos, ribbing and length",
+    "bag": "the colours, materials, logos, hardware, zips and shape",
+    "underwear": "the colours, pattern, waistband text and logos and shape",
+}
 
 
 def _subject_bbox(cutout_path: str, ref_size) -> tuple | None:
