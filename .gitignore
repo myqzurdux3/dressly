@@ -72,3 +72,4 @@ backend/certs/
 .superpowers/
 open-router.txt
 anthropic.txt
+claude-api-key.txt
