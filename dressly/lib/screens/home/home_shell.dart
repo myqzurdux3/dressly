@@ -5,6 +5,7 @@ import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 
 import '../agenda/agenda_screen.dart';
+import '../stylist/stylist_screen.dart';
 import '../outfit/favorites_screen.dart';
 import '../outfit/outfit_screen.dart';
 import '../profile/profile_screen.dart';
@@ -22,6 +23,7 @@ class HomeShell extends StatefulWidget {
   static const tabIcons = [
     Icons.checkroom,
     Icons.auto_awesome,
+    Icons.forum_outlined,
     Icons.calendar_month,
     Icons.favorite,
     Icons.person,
@@ -34,6 +36,7 @@ class HomeShell extends StatefulWidget {
 const _tabLabels = [
   'nav.wardrobe',
   'nav.create',
+  'nav.stylist',
   'nav.agenda',
   'nav.saved',
   'nav.profile',
@@ -49,6 +52,7 @@ class _HomeShellState extends State<HomeShell> {
   static final _pages = <WidgetBuilder>[
     (_) => const WardrobeScreen(),
     (_) => const OutfitScreen(),
+    (_) => const StylistScreen(),
     (_) => const AgendaScreen(),
     (_) => const FavoritesScreen(),
     (_) => const ProfileScreen(),

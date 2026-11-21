@@ -9,6 +9,7 @@ import 'services/clothes_service.dart';
 import 'services/models_service.dart';
 import 'services/outfits_service.dart';
 import 'services/plan_service.dart';
+import 'services/stylist_service.dart';
 import 'services/stats_service.dart';
 import 'services/weather_service.dart';
 import 'state/gen_prefs_controller.dart';
@@ -83,6 +84,10 @@ StatsService statsServiceOf(BuildContext context) {
 
 WeatherService weatherServiceOf(BuildContext context) {
   return WeatherService(_apiFor(context));
+}
+
+StylistService stylistServiceOf(BuildContext context) {
+  return StylistService(_apiFor(context));
 }
 
 PlanService planServiceOf(BuildContext context) {

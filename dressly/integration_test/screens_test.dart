@@ -74,8 +74,14 @@ void main() {
       of: find.byType(DsTabBar),
       matching: find.byIcon(HomeShell.tabIcons[i]),
     );
-    const names = ['02_create', '03_agenda', '04_saved', '05_profile'];
-    for (var i = 1; i <= 4; i++) {
+    const names = [
+      '02_create',
+      '02b_stylist',
+      '03_agenda',
+      '04_saved',
+      '05_profile',
+    ];
+    for (var i = 1; i <= 5; i++) {
       await tester.tap(tab(i));
       await _settle(tester);
       await _shot(tester, names[i - 1]);
@@ -173,7 +179,7 @@ void main() {
     await _settle(tester);
 
     // The week planner and its options, from the Agenda tab.
-    await tester.tap(tab(2));
+    await tester.tap(tab(3));
     await _settle(tester);
     await tester.tap(find.byIcon(Icons.auto_awesome_motion_outlined).first);
     await _settle(tester, const Duration(seconds: 5));
@@ -187,7 +193,7 @@ void main() {
     await _settle(tester);
 
     // Settings and its sub-pages, from the Profile tab.
-    await tester.tap(tab(4));
+    await tester.tap(tab(5));
     await _settle(tester);
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await _settle(tester);
@@ -259,7 +265,7 @@ void main() {
     await _settle(tester);
 
     // Never worn, from the Profile tab.
-    await tester.tap(tab(4));
+    await tester.tap(tab(5));
     await _settle(tester);
     await tester.tap(find.byIcon(Icons.hourglass_empty));
     await _settle(tester, const Duration(seconds: 4));

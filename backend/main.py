@@ -44,6 +44,7 @@ from routes_models import router as models_router
 from routes_notifications import router as notifications_router
 from routes_outfits import router as outfits_router
 from routes_plan import router as plan_router
+from routes_stylist import router as stylist_router
 from routes_share import router as share_router
 from routes_stats import router as stats_router
 from routes_weather import router as weather_router
@@ -224,6 +225,7 @@ app.include_router(notifications_router)
 app.include_router(share_router)
 app.include_router(outfits_router)
 app.include_router(plan_router)
+app.include_router(stylist_router)
 app.include_router(agenda_router)
 app.include_router(admin_router)
 app.include_router(stats_router)

@@ -562,6 +562,56 @@ def _usernames(conn) -> None:
         "ON users (username COLLATE NOCASE)")
 
 
+_STYLIST_DDL = (
+    """CREATE TABLE IF NOT EXISTS stylist_threads (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL DEFAULT '',
+    api_messages TEXT NOT NULL DEFAULT '[]',
+    pending      INTEGER NOT NULL DEFAULT 0,
+    error        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)""",
+    """CREATE TABLE IF NOT EXISTS stylist_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id  INTEGER NOT NULL REFERENCES stylist_threads(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL,             -- 'user' | 'assistant'
+    text       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)""",
+    """CREATE TABLE IF NOT EXISTS stylist_proposals (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id  INTEGER NOT NULL REFERENCES stylist_threads(id) ON DELETE CASCADE,
+    message_id INTEGER REFERENCES stylist_messages(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL,
+    title      TEXT NOT NULL DEFAULT '',
+    reason     TEXT NOT NULL DEFAULT '',
+    cloth_ids  TEXT NOT NULL DEFAULT '[]',
+    outfit_id  INTEGER REFERENCES outfits(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)""",
+    """CREATE INDEX IF NOT EXISTS idx_stylist_threads_user ON stylist_threads(user_id)""",
+    """CREATE INDEX IF NOT EXISTS idx_stylist_messages_thread ON stylist_messages(thread_id)""",
+    """CREATE INDEX IF NOT EXISTS idx_stylist_proposals_thread ON stylist_proposals(thread_id)""",
+)
+
+
+@migration
+def _stylist(conn) -> None:
+    """The personal stylist's conversations.
+
+    ``api_messages`` is the exact message list sent to the model, replayed as
+    is on the next turn (thinking blocks must come back unchanged); the
+    ``stylist_messages`` rows are what the app shows. Proposals are outfits the
+    stylist suggested, kept so "add to my outfits" works after a restart.
+    """
+    # One statement at a time: executescript would COMMIT the migration's
+    # BEGIN IMMEDIATE and drop the lock that keeps workers from racing.
+    for stmt in _STYLIST_DDL:
+        conn.execute(stmt)
+
+
 def fail_stale_cutouts(conn, timeout_s: float) -> int:
     """Mark abandoned background removals as failed. Returns how many.
 

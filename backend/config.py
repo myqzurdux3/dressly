@@ -265,3 +265,13 @@ CUTOUT_TIMEOUT_S = float(os.environ.get("CLOTHESAPP_CUTOUT_TIMEOUT_S", "600"))
 # more than ten times the current wardrobe, and the app never asks for more
 # than a screenful at a time.
 MAX_PAGE_SIZE = int(os.environ.get("CLOTHESAPP_MAX_PAGE_SIZE", "5000"))
+
+# --- personal stylist (Claude) ---
+# The chat assistant in the app. Off until a key is set; the endpoints answer
+# 503 "not configured" instead of failing at import time.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+STYLIST_MODEL = os.environ.get("STYLIST_MODEL", "claude-opus-5-5")
+STYLIST_EFFORT = os.environ.get("STYLIST_EFFORT", "medium")
+STYLIST_TIMEOUT_S = float(os.environ.get("STYLIST_TIMEOUT_S", "180"))
+# Tool round trips per user message: a runaway-loop stop, never a ration.
+STYLIST_MAX_STEPS = int(os.environ.get("STYLIST_MAX_STEPS", "12"))

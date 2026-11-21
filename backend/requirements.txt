@@ -9,6 +9,7 @@ bcrypt>=4.0
 python-multipart>=0.0.9
 email-validator>=2.1
 cryptography>=42.0   # scripts/make_cert.py (TLS cert generation)
+anthropic>=0.120     # personal stylist (Claude)
 
 # --- test-only ---
 pytest>=8.0
