@@ -7,8 +7,8 @@ Personal project, so this is mostly a note to my future self and to anyone I han
 Both suites, both green:
 
 ```bash
-cd backend && python3 -m pytest        # 546 tests, ~6 min
-cd dressly && flutter test             # 220 tests, ~10 s
+cd backend && python3 -m pytest        # a few minutes
+cd dressly && flutter test             # ~15 s
 cd dressly && dart analyze lib test    # no issues
 ```
 

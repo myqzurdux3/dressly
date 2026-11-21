@@ -80,7 +80,7 @@ test('renders one row per traced action with frame stats', () {
 - [ ] **Step 7: Write `test_driver/perf_driver.dart`.** Use `integrationDriver(responseDataCallback: ...)`. For each key except `api_ms`, call `TimelineSummary.summarize(Timeline.fromJson(data[key]))` and `writeTimelineToFile(key, destinationDirectory: 'build/perf', pretty: true)`. Write `api_ms` to `build/perf/api_ms.json`.
 - [ ] **Step 8: Verify on the device.**
 
-  `flutter drive --profile --no-dds --driver=test_driver/perf_driver.dart --target=integration_test/perf_test.dart -d R5GYB51AN2J --dart-define=PERF_EMAIL=<user> --dart-define=PERF_PASSWORD=<pass>`
+  `flutter drive --profile --no-dds --driver=test_driver/perf_driver.dart --target=integration_test/perf_test.dart -d <device> --dart-define=PERF_EMAIL=<user> --dart-define=PERF_PASSWORD=<pass>`
 
   Expected: "All tests passed", and `build/perf/` contains three `*.timeline_summary.json` files plus `api_ms.json`. The user types the credentials themselves (`! <command>`).
 - [ ] **Step 9: Commit.** `feat(perf): banc de mesure en mode profile sur l'appareil`
@@ -90,7 +90,7 @@ test('renders one row per traced action with frame stats', () {
 **Files:**
 - Create: `docs/perf/2026-11-15-baseline.md`
 
-- [ ] **Step 1: Cold start.** On the device: `flutter run --profile --trace-startup -d R5GYB51AN2J`. Expected: `build/start_up_info.json` contains `timeToFirstFrameMicros`. Run it 3 times and keep the median.
+- [ ] **Step 1: Cold start.** On the device: `flutter run --profile --trace-startup -d <device>`. Expected: `build/start_up_info.json` contains `timeToFirstFrameMicros`. Run it 3 times and keep the median.
 - [ ] **Step 2: Perf run.** Run Task 1 step 8 three times. Keep the median run of `wardrobe_scroll` by raster p90.
 - [ ] **Step 3: Write the report.** `dart run tool/perf_report.dart > /tmp/r.md`, then write `docs/perf/2026-11-15-baseline.md` containing: device model (`adb shell getprop ro.product.model`), Flutter version, startup median, the report tables, and a "Lecture" section naming the worst action and whether build or raster dominates. No conclusions beyond what the numbers show.
 - [ ] **Step 4: Commit.** `docs(perf): mesure de référence avant refonte`
@@ -213,7 +213,7 @@ testWidgets('settings screen builds under theme F and lists 5 accents', ...);
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement** the controller, `app.dart` and the settings changes. Delete `presets`, `defaultSeed` and `setSeed`.
 - [ ] **Step 4: Run `flutter test`.** Expected: all green.
-- [ ] **Step 5: Check on the device.** `flutter run -d R5GYB51AN2J`: the app opens in F dark (chocolate background, orange nav indicator), switching to light gives cream, and changing the accent applies immediately. Take a screenshot with `adb exec-out screencap -p > /tmp/f-dark.png`.
+- [ ] **Step 5: Check on the device.** `flutter run -d <device>`: the app opens in F dark (chocolate background, orange nav indicator), switching to light gives cream, and changing the accent applies immediately. Take a screenshot with `adb exec-out screencap -p > /tmp/f-dark.png`.
 - [ ] **Step 6: Commit.** `feat(theme): l'app passe au thème F et aux accents Dressly`
 
 ### Task 5: Ratchet guard against hardcoded styles

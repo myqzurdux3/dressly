@@ -37,6 +37,8 @@ security-relevant variables are set properly:
 | `CLOTHESAPP_ORIGINAL_MAX_PX` | `4000` | optional |
 | `CLOTHESAPP_CUTOUT_LOSSLESS` | `1` | optional (0 = lossy WebP, ~30% faster uploads) |
 | `CLOTHESAPP_CUTOUT_MAX_PX` | `1600` | optional |
+| `OPENROUTER_API_KEY` | unset → BFL only | optional |
+| `ANTHROPIC_API_KEY` | unset → stylist tab disabled | optional |
 
 ```bash
 cp .env.example .env
