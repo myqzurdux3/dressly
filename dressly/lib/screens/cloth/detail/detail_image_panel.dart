@@ -387,7 +387,12 @@ class _EnhanceSection extends StatelessWidget {
             Padding(
               padding: EdgeInsets.only(top: ds.space.xs),
               child: Text(
-                image.enhanceError!,
+                // Errors stored before the server stopped sending them still
+                // carry its file paths: never show those.
+                image.enhanceError!.replaceAll(
+                  RegExp(r"(/[\w.\-]+){2,}'?"),
+                  '…',
+                ),
                 style: ds.typo.monoSmall.copyWith(color: c.textMuted),
               ),
             ),

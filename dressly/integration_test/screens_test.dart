@@ -118,16 +118,23 @@ void main() {
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -400));
       await tester.pump(const Duration(milliseconds: 200));
     }
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
-    await _settle(tester);
-    await tester.tap(cards.first);
-    await _settle(tester, const Duration(seconds: 3));
-    await _shot(tester, '11_result');
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
-    await _settle(tester);
-    await _shot(tester, '12_result_bottom');
-    await tester.binding.handlePopRoute(); // close the result
-    await _settle(tester);
+    // An empty history (fresh account) has no result to open: shoot the
+    // empty history instead.
+    if (cards.evaluate().isEmpty) {
+      await _settle(tester);
+      await _shot(tester, '11_history_empty');
+    } else {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+      await _settle(tester);
+      await tester.tap(cards.first);
+      await _settle(tester, const Duration(seconds: 3));
+      await _shot(tester, '11_result');
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
+      await _settle(tester);
+      await _shot(tester, '12_result_bottom');
+      await tester.binding.handlePopRoute(); // close the result
+      await _settle(tester);
+    }
 
     // Automatic pick: the sheet, then its preview. Nothing is rendered: the
     // preview only asks the server which clothes it would choose.

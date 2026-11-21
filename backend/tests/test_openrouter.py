@@ -58,3 +58,12 @@ def test_openrouter_failure_falls_back_to_bfl(monkeypatch):
 
 def test_better_model_after_openrouter_is_pro():
     assert bfl.next_outfit_tier("openrouter") == "pro"
+
+
+def test_enhance_errors_never_show_server_paths():
+    from routes_clothes import _short_reason
+    missing = _short_reason(FileNotFoundError(2, "No such file", "/home/x/y.jpg"))
+    assert "/home" not in missing and "missing" in missing
+    msg = _short_reason(RuntimeError(
+        "flex: HTTP 422 at /home/dressly/backend/data/a.jpg | pro: x"))
+    assert "/home" not in msg and msg.startswith("flex: HTTP 422")

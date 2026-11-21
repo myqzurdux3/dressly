@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 import os
@@ -1451,10 +1452,15 @@ class EnhanceRequest(BaseModel):
 def _short_reason(exc: Exception) -> str:
     """One readable line for the app, out of an error that may be a whole
     cascade's worth of per-tier messages."""
+    if isinstance(exc, FileNotFoundError):
+        # Shown in the app: say what happened, not where the server keeps it.
+        return "The photo file is missing on the server; replace the photo."
     text = str(exc).strip() or type(exc).__name__
     # A cascade failure carries every tier's message joined by " | "; the first
     # one is the one that matters and the rest are the same story again.
     head = text.split(" | ")[0].strip()
+    # Never hand server file paths to the app.
+    head = re.sub(r"(/[\w.\-]+){2,}", "…", head)
     return head[:200]
 
 

@@ -219,7 +219,15 @@ class AlgoSheetState extends State<AlgoSheet> {
   @override
   void initState() {
     super.initState();
-    _future = outfitsServiceOf(context).listAlgos();
+    _future = outfitsServiceOf(context).listAlgos().then((items) {
+      // Picked here, with setState, so the preview button below the list is
+      // rebuilt enabled: picking it inside the list's builder left the button
+      // built (disabled) before the default existed.
+      if (mounted && _algo == null && items.isNotEmpty) {
+        setState(() => _algo = items.first);
+      }
+      return items;
+    });
     _brands = _brandsFromClothes; // immediate from the snapshot…
     _tags = _tagsFromClothes;
     _loadLists(); // …then refresh from the server so they're never empty

@@ -212,7 +212,9 @@ class _OpenRouterSwitchState extends State<_OpenRouterSwitch> {
             style: ds.typo.bodyStrong,
           ),
           subtitle: Text(
-            info == null
+            snap.hasError
+                ? tr(context, 'settings.openRouterOff')
+                : info == null
                 ? tr(context, 'settings.openRouterChecking')
                 : available
                 ? tr(context, 'settings.openRouterHint', {'model': info.model})
