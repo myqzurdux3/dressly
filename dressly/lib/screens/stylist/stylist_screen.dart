@@ -5,12 +5,12 @@ import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import 'package:provider/provider.dart';
 
-import '../../models/model.dart';
 import '../../models/stylist.dart';
 import '../../state/data_bus.dart';
 import '../../state/gen_prefs_controller.dart';
 import '../../services/stylist_service.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/render_person_sheet.dart';
 import '../outfit/outfit_result_dialog.dart';
 
 /// The personal stylist: a conversation with an assistant that sees the
@@ -196,17 +196,7 @@ class _StylistScreenState extends State<StylistScreen> {
     final svc = stylistServiceOf(context);
     final started = tr(context, 'stylist.renderStarted');
     final tier = _prefs?.startTier ?? 'flex';
-    List<ModelEntity> models = const [];
-    try {
-      models = await modelsServiceOf(context).list();
-    } catch (_) {}
-    if (!mounted) return;
-    final person = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => _PersonSheet(models: models),
-    );
+    final person = await pickRenderPerson(context);
     if (person == null || !mounted) return;
     setState(() => _saving.add(p.id));
     try {
@@ -773,57 +763,6 @@ class _HistorySheetState extends State<_HistorySheet> {
                 tooltip: tr(context, 'agenda.remove'),
                 onPressed: () => _delete(t),
               ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Who wears an AI render: nobody, someone at random, or one of the models.
-class _PersonSheet extends StatelessWidget {
-  const _PersonSheet({required this.models});
-  final List<ModelEntity> models;
-
-  @override
-  Widget build(BuildContext context) {
-    final ds = context.ds;
-    return SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.fromLTRB(
-          ds.space.gutter,
-          0,
-          ds.space.gutter,
-          ds.space.l,
-        ),
-        children: [
-          Text(
-            tr(context, 'stylist.renderOn').toUpperCase(),
-            style: ds.typo.headline,
-          ),
-          SizedBox(height: ds.space.xs),
-          Text(
-            tr(context, 'stylist.renderCost'),
-            style: ds.typo.label.copyWith(color: ds.colors.textMuted),
-          ),
-          SizedBox(height: ds.space.s),
-          DsInfoRow(
-            icon: Icons.checkroom,
-            title: tr(context, 'stylist.renderNoPerson'),
-            onTap: () => Navigator.pop(context, 'none'),
-          ),
-          if (models.isNotEmpty)
-            DsInfoRow(
-              icon: Icons.shuffle,
-              title: tr(context, 'stylist.renderRandom'),
-              onTap: () => Navigator.pop(context, 'random'),
-            ),
-          for (final m in models)
-            DsInfoRow(
-              icon: Icons.person_outline,
-              title: m.name,
-              onTap: () => Navigator.pop(context, '${m.id}'),
             ),
         ],
       ),

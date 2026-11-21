@@ -9,6 +9,7 @@ import '../../design/canvas_backgrounds.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
+import '../../models/flat_lay.dart';
 import '../../models/layering.dart';
 import '../../models/outfit.dart';
 import 'algo_sheet.dart';
@@ -19,10 +20,16 @@ import '../../widgets/app_image.dart';
 /// saved/updated manual outfit, or a request to continue this outfit's clothes
 /// in AI mode ("switch to AI").
 class ManualBuilderResult {
-  ManualBuilderResult.saved(this.saved) : toAiClothIds = null;
-  ManualBuilderResult.toAi(this.toAiClothIds) : saved = null;
+  ManualBuilderResult.saved(this.saved) : toAiClothIds = null, thenAi = false;
+  ManualBuilderResult.toAi(this.toAiClothIds) : saved = null, thenAi = false;
+
+  /// An existing outfit saved, then asked for its AI version.
+  ManualBuilderResult.savedThenAi(this.saved)
+    : toAiClothIds = null,
+      thenAi = true;
   final Outfit? saved;
   final List<int>? toAiClothIds;
+  final bool thenAi;
 }
 
 /// A single garment placed on the canvas. Positions are stored as fractions of
@@ -126,6 +133,61 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   double _startScale = 1.0;
   double _startRotation = 0.0;
 
+  /// Unsnapped position of the dragged item, so snapping never fights the
+  /// finger: the item follows this and only its shown place is snapped.
+  double _rawX = 0, _rawY = 0;
+
+  /// Alignment guides shown while dragging (canvas fractions), or null.
+  double? _guideX, _guideY;
+
+  /// Once the user moves something by hand, adding clothes no longer
+  /// rearranges the canvas; "Arrange" does it on demand.
+  bool _customized = false;
+
+  /// Item box side at scale 1, as a fraction of the canvas: see _buildCanvas.
+  static const double _baseFraction = 0.42;
+
+  /// Lay every garment out as a tidy flat lay (see flat_lay.dart).
+  void _arrange() {
+    final lay = flatLay(_items.map((e) => e.clothId).toList(), _categoryOf);
+    for (final it in _items) {
+      final s = lay[it.clothId];
+      if (s == null) continue;
+      it
+        ..x = s.x
+        ..y = s.y
+        ..scale = (s.size / _baseFraction).clamp(0.25, 3.0)
+        ..rotation = 0;
+    }
+    _items.sort(
+      (a, b) => layerRank(
+        _categoryOf(a.clothId),
+      ).compareTo(layerRank(_categoryOf(b.clothId))),
+    );
+    _selected = null;
+  }
+
+  void _arrangeIfAuto() {
+    if (!_customized) _arrange();
+  }
+
+  /// Snap [v] to the centre line or to another item's centre when close.
+  double _snap(
+    double v,
+    Iterable<double> targets,
+    void Function(double?) mark,
+  ) {
+    const threshold = 0.015;
+    for (final t in [0.5, ...targets]) {
+      if ((v - t).abs() < threshold) {
+        mark(t);
+        return t;
+      }
+    }
+    mark(null);
+    return v;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -156,6 +218,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
           final zb = (b.$1['z'] as num?)?.toInt() ?? b.$2;
           return za.compareTo(zb);
         });
+      _customized = true; // the user's own arrangement: keep it
       for (final (m, _) in indexed) {
         final id = m['cloth_id'] as int;
         final url = _cutoutUrl(id);
@@ -173,10 +236,12 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       }
     } else if (widget.initialClothIds != null) {
       _addClothIds(widget.initialClothIds!);
+      _arrange();
     } else if (widget.existing != null) {
-      // Manual outfit without a stored layout (shouldn't normally happen):
-      // fall back to auto-placing its clothes so it's still editable.
+      // An AI outfit getting its first montage, or one saved by the stylist:
+      // start from a tidy flat lay of its clothes.
       _addClothIds(widget.existing!.clothIds);
+      _arrange();
     }
     if (mounted) setState(() => _loading = false);
     _precache();
@@ -267,6 +332,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     setState(() {
       _items.removeWhere((it) => !picked.contains(it.clothId));
       _addClothIds(picked);
+      _arrangeIfAuto();
       _selected = null;
     });
   }
@@ -319,6 +385,8 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
         _items.clear();
         _selected = null;
         _addClothIds(preview.selections.first.map((p) => p.id));
+        _customized = false; // a new outfit: lay it out afresh
+        _arrange();
       });
     } catch (e) {
       if (mounted) _toast('$e');
@@ -336,7 +404,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     if (result != null) setState(() => _bg = result);
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool thenAi = false}) async {
     if (_items.isEmpty) {
       _toast(trOr(context, 'builder.empty', 'Add at least one item'));
       return;
@@ -371,7 +439,12 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
         outfitId: widget.existing?.id,
       );
       if (!mounted) return;
-      Navigator.pop(context, ManualBuilderResult.saved(saved));
+      Navigator.pop(
+        context,
+        thenAi
+            ? ManualBuilderResult.savedThenAi(saved)
+            : ManualBuilderResult.saved(saved),
+      );
     } catch (e) {
       if (mounted) _toast('$e');
     } finally {
@@ -384,6 +457,12 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   void _toAi() {
     if (_items.isEmpty) {
       _toast(trOr(context, 'builder.empty', 'Add at least one item'));
+      return;
+    }
+    // An existing outfit keeps one row: save the montage, then its AI
+    // version is shown or rendered on that same outfit.
+    if (widget.existing != null) {
+      _save(thenAi: true);
       return;
     }
     Navigator.pop(
@@ -520,7 +599,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth, h = c.maxHeight;
-        final base = w * 0.42; // item box side at scale 1.0
+        final base = w * _baseFraction; // item box side at scale 1.0
         return GestureDetector(
           onTap: () => setState(() => _selected = null),
           child: DecoratedBox(
@@ -534,6 +613,24 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
                 const Positioned.fill(child: SizedBox()),
                 for (var i = 0; i < _items.length; i++)
                   _buildItem(i, w, h, base),
+                // Alignment guides while a garment is dragged.
+                if (_guideX != null)
+                  Positioned(
+                    left: _guideX! * w - 0.5,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(width: 1, color: context.ds.colors.accent),
+                  ),
+                if (_guideY != null)
+                  Positioned(
+                    top: _guideY! * h - 0.5,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      height: 1,
+                      color: context.ds.colors.accent,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -559,17 +656,31 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             setState(() => _selected = i);
             _startScale = it.scale;
             _startRotation = it.rotation;
+            _rawX = it.x;
+            _rawY = it.y;
           },
           onScaleUpdate: (d) {
             setState(() {
-              it.x += d.focalPointDelta.dx / w;
-              it.y += d.focalPointDelta.dy / h;
-              it.x = it.x.clamp(0.0, 1.0);
-              it.y = it.y.clamp(0.0, 1.0);
+              _customized = true;
+              _rawX = (_rawX + d.focalPointDelta.dx / w).clamp(0.0, 1.0);
+              _rawY = (_rawY + d.focalPointDelta.dy / h).clamp(0.0, 1.0);
+              final others = [
+                for (final o in _items)
+                  if (!identical(o, it)) o,
+              ];
+              it.x = _snap(_rawX, others.map((o) => o.x), (g) => _guideX = g);
+              it.y = _snap(_rawY, others.map((o) => o.y), (g) => _guideY = g);
               it.scale = (_startScale * d.scale).clamp(0.25, 3.0);
-              it.rotation = _startRotation + d.rotation;
+              // Straight unless clearly turned: small wobbles of two fingers
+              // used to leave every garment slightly askew.
+              final r = _startRotation + d.rotation;
+              it.rotation = r.abs() < 0.08 ? 0 : r;
             });
           },
+          onScaleEnd: (_) => setState(() {
+            _guideX = null;
+            _guideY = null;
+          }),
           child: Container(
             decoration: selected
                 ? BoxDecoration(
@@ -614,6 +725,14 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
               Icons.add_photo_alternate_outlined,
               trOr(context, 'builder.addClothes', 'Clothes'),
               _addClothes,
+            ),
+            _toolBtn(
+              Icons.grid_view_outlined,
+              trOr(context, 'builder.arrange', 'Arrange'),
+              () => setState(() {
+                _customized = false;
+                _arrange();
+              }),
             ),
             _toolBtn(
               Icons.auto_awesome_outlined,

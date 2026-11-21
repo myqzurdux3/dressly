@@ -242,14 +242,16 @@ def make_flat_outfit(user: dict, ids: List[int]) -> int:
             "VALUES (?, ?, 'done', 'manual', '')",
             (user["id"], json.dumps(ids))).lastrowid
     tile = _tile(paths, max_px=1024) if paths else None
+    from routes_outfits import manual_file
     OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTFITS_DIR / f"{outfit_id}.png"
+    out_path = manual_file(outfit_id)
     if tile:
         import shutil
         shutil.move(tile, out_path)
+    path = str(out_path) if tile else ""
     with get_conn() as conn:
-        conn.execute("UPDATE outfits SET generated_path = ? WHERE id = ?",
-                     (str(out_path) if tile else "", outfit_id))
+        conn.execute("UPDATE outfits SET generated_path = ?, manual_path = ? "
+                     "WHERE id = ?", (path, path, outfit_id))
     return outfit_id
 
 

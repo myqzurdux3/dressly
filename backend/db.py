@@ -639,6 +639,42 @@ def _stylist_actions(conn) -> None:
                  "ON llm_usage(created_at)")
 
 
+@migration
+def _outfit_versions(conn) -> None:
+    """An outfit keeps its AI render and its hand-made montage side by side.
+
+    ``generated_path`` stays the picture shown everywhere (the cover) and
+    ``kind`` says which version it is; ``ai_path`` and ``manual_path`` hold
+    each version, so switching is a pointer swap instead of a redo. A montage
+    used to be written over ``{id}.png``, the AI render's own file: montages
+    now live in ``{id}_manual.png``, and existing ones are copied there.
+    """
+    import os
+    import shutil
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(outfits)")}
+    for col in ("ai_path", "manual_path"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE outfits ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "UPDATE outfits SET ai_path = generated_path WHERE kind = 'ai' "
+        "AND status = 'done' AND generated_path != '' AND ai_path = ''")
+    for r in conn.execute(
+            "SELECT id, generated_path FROM outfits WHERE kind = 'manual' "
+            "AND generated_path != '' AND manual_path = ''").fetchall():
+        src = r[1]
+        root, ext = os.path.splitext(src)
+        dst = src if root.endswith("_manual") else f"{root}_manual{ext or '.png'}"
+        try:
+            if dst != src and os.path.exists(src) and not os.path.exists(dst):
+                shutil.copyfile(src, dst)
+            if not os.path.exists(dst):
+                dst = src
+        except OSError:
+            dst = src
+        conn.execute("UPDATE outfits SET manual_path = ?, generated_path = ? "
+                     "WHERE id = ?", (dst, dst, r[0]))
+
+
 def fail_stale_cutouts(conn, timeout_s: float) -> int:
     """Mark abandoned background removals as failed. Returns how many.
 

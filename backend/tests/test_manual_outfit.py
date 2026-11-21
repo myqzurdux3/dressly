@@ -63,7 +63,8 @@ def test_update_manual_outfit(client, auth):
 
 def test_ai_outfit_converts_to_manual_in_place(client, auth):
     # Converting an AI outfit to manual reuses the SAME row (no duplicate entry):
-    # kind flips to manual, the model is dropped, and history length stays 1.
+    # kind flips to manual, the AI render is kept beside the montage, and
+    # history length stays 1.
     a, b = _clothes(client, auth)
     o = client.post("/outfits/generate", headers=auth,
                     json={"cloth_ids": [a["id"], b["id"]]}).json()
@@ -75,8 +76,12 @@ def test_ai_outfit_converts_to_manual_in_place(client, auth):
     assert r.status_code == 200, r.text
     assert r.json()["id"] == o["id"]          # same entry, converted in place
     assert r.json()["kind"] == "manual"
-    assert r.json()["model_id"] is None
+    assert r.json()["has_ai"] is True and r.json()["has_manual"] is True
     assert len(client.get("/outfits", headers=auth).json()) == 1  # no duplicate
+    # And back: the AI render is the cover again, nothing re-rendered.
+    back = client.post(f"/outfits/{o['id']}/show", headers=auth,
+                       json={"version": "ai"}).json()
+    assert back["kind"] == "ai" and back["generated_url"] != r.json()["generated_url"]
 
 
 def test_manual_outfit_rejects_foreign_clothes(client, auth):
@@ -100,3 +105,24 @@ def test_manual_outfit_rejects_non_image(client, auth):
                     data={"cloth_ids": json.dumps([a["id"]]), "layout": "{}"},
                     files=[("image", ("x.png", b"not-a-png", "image/png"))])
     assert r.status_code == 400
+
+
+def test_a_montage_gets_an_ai_render_on_the_same_outfit(client, auth):
+    a, b = _clothes(client, auth)
+    ids = [a["id"], b["id"]]
+    m = client.post("/outfits/manual", headers=auth,
+                    data={"cloth_ids": json.dumps(ids), "layout": _layout(ids)},
+                    files=[("image", ("c.png", make_png(), "image/png"))]).json()
+    assert m["has_ai"] is False and m["has_manual"] is True
+    assert client.post(f"/outfits/{m['id']}/show", headers=auth,
+                       json={"version": "ai"}).status_code == 409
+    r = client.post(f"/outfits/{m['id']}/to-ai", headers=auth, json={})
+    assert r.status_code == 200, r.text
+    done = client.get(f"/outfits/{m['id']}", headers=auth).json()
+    # The test client runs the render before returning: it landed in place.
+    assert done["id"] == m["id"] and done["status"] == "done"
+    assert done["kind"] == "ai" and done["has_ai"] and done["has_manual"]
+    assert len(client.get("/outfits", headers=auth).json()) == 1
+    manual = client.post(f"/outfits/{m['id']}/show", headers=auth,
+                         json={"version": "manual"}).json()
+    assert manual["kind"] == "manual"

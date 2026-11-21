@@ -151,6 +151,31 @@ class OutfitsService {
 
   /// Swap one or more clothes in an existing outfit and re-render at the same
   /// tier. Used by the dialog's per-cloth remove + edit-clothes flow.
+  /// Show the outfit's AI render ('ai') or its montage ('manual'); both are
+  /// kept, so this swaps the cover without rendering anything.
+  Future<Outfit> showVersion(int outfitId, String version) async {
+    final data = await _api.post('/outfits/$outfitId/show', {
+      'version': version,
+    });
+    return Outfit.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Render an AI picture of an outfit that only has its montage, on the same
+  /// outfit. Returns it 'processing'; poll with [getAwait].
+  Future<Outfit> renderInPlace(
+    int outfitId, {
+    int? modelId,
+    bool randomModel = false,
+    String tier = 'flex',
+  }) async {
+    final data = await _api.post('/outfits/$outfitId/to-ai', {
+      'model_id': ?modelId,
+      'random_model': randomModel,
+      'tier': tier,
+    });
+    return Outfit.fromJson(data as Map<String, dynamic>);
+  }
+
   Future<Outfit> replaceClothes(int outfitId, List<int> clothIds) async {
     final data = await _api.post('/outfits/$outfitId/replace-clothes', {
       'cloth_ids': clothIds,

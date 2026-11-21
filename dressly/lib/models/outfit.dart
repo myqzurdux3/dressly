@@ -87,6 +87,11 @@ class Outfit {
   // Manual builder layout (background + placed items), or null for AI outfits.
   final Map<String, dynamic>? layout;
 
+  /// The two versions an outfit can have side by side: its AI render and its
+  /// hand-made montage. [kind] says which one is shown.
+  final bool hasAi;
+  final bool hasManual;
+
   bool get isManual => kind == 'manual';
 
   /// The AI picture is still being made.
@@ -129,6 +134,8 @@ class Outfit {
     this.algoLabel,
     this.kind = 'ai',
     this.layout,
+    this.hasAi = false,
+    this.hasManual = false,
   });
 
   /// Copy with a few fields changed.
@@ -172,6 +179,8 @@ class Outfit {
     algoLabel: algoLabel,
     kind: kind,
     layout: layout,
+    hasAi: hasAi,
+    hasManual: hasManual,
   );
 
   factory Outfit.fromJson(Map<String, dynamic> json) {
@@ -210,6 +219,8 @@ class Outfit {
       algoLabel: json['algo_label'] as String?,
       kind: (json['kind'] ?? 'ai') as String,
       layout: json['layout'] as Map<String, dynamic>?,
+      hasAi: json['has_ai'] as bool? ?? false,
+      hasManual: json['has_manual'] as bool? ?? false,
     );
   }
 
@@ -243,6 +254,8 @@ class Outfit {
     algoLabel: algoLabel,
     kind: kind,
     layout: layout,
+    hasAi: hasAi,
+    hasManual: hasManual,
   );
 
   String get tierLabel =>

@@ -240,8 +240,25 @@ def _build_outfit(row, cloths, model_name, worn_today=False,
         "error": row["error"],
         "kind": _outfit_kind(row),
         "layout": _outfit_layout(row),
+        # Both versions of the outfit, when they exist: the AI render and the
+        # hand-made montage. "kind" says which one is the cover.
+        "has_ai": bool(_version_path(row, "ai_path")),
+        "has_manual": bool(_version_path(row, "manual_path")),
+        "ai_thumb_url": thumb_url_for(_version_path(row, "ai_path"), 400)
+        if _version_path(row, "ai_path") else "",
+        "manual_thumb_url": thumb_url_for(_version_path(row, "manual_path"), 400)
+        if _version_path(row, "manual_path") else "",
         "created_at": row["created_at"],
     }
+
+
+def _version_path(row, col: str) -> str:
+    return (row[col] or "") if col in row.keys() else ""
+
+
+def manual_file(outfit_id: int):
+    """Where an outfit's montage lives: never the AI render's own file."""
+    return OUTFITS_DIR / f"{outfit_id}_manual.png"
 
 
 def _outfit_kind(row) -> str:
@@ -1006,13 +1023,15 @@ def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
             )
         except BflError as e:
             with get_conn() as conn:
-                conn.execute("UPDATE outfits SET status='failed', error=?, "
-                             "worker_pid=NULL WHERE id=?", (str(e), outfit_id))
+                conn.execute("UPDATE outfits SET status=CASE WHEN manual_path != '' "
+                             "AND kind = 'manual' THEN 'done' ELSE 'failed' END, "
+                             "error=?, worker_pid=NULL WHERE id=?", (str(e), outfit_id))
             return
         except Exception as e:
             with get_conn() as conn:
-                conn.execute("UPDATE outfits SET status='failed', error=?, "
-                             "worker_pid=NULL WHERE id=?",
+                conn.execute("UPDATE outfits SET status=CASE WHEN manual_path != '' "
+                             "AND kind = 'manual' THEN 'done' ELSE 'failed' END, "
+                             "error=?, worker_pid=NULL WHERE id=?",
                              (f"unexpected: {type(e).__name__}: {e}", outfit_id))
             return
         # Writing the render and marking the row done are inside the same
@@ -1026,15 +1045,19 @@ def _run_generation(outfit_id: int, prompt: str, image_paths: List[str],
             is_mock = 1 if slug == "mock" else 0
             with get_conn() as conn:
                 conn.execute(
-                    "UPDATE outfits SET generated_path=?, status='done', is_mock=?, "
-                    "model_tier=?, model_slug=?, error='', worker_pid=NULL WHERE id=?",
-                    (str(out_path), is_mock, tier_used, slug, outfit_id),
+                    "UPDATE outfits SET generated_path=?, ai_path=?, status='done', "
+                    "is_mock=?, model_tier=?, model_slug=?, error='', worker_pid=NULL, "
+                    "kind = CASE WHEN kind = 'manual' THEN 'ai' ELSE kind END "
+                    "WHERE id=?",
+                    (str(out_path), str(out_path), is_mock, tier_used, slug,
+                     outfit_id),
                 )
         except Exception as e:
             log.exception("could not store outfit %s", outfit_id)
             with get_conn() as conn:
-                conn.execute("UPDATE outfits SET status='failed', error=?, "
-                             "worker_pid=NULL WHERE id=?",
+                conn.execute("UPDATE outfits SET status=CASE WHEN manual_path != '' "
+                             "AND kind = 'manual' THEN 'done' ELSE 'failed' END, "
+                             "error=?, worker_pid=NULL WHERE id=?",
                              (f"could not store the image: {e}", outfit_id))
             return
     finally:
@@ -1224,11 +1247,11 @@ async def create_manual_outfit(
             (user["id"], json.dumps(ids), _clean_layout(layout)))
         outfit_id = cur.lastrowid
     OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTFITS_DIR / f"{outfit_id}.png"
+    out_path = manual_file(outfit_id)
     out_path.write_bytes(data)
     with get_conn() as conn:
-        conn.execute("UPDATE outfits SET generated_path=? WHERE id=?",
-                     (str(out_path), outfit_id))
+        conn.execute("UPDATE outfits SET generated_path=?, manual_path=? WHERE id=?",
+                     (str(out_path), str(out_path), outfit_id))
         conn.execute("UPDATE users SET outfits_generated = outfits_generated + 1 "
                      "WHERE id = ?", (user["id"],))
         row = conn.execute("SELECT * FROM outfits WHERE id = ?", (outfit_id,)).fetchone()
@@ -1245,10 +1268,10 @@ async def update_manual_outfit(
         cloth_ids: str = Form("[]"),
         layout: str = Form(""),
         user=Depends(get_current_user)):
-    """Re-save a manual outfit after the user edits its layout — OR convert an
-    AI outfit into a manual one IN PLACE. Converting reuses the same row (flips
-    kind to 'manual', drops the model, stores the composed canvas), so it never
-    leaves a duplicate history entry beside the original."""
+    """Re-save an outfit's montage after the user edits its layout, or give an
+    AI outfit its montage. Same row, no duplicate: the montage becomes the
+    cover (kind 'manual') and the AI render, model and back view are kept, so
+    the app can switch back to them without redoing anything."""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM outfits WHERE id = ? AND user_id = ?",
                            (outfit_id, user["id"])).fetchone()
@@ -1256,15 +1279,20 @@ async def update_manual_outfit(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Outfit not found")
     data = await _read_manual_png(image)
     OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTFITS_DIR / f"{outfit_id}.png"
+    out_path = manual_file(outfit_id)
     out_path.write_bytes(data)
     with get_conn() as conn:
         ids = _owned_cloth_ids(conn, user["id"], _parse_id_list(cloth_ids))
+        if (row["status"] or "") == "done" and row["generated_path"] and \
+                _outfit_kind(row) == "ai" and not _version_path(row, "ai_path"):
+            # A render made before versions existed: keep it as the AI one.
+            conn.execute("UPDATE outfits SET ai_path = generated_path WHERE id = ?",
+                         (outfit_id,))
         conn.execute(
-            "UPDATE outfits SET kind='manual', model_id=NULL, linked_id=NULL, "
-            "view='front', cloth_ids=?, layout=?, generated_path=?, "
-            "status='done' WHERE id=?",
-            (json.dumps(ids), _clean_layout(layout), str(out_path), outfit_id))
+            "UPDATE outfits SET kind='manual', cloth_ids=?, layout=?, "
+            "generated_path=?, manual_path=?, status='done' WHERE id=?",
+            (json.dumps(ids), _clean_layout(layout), str(out_path),
+             str(out_path), outfit_id))
         row = conn.execute("SELECT * FROM outfits WHERE id = ?", (outfit_id,)).fetchone()
         return _hydrate(conn, row)
 
@@ -1331,6 +1359,70 @@ def regenerate(outfit_id: int, req: RegenerateRequest, background: BackgroundTas
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM outfits WHERE id = ?", (outfit_id,)).fetchone()
         return _hydrate(conn, row)
+
+
+class ShowVersionRequest(BaseModel):
+    version: str  # 'ai' | 'manual'
+
+
+@router.post("/{outfit_id}/show")
+def show_version(outfit_id: int, req: ShowVersionRequest,
+                 user=Depends(get_current_user)):
+    """Make the AI render or the montage the outfit's cover. Both must exist;
+    nothing is rendered or composed here."""
+    col = {"ai": "ai_path", "manual": "manual_path"}.get(req.version)
+    if not col:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "version is ai or manual")
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM outfits WHERE id = ? AND user_id = ?",
+                           (outfit_id, user["id"])).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Outfit not found")
+        if row["status"] == "processing":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Outfit is rendering")
+        path = _version_path(row, col)
+        if not path:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                f"This outfit has no {req.version} version yet")
+        conn.execute("UPDATE outfits SET generated_path = ?, kind = ?, "
+                     "status = 'done', error = '' WHERE id = ?",
+                     (path, req.version, outfit_id))
+        row = conn.execute("SELECT * FROM outfits WHERE id = ?", (outfit_id,)).fetchone()
+        return _hydrate(conn, row)
+
+
+class ToAiRequest(BaseModel):
+    model_id: Optional[int] = None
+    random_model: bool = False
+    random_model_gender: str = ""
+    tier: str = "flex"
+
+
+@router.post("/{outfit_id}/to-ai")
+def render_in_place(outfit_id: int, req: ToAiRequest, background: BackgroundTasks,
+                    user=Depends(generation_guard)):
+    """Render an AI picture of an outfit that has only its montage, on the same
+    row: its clothes, on the chosen person. The montage stays; when the render
+    lands it becomes the cover."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM outfits WHERE id = ? AND user_id = ?",
+                           (outfit_id, user["id"])).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Outfit not found")
+        if row["status"] == "processing":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Outfit is rendering")
+        model_id = req.model_id
+        if req.random_model:
+            model_id = _pick_random_model(conn, user["id"], req.random_model_gender)
+        if model_id is not None and not conn.execute(
+                "SELECT 1 FROM models WHERE id = ? AND user_id = ?",
+                (model_id, user["id"])).fetchone():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+        conn.execute("UPDATE outfits SET model_id = ?, view = 'front', "
+                     "linked_id = NULL, render_cloth_ids = '[]' WHERE id = ?",
+                     (model_id, outfit_id))
+    return regenerate(outfit_id, RegenerateRequest(tier=_fresh_start_tier(
+        req.tier, "person" if model_id is not None else None)), background, user)
 
 
 class ReplaceClothesRequest(BaseModel):

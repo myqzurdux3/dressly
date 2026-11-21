@@ -157,11 +157,12 @@ class _OutfitScreenState extends State<OutfitScreen> {
     }
   }
 
-  void _showResult(Outfit outfit) async {
+  void _showResult(Outfit outfit, {bool startWithAi = false}) async {
     final deleted = await showDialog<bool>(
       context: context,
       builder: (_) => OutfitResultDialog(
         outfit: outfit,
+        startWithAi: startWithAi,
         // Convert AI -> manual by editing the SAME outfit in place (no dup).
         onOpenManual: (o) => _openBuilder(existing: o),
         onChanged: (updated) {
@@ -234,6 +235,9 @@ class _OutfitScreenState extends State<OutfitScreen> {
     } else {
       _history.prepend(saved);
     }
+    // "AI" pressed while editing an existing outfit: its AI version, on the
+    // same outfit.
+    if (res.thenAi) _showResult(saved, startWithAi: true);
   }
 
   /// Move an outfit's clothes into AI mode: switch the toggle, select exactly
@@ -816,7 +820,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
                   // Manual outfits reopen in the builder; AI ones (failed
                   // included, to retry) open the result.
                   onTap: () =>
-                      o.isManual ? _openBuilder(existing: o) : _showResult(o),
+                      _showResult(o),
                   onDelete: () => _confirmDeleteOutfit(o),
                   onToggleFavorite: () => _toggleFavorite(o),
                 );

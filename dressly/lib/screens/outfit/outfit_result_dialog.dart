@@ -14,6 +14,9 @@ import 'cloth_picker_screen.dart';
 import 'outfit_collage.dart';
 import '../../widgets/app_image.dart';
 import '../../widgets/outfit_pending_image.dart';
+import '../../widgets/render_person_sheet.dart';
+import '../../state/data_bus.dart';
+import 'manual_builder_screen.dart';
 
 class OutfitResultDialog extends StatefulWidget {
   const OutfitResultDialog({
@@ -21,7 +24,12 @@ class OutfitResultDialog extends StatefulWidget {
     required this.outfit,
     required this.onChanged,
     this.onOpenManual,
+    this.startWithAi = false,
   });
+
+  /// Opened right after the builder's "AI" button: go straight to the AI
+  /// version (shown if it exists, else rendered).
+  final bool startWithAi;
 
   final Outfit outfit;
   final ValueChanged<Outfit> onChanged;
@@ -48,7 +56,72 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     _outfit = widget.outfit;
     _wornToday = widget.outfit.wornToday;
     if (!_outfit.hasRender && _outfit.status != 'failed') _loadPieces();
+    // A failed render of a montage leaves the montage shown with the error.
+    if (_outfit.isManual && _outfit.error.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _toast(_outfit.error),
+      );
+    }
     if (_outfit.isProcessing) _waitForRender();
+    if (widget.startWithAi) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _switchVersion('ai'));
+    }
+  }
+
+  /// Which version is on screen: the AI render or the hand-made montage.
+  String get _version => _outfit.isManual ? 'manual' : 'ai';
+
+  /// Switch between the AI render and the montage. A version that exists is
+  /// just shown; a missing montage opens the builder on a tidy flat lay of
+  /// these clothes; a missing render asks who wears it and renders it on
+  /// this same outfit. Nothing is redone by hand either way.
+  Future<void> _switchVersion(String v) async {
+    if (_busy || _outfit.isProcessing) return;
+    if (v == 'manual' && !_outfit.hasManual) return _editMontage();
+    if (v == _version && !(v == 'ai' && !_outfit.hasAi)) return;
+    final svc = outfitsServiceOf(context);
+    if ((v == 'ai' && _outfit.hasAi) || v == 'manual') {
+      final o = await _run(
+        'result.failed',
+        () => svc.showVersion(_outfit.id, v),
+      );
+      if (o == null || !mounted) return;
+      setState(() => _outfit = o);
+      widget.onChanged(o);
+      DataBus.outfitsChanged();
+      return;
+    }
+    final tier = genPrefsOf(context).startTier;
+    final person = await pickRenderPerson(context);
+    if (person == null || !mounted) return;
+    final o = await _run(
+      'result.generationFailed',
+      () => svc.renderInPlace(
+        _outfit.id,
+        modelId: int.tryParse(person),
+        randomModel: person == 'random',
+        tier: tier,
+      ),
+    );
+    if (o == null || !mounted) return;
+    setState(() => _outfit = o);
+    widget.onChanged(o);
+    DataBus.outfitsChanged();
+    _waitForRender();
+  }
+
+  /// Open this outfit's montage in the builder (a flat lay of its clothes
+  /// when it has none yet). Saving keeps the AI render beside it.
+  Future<void> _editMontage() async {
+    final res = await Navigator.of(context).push<ManualBuilderResult>(
+      MaterialPageRoute(builder: (_) => ManualBuilderScreen(existing: _outfit)),
+    );
+    final saved = res?.saved;
+    if (saved == null || !mounted) return;
+    setState(() => _outfit = saved);
+    widget.onChanged(saved);
+    DataBus.outfitsChanged();
+    if (res!.thenAi) _switchVersion('ai');
   }
 
   /// Opened while the render runs (from the stylist, or a list): show the
@@ -60,6 +133,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       if (!mounted) return;
       setState(() => _outfit = done);
       widget.onChanged(done);
+      DataBus.outfitsChanged();
+      if (done.isManual && done.error.isNotEmpty) _toast(done.error);
     } catch (_) {
       // The list still refreshes on its own; nothing to report here.
     }
@@ -640,7 +715,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
             Row(
               children: [
                 DsBadge(
-                  text: _outfit.isMock
+                  text: _outfit.isManual
+                      ? trOr(context, 'builder.manual', 'Manual')
+                      : _outfit.isMock
                       ? tr(context, 'result.previewBadge')
                       : _outfit.tierLabel,
                 ),
@@ -671,6 +748,19 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               ],
             ),
             gap,
+            if (!failed &&
+                !_outfit.isPlanned &&
+                _outfit.clothIds.isNotEmpty) ...[
+              DsSegment<String>(
+                options: [
+                  ('ai', tr(context, 'result.versionAi')),
+                  ('manual', tr(context, 'result.versionManual')),
+                ],
+                value: _version,
+                onChanged: (v) => _switchVersion(v),
+              ),
+              gap,
+            ],
             if (failed)
               _Panel(
                 tint: c.danger,
@@ -779,7 +869,11 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                           builder: (_) => ClothDetailScreen(clothId: cl.id),
                         ),
                       ),
-                      onRemove: _busy ? null : () => _removeCloth(cl.id),
+                      // A montage's pieces change in the builder, not here
+                      // (removing one here re-renders the AI picture).
+                      onRemove: _busy || _outfit.isManual
+                          ? null
+                          : () => _removeCloth(cl.id),
                     ),
                 ],
               ),
@@ -793,38 +887,37 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                   _SmallAction(
                     icon: Icons.edit_outlined,
                     label: tr(context, 'result.addSwapClothes'),
-                    onTap: _busy ? null : _editClothes,
-                  ),
-                // Swap the person it is rendered on.
-                _SmallAction(
-                  icon: Icons.person_outline,
-                  label: _outfit.modelName == null
-                      ? tr(context, 'result.changeModel')
-                      : '${tr(context, 'result.changeModel')} '
-                            '(${_outfit.modelName})',
-                  onTap: _busy ? null : _changeModel,
-                ),
-                if (widget.onOpenManual != null && _outfit.clothIds.isNotEmpty)
-                  _SmallAction(
-                    icon: Icons.brush_outlined,
-                    label: trOr(
-                      context,
-                      'result.openManual',
-                      'Edit in manual builder',
-                    ),
                     onTap: _busy
                         ? null
-                        : () {
-                            final o = _outfit;
-                            Navigator.of(context).pop();
-                            widget.onOpenManual!(o);
-                          },
+                        : (_outfit.isManual ? _editMontage : _editClothes),
+                  ),
+                // Swap the person it is rendered on.
+                if (!_outfit.isManual)
+                  _SmallAction(
+                    icon: Icons.person_outline,
+                    label: _outfit.modelName == null
+                        ? tr(context, 'result.changeModel')
+                        : '${tr(context, 'result.changeModel')} '
+                              '(${_outfit.modelName})',
+                    onTap: _busy ? null : _changeModel,
+                  ),
+                if (_outfit.clothIds.isNotEmpty)
+                  _SmallAction(
+                    icon: Icons.brush_outlined,
+                    label: _outfit.hasManual
+                        ? tr(context, 'result.editMontage')
+                        : trOr(
+                            context,
+                            'result.openManual',
+                            'Edit in manual builder',
+                          ),
+                    onTap: _busy ? null : _editMontage,
                   ),
               ],
             ),
 
             // ----- Render settings: each change re-renders in place -----
-            if (!failed) ...[
+            if (!failed && !_outfit.isManual) ...[
               DsSectionTitle(tr(context, 'create.imageMode')),
               DsSegment<String>(
                 options: [
@@ -867,14 +960,15 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                 subtitle: Text(tr(context, 'result.describeSub'), style: muted),
               ),
             ],
-            Text(
-              _outfit.prompt.isEmpty
-                  ? tr(context, 'result.noTextPrompt')
-                  : _outfit.prompt,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: ds.typo.monoSmall.copyWith(color: c.textMuted),
-            ),
+            if (!_outfit.isManual)
+              Text(
+                _outfit.prompt.isEmpty
+                    ? tr(context, 'result.noTextPrompt')
+                    : _outfit.prompt,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+              ),
             SizedBox(height: ds.space.m),
 
             // ----- Image actions -----
@@ -958,6 +1052,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                   ),
                 if (!failed &&
                     rendered &&
+                    !_outfit.isManual &&
                     _outfit.view == 'front' &&
                     _outfit.linkedId == null)
                   _SmallAction(
@@ -967,11 +1062,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                   ),
                 if (!failed && rendered) ...[
                   // Re-render with an extra instruction (pose, angle…).
-                  _SmallAction(
-                    icon: Icons.tune,
-                    label: tr(context, 'result.addDetailTitle'),
-                    onTap: _busy ? null : _regenerateWithDetail,
-                  ),
+                  if (!_outfit.isManual)
+                    _SmallAction(
+                      icon: Icons.tune,
+                      label: tr(context, 'result.addDetailTitle'),
+                      onTap: _busy ? null : _regenerateWithDetail,
+                    ),
                   _SmallAction(
                     icon: Icons.event,
                     label: tr(context, 'result.addToAgenda'),
