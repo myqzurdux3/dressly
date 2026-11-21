@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import '../models/cloth.dart';
 import '../models/dormant.dart';
@@ -273,6 +274,42 @@ class ClothesService {
         .toList();
   }
 
+  /// Colours suggested from photos that are not uploaded yet (the add form).
+  /// Each photo is shrunk to 320 px first: the server only needs a few
+  /// thousand pixels, and a full photo would cost seconds on mobile data.
+  Future<List<ClothColor>> detectPhotoColors(List<String> paths) async {
+    final results = await Future.wait(
+      paths.take(2).map((p) async {
+        final data =
+            await _api.multipartBytes(
+                  'POST',
+                  '/clothes/detect-colors',
+                  fileField: 'image',
+                  bytes: await _shrink(p),
+                )
+                as Map<String, dynamic>;
+        return ((data['colors'] as List?) ?? const [])
+            .map((e) => ClothColor.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }),
+    );
+    return mergeDetectedColors(results);
+  }
+
+  static Future<List<int>> _shrink(String path) async {
+    final bytes = await File(path).readAsBytes();
+    try {
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 320);
+      final frame = await codec.getNextFrame();
+      final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      if (png != null) return png.buffer.asUint8List();
+    } catch (_) {
+      // A format the engine cannot decode: the server may still read it.
+    }
+    return bytes;
+  }
+
   /// Warn admins about a cut-out problem (without changing the choice).
   Future<void> reportImage(int clothId, int imageId, {String message = ''}) async {
     await _api.post('/clothes/$clothId/images/$imageId/report',
@@ -418,4 +455,25 @@ class ClothUpdate {
   final String category;
   final List<ClothColor> colors;
   final List<String> tags;
+}
+
+
+/// Front and back suggestions as one list: a colour seen on either side is
+/// kept once, at its strongest dominance, in the order the front gave them.
+List<ClothColor> mergeDetectedColors(List<List<ClothColor>> perPhoto) {
+  const rank = {'full': 3, 'part': 2, 'little': 1};
+  final out = <String, ClothColor>{};
+  for (final list in perPhoto) {
+    for (final c in list) {
+      final key = c.color.toLowerCase();
+      final had = out[key];
+      if (had == null ||
+          (rank[c.dominance] ?? 0) > (rank[had.dominance] ?? 0)) {
+        out[key] = had == null
+            ? c
+            : ClothColor(color: had.color, dominance: c.dominance);
+      }
+    }
+  }
+  return out.values.take(4).toList();
 }

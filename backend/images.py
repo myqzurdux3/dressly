@@ -229,11 +229,55 @@ def detect_colors(cutout_path, *, max_colors: int = 3):
         im.thumbnail((160, 160))  # downscale for speed
         arr = np.asarray(im)
     opaque = arr[..., 3] >= 200  # skip (semi-)transparent background pixels
-    total = int(opaque.sum())
+    return _colors_of(arr[..., :3][opaque], max_colors)
+
+
+def detect_colors_photo(data: bytes, *, max_colors: int = 3):
+    """Dominant colours of a photo that has NOT been cut out yet.
+
+    Used while a garment is being added, before upload. Running the background
+    removal for this would cost seconds per photo, so the background is
+    estimated instead: it is what touches the edges of the frame. Pixels close
+    to the median edge colour are dropped, and so is the outer band, where the
+    garment rarely is. A garment the same colour as its background (a white
+    tee on a white sheet) loses most of its pixels that way, so when too few
+    remain, the centre of the frame is used as it is.
+    """
+    import io
+    with Image.open(io.BytesIO(data)) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("RGBA", "LA") or "transparency" in im.info:
+            rgba = im.convert("RGBA")
+            rgba.thumbnail((160, 160))
+            arr = np.asarray(rgba)
+            if (arr[..., 3] < 200).mean() > 0.05:  # already a cut-out
+                return _colors_of(arr[..., :3][arr[..., 3] >= 200], max_colors)
+        im = im.convert("RGB")
+        im.thumbnail((160, 160))
+        rgb = np.asarray(im).astype(np.int16)
+    h, w = rgb.shape[:2]
+    if h < 8 or w < 8:
+        return _colors_of(rgb.reshape(-1, 3).astype(np.uint8), max_colors)
+    bh, bw = max(1, h // 16), max(1, w // 16)
+    edge = np.concatenate([rgb[:bh].reshape(-1, 3), rgb[-bh:].reshape(-1, 3),
+                           rgb[:, :bw].reshape(-1, 3), rgb[:, -bw:].reshape(-1, 3)])
+    bg = np.median(edge, axis=0)
+    far = np.sqrt(((rgb - bg) ** 2).sum(axis=-1)) > 48
+    inner = np.zeros((h, w), bool)
+    inner[h // 10:h - h // 10, w // 10:w - w // 10] = True
+    keep = far & inner
+    if keep.sum() < 0.12 * inner.sum():
+        keep = np.zeros((h, w), bool)
+        keep[h // 4:h - h // 4, w // 4:w - w // 4] = True
+    return _colors_of(rgb[keep].astype(np.uint8), max_colors)
+
+
+def _colors_of(pixels, max_colors: int):
+    total = int(len(pixels))
     if not total:
         return []
     counts = np.bincount(
-        _classify_colors_array(arr[..., :3][opaque]), minlength=len(_COLOR_NAMES)
+        _classify_colors_array(pixels), minlength=len(_COLOR_NAMES)
     )
     out = []
     for code in np.argsort(-counts, kind="stable"):

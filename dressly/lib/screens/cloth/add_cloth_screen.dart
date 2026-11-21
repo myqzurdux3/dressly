@@ -108,6 +108,15 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
     final path = await _pickFilePath();
     if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _newImages.add(path));
+    _autoDetectColors();
+  }
+
+  /// Once the photos are in, suggest the colours — unless the user already
+  /// set some by hand, which a detection must never overwrite.
+  void _autoDetectColors() {
+    if (widget.isEdit || _colorsTouched) return;
+    if (_newImages.length < (_multiAngle ? 1 : 2)) return;
+    _detectColors(auto: true);
   }
 
   // ---- Edit-mode live image management (server-backed) ----
@@ -337,20 +346,48 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
     }
   }
 
-  void _addColor() => setState(
-    () => _colors.add(ClothColor(color: 'Black', dominance: 'part')),
-  );
+  void _addColor() => setState(() {
+    _colorsTouched = true;
+    _colors.add(ClothColor(color: 'Black', dominance: 'part'));
+  });
 
   bool _detectingColors = false;
 
-  /// Ask the server to detect the garment's colors from its cut-out and merge
-  /// the suggestions in (skipping ones already listed). The user edits freely.
-  Future<void> _detectColors() async {
-    if (_detectingColors) return;
-    setState(() => _detectingColors = true);
+  /// The user changed the colour list by hand: automatic suggestions stop
+  /// replacing it.
+  bool _colorsTouched = false;
+  bool _autoDetecting = false;
+
+  /// Ask the server to detect the garment's colors — from its cut-out when it
+  /// exists, else from the photos just picked — and merge the suggestions in
+  /// (skipping ones already listed). The user edits freely. [auto] is the
+  /// suggestion made once the photos are in: it replaces the list, which the
+  /// user has not touched yet, and stays quiet when it finds nothing.
+  Future<void> _detectColors({bool auto = false}) async {
+    if (_detectingColors || _autoDetecting) return;
+    // The automatic pass runs in the background: no spinner on the button,
+    // which the user did not press.
+    if (auto) {
+      _autoDetecting = true;
+    } else {
+      setState(() => _detectingColors = true);
+    }
     try {
-      final detected = await _svc.detectColors(widget.initial!.id);
+      final detected = widget.isEdit
+          ? await _svc.detectColors(widget.initial!.id)
+          : await _svc.detectPhotoColors(_newImages);
       if (!mounted) return;
+      if (auto) {
+        if (detected.isNotEmpty && !_colorsTouched) {
+          setState(
+            () => _colors
+              ..clear()
+              ..addAll(detected),
+          );
+          _toastKey('form.colorsSuggested');
+        }
+        return;
+      }
       if (detected.isEmpty) {
         _toastKey('form.noColors');
         return;
@@ -366,9 +403,10 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
             : tr(context, 'form.colorsAdded'),
       );
     } catch (e) {
-      _toastKey('form.detectFailed', e);
+      if (!auto) _toastKey('form.detectFailed', e);
     } finally {
-      if (mounted) setState(() => _detectingColors = false);
+      _autoDetecting = false;
+      if (mounted && !auto) setState(() => _detectingColors = false);
     }
   }
 
@@ -520,6 +558,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
     final path = await _pickFilePath();
     if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _newImages[index] = path);
+    _autoDetectColors();
   }
 
   @override
@@ -657,8 +696,14 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
                         ColorEditorRow(
                           key: ObjectKey(_colors[i]),
                           value: _colors[i],
-                          onChanged: (v) => setState(() => _colors[i] = v),
-                          onDelete: () => setState(() => _colors.removeAt(i)),
+                          onChanged: (v) => setState(() {
+                            _colorsTouched = true;
+                            _colors[i] = v;
+                          }),
+                          onDelete: () => setState(() {
+                            _colorsTouched = true;
+                            _colors.removeAt(i);
+                          }),
                         ),
                       Wrap(
                         spacing: ds.space.s,
@@ -670,8 +715,9 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
                             kind: DsButtonKind.secondary,
                             onPressed: _addColor,
                           ),
-                          // From the cut-out, so only once the garment exists.
-                          if (isEdit)
+                          // From the cut-out once the garment exists, else
+                          // from the photos just picked.
+                          if (isEdit || _newImages.isNotEmpty)
                             DsButton(
                               label: tr(context, 'form.detectColors'),
                               icon: Icons.auto_awesome,

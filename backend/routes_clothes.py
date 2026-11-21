@@ -34,6 +34,7 @@ from images import (
     canonical_cutout_path,
     cloth_dir,
     detect_colors,
+    detect_colors_photo,
     link_bytes,
     public_url_for,
     remove_background,
@@ -948,6 +949,24 @@ def cloth_wears(cloth_id: int, user=Depends(get_current_user)):
         "total": len(days),
         "this_year": sum(1 for d in days if d.startswith(year)),
     }
+
+
+@router.post("/detect-colors")
+async def detect_photo_colors(user=Depends(get_current_user),
+                              image: UploadFile = File(...)):
+    """Suggest colours from a photo before the garment exists (the add form).
+    The app sends a downscaled copy; nothing is stored."""
+    data = await read_capped(image, budget=UploadBudget())
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty image upload")
+    verify_image(data)
+    try:
+        colors = await run_in_threadpool(detect_colors_photo, data)
+    except Exception as e:
+        log.warning("photo color detection failed: %s", e)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Could not read the image") from e
+    return {"colors": colors}
 
 
 @router.post("/{cloth_id}/detect-colors")

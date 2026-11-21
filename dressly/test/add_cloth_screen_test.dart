@@ -205,7 +205,7 @@ void main() {
             of: find.byType(SnackBar),
             matching: find.textContaining('Front and back')),
         findsOneWidget);
-    expect(requests.where((r) => r.method == 'POST'), isEmpty,
+    expect(requests.where((r) => r.method == 'POST' && r.url.path.endsWith('/clothes')), isEmpty,
         reason: 'nothing may be uploaded before the form is complete');
   });
 
@@ -216,7 +216,7 @@ void main() {
     await fillMetadata(tester);
     await save(tester);
 
-    final posts = requests.where((r) => r.method == 'POST').toList();
+    final posts = requests.where((r) => r.method == 'POST' && r.url.path.endsWith('/clothes')).toList();
     expect(posts, hasLength(1), reason: 'one garment, one POST');
 
     final sent = bodies.single;
