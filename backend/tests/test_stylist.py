@@ -315,3 +315,23 @@ def test_render_a_proposal_from_the_app(client, auth, fake, monkeypatch):
     assert r.json() == {"outfit_id": 777}
     th = client.get(f"/stylist/threads/{tid}", headers=auth).json()
     assert th["messages"][-1]["proposals"][0]["render_id"] == 777
+
+
+def test_a_rendering_outfit_lists_its_garment_pictures(client, auth):
+    import json as _json
+
+    import db
+
+    tee, jog, shoes = _wardrobe(client, auth)
+    with db.get_conn() as conn:
+        uid = conn.execute("SELECT user_id FROM clothes WHERE id = ?",
+                           (tee,)).fetchone()[0]
+        oid = conn.execute(
+            "INSERT INTO outfits (user_id, cloth_ids, status) "
+            "VALUES (?, ?, 'processing')",
+            (uid, _json.dumps([tee, jog]))).lastrowid
+    one = client.get(f"/outfits/{oid}", headers=auth).json()
+    assert all("thumb_url" in c for c in one["cloths"])
+    listed = [o for o in client.get("/outfits", headers=auth).json()
+              if o["id"] == oid][0]
+    assert all("thumb_url" in c for c in listed["cloths"])

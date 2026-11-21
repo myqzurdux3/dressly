@@ -4,6 +4,7 @@ import '../design/ds.dart';
 import '../l10n/app_text.dart';
 import '../models/outfit.dart';
 import 'app_image.dart';
+import 'outfit_pending_image.dart';
 
 /// Search, a favourites filter and a lazy grid of outfits to pick one from.
 ///
@@ -124,12 +125,14 @@ class _OutfitPickGridState extends State<OutfitPickGrid> {
                           ),
                         ),
                         // Three per row: the grid-sized copy is plenty.
-                        child: AppImage(
-                          url: outfitThumbUrl(o),
-                          cacheKey: outfitThumbUrl(o),
-                          fit: BoxFit.cover,
-                          memWidth: 160,
-                        ),
+                        child: o.isProcessing
+                            ? OutfitPendingImage(outfit: o, compact: true)
+                            : AppImage(
+                                url: outfitThumbUrl(o),
+                                cacheKey: outfitThumbUrl(o),
+                                fit: BoxFit.cover,
+                                memWidth: 160,
+                              ),
                       ),
                     );
                   },

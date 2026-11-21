@@ -32,11 +32,15 @@ class OutfitCloth {
   final String brand;
   final String category;
 
+  /// The garment's own picture; sent only while the outfit renders.
+  final String thumbUrl;
+
   OutfitCloth({
     required this.id,
     required this.name,
     required this.brand,
     this.category = '',
+    this.thumbUrl = '',
   });
 
   factory OutfitCloth.fromJson(Map<String, dynamic> json) => OutfitCloth(
@@ -44,6 +48,7 @@ class OutfitCloth {
     name: (json['name'] ?? '') as String,
     brand: (json['brand'] ?? '') as String,
     category: (json['category'] ?? '') as String,
+    thumbUrl: (json['thumb_url'] ?? '') as String,
   );
 }
 
@@ -83,6 +88,9 @@ class Outfit {
   final Map<String, dynamic>? layout;
 
   bool get isManual => kind == 'manual';
+
+  /// The AI picture is still being made.
+  bool get isProcessing => status == 'processing';
 
   /// Written by the week planner: it holds the clothes for a day and has never
   /// been rendered. The server creates these with an empty generated_path.

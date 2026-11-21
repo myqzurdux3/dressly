@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../state/data_bus.dart';
@@ -67,13 +69,28 @@ class _OutfitScreenState extends State<OutfitScreen> {
     );
     _loadAll();
     DataBus.outfits.addListener(_refreshHistory);
+    _history.addListener(_watchRenders);
   }
 
   void _refreshHistory() => _history.refresh();
 
+  /// A render started elsewhere (the stylist) has no picture yet: reload the
+  /// list every few seconds until none is left processing.
+  Timer? _renderWatch;
+  void _watchRenders() {
+    if (_renderWatch != null) return;
+    if (!_history.items.any((o) => o.isProcessing)) return;
+    _renderWatch = Timer(const Duration(seconds: 5), () {
+      _renderWatch = null;
+      if (mounted) _history.refresh();
+    });
+  }
+
   @override
   void dispose() {
     DataBus.outfits.removeListener(_refreshHistory);
+    _renderWatch?.cancel();
+    _history.removeListener(_watchRenders);
     _history.dispose();
     _prompt.dispose();
     super.dispose();

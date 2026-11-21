@@ -4,9 +4,15 @@ import '../../app.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/costs.dart';
+import '../../models/credits.dart';
 
 /// What the paid services have cost, in dollars: OpenRouter renders, the BFL
-/// cascade and the stylist, over a chosen period, then the latest calls.
+/// cascade and the stylist, over a chosen period; the providers' balances;
+/// then the latest calls. Admin-only: the server refuses anyone else.
+///
+/// It also carries what the former "Image API credits" page showed (the BFL
+/// balance, refused submissions, spend by tier), so one page answers "what
+/// has this cost".
 class CostsScreen extends StatefulWidget {
   const CostsScreen({super.key});
 
@@ -16,6 +22,9 @@ class CostsScreen extends StatefulWidget {
 
 class _CostsScreenState extends State<CostsScreen> {
   GenerationCosts? _costs;
+
+  /// The BFL side, from /admin/credits; null if that call failed.
+  ApiCredits? _bfl;
   Object? _error;
   bool _loading = true;
   String _period = 'month';
@@ -33,10 +42,14 @@ class _CostsScreenState extends State<CostsScreen> {
       _error = null;
     });
     try {
-      final got = await svc.costs();
+      final results = await Future.wait<Object?>([
+        svc.costs(),
+        svc.credits().then<ApiCredits?>((v) => v).catchError((_) => null),
+      ]);
       if (!mounted) return;
       setState(() {
-        _costs = got;
+        _costs = results[0] as GenerationCosts;
+        _bfl = results[1] as ApiCredits?;
         _loading = false;
       });
     } catch (e) {
@@ -65,6 +78,56 @@ class _CostsScreenState extends State<CostsScreen> {
       ],
       children: _body(),
     );
+  }
+
+  /// The BFL account: balance, dry run, refused submissions, spend by tier.
+  List<Widget> _bflSection() {
+    final b = _bfl;
+    if (b == null) return const [];
+    final ds = context.ds;
+    final col = ds.colors;
+    return [
+      DsSectionTitle(tr(context, 'costs.bflAccount')),
+      if (b.dryRun)
+        DsInfoRow(
+          icon: Icons.science_outlined,
+          title: tr(context, 'credits.dryRun'),
+          detail: tr(context, 'credits.dryRunHint'),
+          color: col.surfaceHigh,
+        ),
+      DsInfoRow(
+        icon: b.providerAvailable
+            ? Icons.account_balance_wallet_outlined
+            : Icons.help_outline,
+        title: b.providerAvailable
+            ? tr(context, 'credits.balance', {
+                'credits': b.providerCredits!.toStringAsFixed(2),
+                'usd': (b.providerUsd ?? 0).toStringAsFixed(2),
+              })
+            : tr(context, 'credits.providerUnknown'),
+        detail: b.providerAvailable
+            ? tr(context, 'credits.providerHint')
+            : b.providerReason,
+      ),
+      if (b.callsRefused > 0)
+        DsInfoRow(
+          icon: Icons.block,
+          danger: true,
+          title: '${b.callsRefused}',
+          detail: tr(context, 'credits.refused'),
+        ),
+      for (final e
+          in (b.byTier.entries.toList()
+            ..sort((x, y) => y.value.credits.compareTo(x.value.credits))))
+        DsInfoRow(
+          icon: Icons.bolt_outlined,
+          title: e.key,
+          detail: tr(context, 'credits.tierCalls', {
+            'calls': '${e.value.calls}',
+          }),
+          trailing: Text(usd(e.value.credits / 100), style: ds.typo.mono),
+        ),
+    ];
   }
 
   String _label(String raw) {
@@ -146,6 +209,7 @@ class _CostsScreenState extends State<CostsScreen> {
           }),
         ),
       ],
+      ..._bflSection(),
       if (c.stylistModels.isNotEmpty) ...[
         DsSectionTitle(tr(context, 'costs.stylistModels')),
         for (final (model, p) in c.stylistModels)

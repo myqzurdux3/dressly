@@ -4,6 +4,7 @@ import '../design/ds.dart';
 import '../l10n/app_text.dart';
 import '../models/outfit.dart';
 import 'app_image.dart';
+import 'outfit_pending_image.dart';
 
 /// One past outfit in a grid: its image (or a failure mark), delete and
 /// favourite buttons, and who/what it shows. Long-press also deletes.
@@ -53,6 +54,8 @@ class OutfitHistoryCard extends StatelessWidget {
               Center(
                 child: Icon(Icons.error_outline, size: 36, color: c.danger),
               )
+            else if (outfit.isProcessing)
+              OutfitPendingImage(outfit: outfit)
             else
               AppImage(
                 url: outfitThumbUrl(outfit),

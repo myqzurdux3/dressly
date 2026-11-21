@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../state/data_bus.dart';
+import '../../widgets/outfit_pending_image.dart';
 
 import '../../app.dart';
 import '../../design/ds.dart';
@@ -408,7 +409,9 @@ class _AgendaCard extends StatelessWidget {
       // A planned day holds clothes and no image until it is rendered: no
       // tile then, rather than a broken-image glyph that reads as an error.
       thumbs: [
-        if (o != null && o.hasRender)
+        if (o != null && o.isProcessing)
+          OutfitPendingImage(outfit: o, compact: true)
+        else if (o != null && o.hasRender)
           AppImage(
             url: outfitThumbUrl(o),
             cacheKey: outfitThumbUrl(o),

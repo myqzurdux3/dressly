@@ -204,7 +204,7 @@ void main() {
     var n = 19;
     for (final icon in const [
       Icons.wb_sunny_outlined,
-      Icons.account_balance_wallet_outlined,
+      Icons.receipt_long_outlined,
       Icons.lock_outline,
     ]) {
       await tester.ensureVisible(find.byIcon(icon).first);

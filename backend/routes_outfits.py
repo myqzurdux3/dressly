@@ -294,8 +294,8 @@ def _hydrate(conn, row) -> dict:
     worn = bool(_worn_today_ids(conn, [row["id"]]))
     blacklisted = combo_key(cloth_ids) in _blacklist_set(conn, row["user_id"]) \
         if cloth_ids else False
-    return _build_outfit(row, cloths, model_name, worn_today=worn,
-                         blacklisted=blacklisted)
+    return _add_pending_pictures(conn, _build_outfit(
+        row, cloths, model_name, worn_today=worn, blacklisted=blacklisted))
 
 
 def _blacklist_set(conn, user_id: int) -> set:
@@ -344,7 +344,30 @@ def _hydrate_many(conn, rows) -> list:
             r, cloths, model_name_by_id.get(r["model_id"]),
             worn_today=r["id"] in worn,
             blacklisted=bool(cloth_ids) and combo_key(cloth_ids) in blacklist))
+    for o in out:
+        _add_pending_pictures(conn, o)
     return out
+
+
+def _add_pending_pictures(conn, outfit: dict) -> dict:
+    """While an outfit renders it has no picture yet: give each garment its
+    own thumbnail so the app can show the clothes instead of a broken image.
+    Only for 'processing' outfits, so the long lists pay nothing extra."""
+    if outfit.get("status") != "processing" or not outfit.get("cloths"):
+        return outfit
+    from routes_plan import _cloth_cards
+    cards = {c["id"]: c["thumb_url"] for c in _cloth_cards(
+        conn, outfit["user_id"] if "user_id" in outfit else _owner(conn, outfit),
+        [c["id"] for c in outfit["cloths"]])}
+    for c in outfit["cloths"]:
+        c["thumb_url"] = cards.get(c["id"], "")
+    return outfit
+
+
+def _owner(conn, outfit: dict) -> int:
+    r = conn.execute("SELECT user_id FROM outfits WHERE id = ?",
+                     (outfit["id"],)).fetchone()
+    return r["user_id"] if r else -1
 
 
 def public_url_for_outfit(path: str) -> str:

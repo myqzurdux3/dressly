@@ -11,7 +11,6 @@ import '../../state/locale_controller.dart';
 import '../../state/session.dart';
 import '../../state/theme_controller.dart';
 import 'change_password_screen.dart';
-import 'api_credits_screen.dart';
 import 'costs_screen.dart';
 import 'weather_location_screen.dart';
 
@@ -203,12 +202,6 @@ class SettingsScreen extends StatelessWidget {
                   // cannot open is noise on everybody else's settings page.
                   if (context.watch<Session>().user?.isAdmin == true) ...[
                     DsSectionTitle(tr(context, 'settings.admin')),
-                    DsInfoRow(
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: tr(context, 'settings.apiCredits'),
-                      detail: tr(context, 'settings.apiCreditsHint'),
-                      onTap: () => push(const ApiCreditsScreen()),
-                    ),
                     DsInfoRow(
                       icon: Icons.receipt_long_outlined,
                       title: tr(context, 'costs.title'),

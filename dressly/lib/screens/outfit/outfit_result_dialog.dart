@@ -13,6 +13,7 @@ import '../cloth/cloth_detail_screen.dart';
 import 'cloth_picker_screen.dart';
 import 'outfit_collage.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/outfit_pending_image.dart';
 
 class OutfitResultDialog extends StatefulWidget {
   const OutfitResultDialog({
@@ -47,6 +48,21 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     _outfit = widget.outfit;
     _wornToday = widget.outfit.wornToday;
     if (!_outfit.hasRender && _outfit.status != 'failed') _loadPieces();
+    if (_outfit.isProcessing) _waitForRender();
+  }
+
+  /// Opened while the render runs (from the stylist, or a list): show the
+  /// garments until it lands, then the picture.
+  Future<void> _waitForRender() async {
+    final svc = outfitsServiceOf(context);
+    try {
+      final done = await svc.getAwait(_outfit.id);
+      if (!mounted) return;
+      setState(() => _outfit = done);
+      widget.onChanged(done);
+    } catch (_) {
+      // The list still refreshes on its own; nothing to report here.
+    }
   }
 
   Future<void> _loadPieces() async {
@@ -681,6 +697,14 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                     onPressed: _busy ? null : _retryGeneration,
                   ),
                 ],
+              )
+            else if (_outfit.isProcessing)
+              SizedBox(
+                height: 380,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(ds.shape.card),
+                  child: OutfitPendingImage(outfit: _outfit),
+                ),
               )
             else if (!rendered)
               _Panel(
