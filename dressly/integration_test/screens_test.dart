@@ -135,9 +135,12 @@ void main() {
       await tester.tap(cards.first);
       await _settle(tester, const Duration(seconds: 3));
       await _shot(tester, '11_result');
-      await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
-      await _settle(tester);
-      await _shot(tester, '12_result_bottom');
+      // A manual outfit opens in the editor, which does not scroll.
+      if (find.byType(Scrollable).evaluate().isNotEmpty) {
+        await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
+        await _settle(tester);
+        await _shot(tester, '12_result_bottom');
+      }
       await tester.binding.handlePopRoute(); // close the result
       await _settle(tester);
     }

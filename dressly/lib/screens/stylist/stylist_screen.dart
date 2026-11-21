@@ -276,7 +276,10 @@ class _StylistScreenState extends State<StylistScreen> {
     return ListView(
       padding: EdgeInsets.all(ds.space.gutter),
       children: [
-        Icon(Icons.checkroom, size: 40, color: c.accentText),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Icon(Icons.checkroom, size: 40, color: c.accentText),
+        ),
         SizedBox(height: ds.space.s),
         Text(tr(context, 'stylist.intro'), style: ds.typo.title),
         SizedBox(height: ds.space.xs),
