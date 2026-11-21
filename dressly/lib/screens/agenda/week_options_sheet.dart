@@ -35,6 +35,10 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
   late int _minScore;
   late bool _fillGaps;
   late bool _allowRepeatTheme;
+  late String _source;
+  late bool _favoritesOnly;
+  late int _holdDays;
+  late Map<String, int> _holdByCat;
 
   DayWeather? _forecast;
   bool _forecastLoading = false;
@@ -66,6 +70,10 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
     _minScore = initial.minScore;
     _fillGaps = initial.fillGaps;
     _allowRepeatTheme = initial.allowRepeatTheme;
+    _source = initial.source;
+    _favoritesOnly = initial.favoritesOnly;
+    _holdDays = initial.holdDays;
+    _holdByCat = {...initial.holdByCategory};
     _algosFuture = outfitsServiceOf(context).listAlgos();
     _brands = _brandsFromClothes;
     _tags = _tagsFromClothes;
@@ -203,7 +211,132 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
     minScore: _minScore,
     fillGaps: _fillGaps,
     allowRepeatTheme: _allowRepeatTheme,
+    source: _source,
+    favoritesOnly: _favoritesOnly,
+    holdDays: _holdDays,
+    holdByCategory: _holdByCat,
   );
+
+  /// Pick a clothing type to hold for its own number of days.
+  Future<void> _addHoldType() async {
+    final free = [
+      for (final c in kCategoryOptions)
+        if (!_holdByCat.containsKey(c)) c,
+    ]..sort((a, b) => bodyOrder(a).compareTo(bodyOrder(b)));
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(tr(ctx, 'week.addHoldType')),
+        children: [
+          for (final c in free)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, c),
+              child: Text(categoryName(ctx, c)),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _holdByCat[picked] = _holdDays < 2 ? 2 : _holdDays);
+  }
+
+  String _daysLabel(int n) => n == 1
+      ? tr(context, 'week.day1')
+      : tr(context, 'week.daysN', {'count': '$n'});
+
+  Widget _sourceAndHold() {
+    final ds = context.ds;
+    final muted = ds.typo.label.copyWith(color: ds.colors.textMuted);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DsSectionTitle(
+          tr(context, 'week.source'),
+          hint: tr(context, 'week.sourceHint'),
+        ),
+        DsSegment<String>(
+          options: [
+            ('algo', tr(context, 'week.sourceAlgo')),
+            ('outfits', tr(context, 'week.sourceOutfits')),
+            ('mix', tr(context, 'week.sourceMix')),
+          ],
+          value: _source,
+          onChanged: (v) => setState(() => _source = v),
+        ),
+        if (_source != 'algo')
+          CheckboxListTile(
+            value: _favoritesOnly,
+            onChanged: (v) => setState(() => _favoritesOnly = v ?? false),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            dense: true,
+            title: Text(tr(context, 'week.favoritesOnly'), style: ds.typo.body),
+          ),
+        DsSectionTitle(
+          tr(context, 'week.hold'),
+          hint: tr(context, 'week.holdHint'),
+        ),
+        DsSegment<int>(
+          options: [for (var n = 1; n <= 4; n++) (n, _daysLabel(n))],
+          value: _holdDays.clamp(1, 4),
+          onChanged: (v) => setState(() => _holdDays = v),
+        ),
+        DsSectionTitle(
+          tr(context, 'week.holdByType'),
+          hint: tr(context, 'week.holdByTypeHint'),
+        ),
+        for (final e
+            in (_holdByCat.entries.toList()
+              ..sort((a, b) => bodyOrder(a.key).compareTo(bodyOrder(b.key)))))
+          Row(
+            children: [
+              Expanded(
+                child: Text(categoryName(context, e.key), style: ds.typo.body),
+              ),
+              IconButton(
+                icon: const Icon(Icons.remove, size: 18),
+                tooltip: '-1',
+                onPressed: e.value <= 1
+                    ? null
+                    : () => setState(() => _holdByCat[e.key] = e.value - 1),
+              ),
+              SizedBox(
+                width: 64,
+                child: Text(
+                  _daysLabel(e.value),
+                  textAlign: TextAlign.center,
+                  style: ds.typo.mono,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, size: 18),
+                tooltip: '+1',
+                onPressed: e.value >= 7
+                    ? null
+                    : () => setState(() => _holdByCat[e.key] = e.value + 1),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: tr(context, 'agenda.remove'),
+                onPressed: () => setState(() => _holdByCat.remove(e.key)),
+              ),
+            ],
+          ),
+        if (_holdByCat.isEmpty)
+          Text(tr(context, 'week.holdByTypeNone'), style: muted),
+        SizedBox(height: ds.space.xs),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DsButton(
+            label: tr(context, 'week.addHoldType'),
+            icon: Icons.add,
+            kind: DsButtonKind.secondary,
+            onPressed: _addHoldType,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -232,9 +365,12 @@ class _WeekOptionsSheetState extends State<WeekOptionsSheet> {
                   ),
                   SizedBox(height: ds.space.xs / 2),
                   Text(tr(context, 'week.subtitle'), style: muted),
+                  _sourceAndHold(),
                   DsSectionTitle(
                     tr(context, 'week.algos'),
-                    hint: tr(context, 'week.algosHint'),
+                    hint: _source == 'outfits'
+                        ? tr(context, 'week.algosFallbackHint')
+                        : tr(context, 'week.algosHint'),
                   ),
                   _algoPicker(),
                   if (_mix.length > 1)

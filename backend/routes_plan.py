@@ -12,8 +12,9 @@ regenerate path and turns it into a normal outfit.
 """
 import json
 import logging
+import random
 from datetime import date, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -23,8 +24,10 @@ from auth import get_current_user
 from db import get_conn
 from generator import (
     ALGOS,
+    AVOID_EXEMPT_ROLES,
     GenerateRequest,
     layer_sorted,
+    role_of,
     select as algo_select,
     theme_value_of,
 )
@@ -35,6 +38,9 @@ router = APIRouter(prefix="/agenda/plan", tags=["agenda"])
 log = logging.getLogger(__name__)
 
 MAX_DAYS = 14
+# Longest a garment or an outfit may be held over consecutive days.
+MAX_HOLD = 7
+SOURCES = ("algo", "outfits", "mix")
 
 
 class PlanAlgo(BaseModel):
@@ -65,11 +71,25 @@ class PlanRequest(BaseModel):
     # their garments still count against the repeats — a locked Monday t-shirt
     # must not reappear on Thursday.
     keep: Dict[str, List[int]] = {}
+    # Days pinned to one of the user's existing outfits (day -> outfit id).
+    keep_outfits: Dict[str, int] = {}
+    # Where a day's outfit comes from: drawn by the algorithms, taken from
+    # outfits the user already made, or alternating between the two.
+    source: str = "algo"
+    favorites_only: bool = False   # with source outfits/mix: favourites only
+    # How many consecutive days each pick is worn. ``hold_by_category``
+    # overrides it per clothing type ("jogging 3 days, t-shirt 1 day"); it
+    # applies to drawn days — an existing outfit is held as a whole.
+    hold_days: int = 1
+    hold_by_category: Dict[str, int] = {}
 
 
 class ApplyRequest(BaseModel):
     days: Dict[str, List[int]]     # day -> cloth ids, as shown to the user
     replace: bool = False          # overwrite days that already have a plan
+    # day -> existing outfit id: the agenda points at that outfit (and its
+    # render) instead of a new clothes-only row.
+    outfits: Dict[str, int] = {}
 
 
 def _days(start_day: str, count: int) -> List[str]:
@@ -205,8 +225,9 @@ def _algo_for_day(mix: List[PlanAlgo], index: int) -> PlanAlgo:
 
 
 def _draw(user_id: int, entry: PlanAlgo, req: PlanRequest, weather_mode: str,
-          avoid_clothes: set, avoid_themes: set):
+          avoid_clothes: set, avoid_themes: set, locked: List[int] = ()):
     return algo_select(GenerateRequest(
+        locked_cloth_ids=list(locked),
         algo=entry.algo, min_score=req.min_score, user_id=user_id,
         color=entry.color, brand=entry.brand, tag=entry.tag,
         weather=weather_mode, categories=req.categories,
@@ -216,66 +237,228 @@ def _draw(user_id: int, entry: PlanAlgo, req: PlanRequest, weather_mode: str,
     ))
 
 
+def _hold(n) -> int:
+    try:
+        return max(1, min(int(n), MAX_HOLD))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _outfit_pool(conn, user_id: int, favorites_only: bool) -> List[dict]:
+    """The user's finished outfits a plan may reuse, newest first: front views
+    with a picture, never a clothes-only plan row."""
+    rows = conn.execute(
+        "SELECT id, cloth_ids, generated_path, is_favorite FROM outfits "
+        "WHERE user_id = ? AND status = 'done' AND kind IN ('ai', 'manual') "
+        "AND generated_path != '' "
+        "AND NOT (view = 'back' AND linked_id IS NOT NULL) "
+        + ("AND is_favorite = 1 " if favorites_only else "")
+        + "ORDER BY id DESC",
+        (user_id,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            ids = [int(x) for x in json.loads(r["cloth_ids"] or "[]")]
+        except (ValueError, TypeError):
+            ids = []
+        if ids:
+            out.append({"id": r["id"], "cloth_ids": ids,
+                        "path": r["generated_path"]})
+    return out
+
+
+def _outfit_card(conn, user_id: int, outfit_id: int) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT id, cloth_ids, generated_path FROM outfits "
+        "WHERE id = ? AND user_id = ?", (outfit_id, user_id)).fetchone()
+    if not row:
+        return None
+    try:
+        ids = [int(x) for x in json.loads(row["cloth_ids"] or "[]")]
+    except (ValueError, TypeError):
+        ids = []
+    return {"id": row["id"], "cloth_ids": ids, "path": row["generated_path"]}
+
+
+def _pick_outfit(pool: List[dict], used_clothes: set, used_outfits: set,
+                 roles: Dict[int, str], rng: random.Random) -> Optional[dict]:
+    """An outfit not used yet this week, preferring one that shares no garment
+    (shoes and accessories aside) with the days already planned."""
+    fresh = [o for o in pool if o["id"] not in used_outfits]
+    if not fresh:
+        return None
+    clean = [o for o in fresh if not any(
+        c in used_clothes and roles.get(c) not in AVOID_EXEMPT_ROLES
+        for c in o["cloth_ids"])]
+    return rng.choice(clean or fresh)
+
+
 @router.post("/preview")
 def preview_plan(req: PlanRequest, user=Depends(get_current_user)):
     """Propose an outfit per day. Writes nothing."""
-    mix = _mix(req)
+    source = req.source if req.source in SOURCES else "algo"
+    # Outfits-only still needs an algorithm for the days the pool runs dry.
+    mix = _mix(req) if (source != "outfits" or req.algos) else [PlanAlgo()]
     days = _days(req.start_day, req.days)
     keep = {d: [int(x) for x in ids] for d, ids in (req.keep or {}).items()}
-
-    # Locked days do not get re-drawn, but what they hold is off the table for
-    # the others — otherwise regenerating around a pinned Monday hands its
-    # t-shirt straight to Tuesday.
-    used: set = set()
-    for d in days:
-        used.update(keep.get(d, []))
-    # Themes already spent this week, per algorithm. Reported: "pour le mode
-    # meme marque je ne veux pas que toute la semaine il y ait la meme chose".
-    themes_by_algo: Dict[str, set] = {}
+    keep_outfits = {d: int(o) for d, o in (req.keep_outfits or {}).items()}
+    hold_default = _hold(req.hold_days)
+    hold_by_cat = {k: _hold(v) for k, v in (req.hold_by_category or {}).items()}
+    rng = random.Random()
 
     out = []
     with get_conn() as conn:
+        cats = {r["id"]: (r["category"] or "") for r in conn.execute(
+            "SELECT id, category FROM clothes WHERE user_id = ?", (user["id"],))}
+        roles = {cid: role_of(cat) for cid, cat in cats.items()}
+
+        def hold_of(cid: int) -> int:
+            return hold_by_cat.get(cats.get(cid, ""), hold_default)
+
+        pinned = {}
+        for d in days:
+            if d in keep_outfits:
+                card = _outfit_card(conn, user["id"], keep_outfits[d])
+                if card:
+                    pinned[d] = card
+        # Locked days do not get re-drawn, but what they hold is off the table
+        # for the others — otherwise regenerating around a pinned Monday hands
+        # its t-shirt straight to Tuesday.
+        used: set = set()
+        used_outfits: set = {c["id"] for c in pinned.values()}
+        for d in days:
+            used.update(keep.get(d, []))
+            if d in pinned:
+                used.update(pinned[d]["cloth_ids"])
+        # Themes already spent this week, per algorithm. Reported: "pour le mode
+        # meme marque je ne veux pas que toute la semaine il y ait la meme chose".
+        themes_by_algo: Dict[str, set] = {}
+        pool = (_outfit_pool(conn, user["id"], req.favorites_only)
+                if source != "algo" else [])
+
+        carry: Dict[int, int] = {}   # garment -> days it is still worn after today
+        held: Optional[dict] = None  # outfit held over from an earlier day
+        held_left = 0
+        picks = 0                    # fresh picks so far, alternates the mix
+        algo_index = 0
         existing = _planned_days(conn, user["id"], days)
-        for index, day in enumerate(days):
+
+        def update_carry(ids: List[int]):
+            nonlocal carry
+            nxt = {}
+            for cid in ids:
+                left = carry[cid] - 1 if carry.get(cid, 0) > 0 else hold_of(cid) - 1
+                if left > 0:
+                    nxt[cid] = left
+            carry = nxt
+
+        for day in days:
             forecast = _weather_for(conn, user["id"], req.weather, day)
-            if day in keep:
-                out.append({
-                    "day": day, "weather": forecast, "locked": True,
-                    "repeated": False, "algo": "",
-                    "cloths": _cloth_cards(conn, user["id"], keep[day]),
-                    "cloth_ids": keep[day],
-                    "already_planned": day in existing,
-                })
+            base = {"day": day, "weather": forecast,
+                    "already_planned": day in existing}
+            if day in pinned or day in keep:
+                o = pinned.get(day)
+                ids = o["cloth_ids"] if o else keep[day]
+                out.append({**base, "locked": True, "repeated": False,
+                            "algo": "", "theme": "", "source": "kept",
+                            "outfit_id": o["id"] if o else None,
+                            "outfit_thumb_url": thumb_url_for(o["path"], 400) if o else "",
+                            "carried_ids": [],
+                            "cloths": _cloth_cards(conn, user["id"], ids),
+                            "cloth_ids": ids})
+                # A pinned day starts its own hold, like any fresh pick.
+                carry = {}
+                held, held_left = (o, hold_default - 1) if o else (None, 0)
+                if not o:
+                    update_carry(ids)
                 continue
 
-            entry = _algo_for_day(mix, index)
+            if held and held_left > 0:
+                held_left -= 1
+                ids = held["cloth_ids"]
+                out.append({**base, "locked": False, "repeated": False,
+                            "algo": "", "theme": "", "source": "outfit",
+                            "outfit_id": held["id"],
+                            "outfit_thumb_url": thumb_url_for(held["path"], 400),
+                            "carried_ids": ids,
+                            "cloths": _cloth_cards(conn, user["id"], ids),
+                            "cloth_ids": ids})
+                continue
+            held = None
+
+            carried = [cid for cid in carry if cid in cats]
+            want_outfit = (source == "outfits"
+                           or (source == "mix" and picks % 2 == 1))
+            if want_outfit and not carried:
+                o = _pick_outfit(pool, used, used_outfits, roles, rng)
+                if o:
+                    picks += 1
+                    used_outfits.add(o["id"])
+                    used.update(o["cloth_ids"])
+                    held, held_left = o, hold_default - 1
+                    carry = {}
+                    out.append({**base, "locked": False, "repeated": False,
+                                "algo": "", "theme": "", "source": "outfit",
+                                "outfit_id": o["id"],
+                                "outfit_thumb_url": thumb_url_for(o["path"], 400),
+                                "carried_ids": [],
+                                "cloths": _cloth_cards(conn, user["id"], o["cloth_ids"]),
+                                "cloth_ids": o["cloth_ids"]})
+                    continue
+
+            entry = mix[algo_index % len(mix)]
+            algo_index += 1
+            picks += 1
             avoid_themes = (set() if req.allow_repeat_theme
                             else themes_by_algo.get(entry.algo, set()))
+            avoid = used - set(carried)
             picked = _draw(user["id"], entry, req, forecast["mode"],
-                           used, avoid_themes)
+                           avoid, avoid_themes, carried)
             repeated = False
             if not picked:
                 # A wardrobe that cannot dress seven distinct days is the normal
                 # case, not an error: drop the no-repeats rules for this day and
                 # say so, rather than leaving a hole.
                 picked = _draw(user["id"], entry, req, forecast["mode"],
-                               set(), set())
+                               set(), set(), carried)
                 repeated = bool(picked)
             ids = [c["id"] for c in picked]
             used.update(ids)
             theme = theme_value_of(entry.algo, picked)
             if theme:
                 themes_by_algo.setdefault(entry.algo, set()).add(theme)
-            out.append({
-                "day": day, "weather": forecast, "locked": False,
-                "repeated": repeated,
-                "algo": entry.algo,
-                "theme": theme or "",
-                "cloths": _cloth_cards(conn, user["id"], ids),
-                "cloth_ids": ids,
-                "already_planned": day in existing,
-            })
-    return {"algo": mix[0].algo, "algos": [e.algo for e in mix], "days": out}
+            update_carry(ids)
+            out.append({**base, "locked": False, "repeated": repeated,
+                        "algo": entry.algo, "theme": theme or "",
+                        "source": "algo", "outfit_id": None,
+                        "outfit_thumb_url": "",
+                        "carried_ids": [c for c in carried if c in ids],
+                        "cloths": _cloth_cards(conn, user["id"], ids),
+                        "cloth_ids": ids})
+    return {"algo": mix[0].algo, "algos": [e.algo for e in mix],
+            "source": source, "days": out}
+
+
+@router.get("/outfits")
+def plan_outfits(favorites_only: bool = False, user=Depends(get_current_user)):
+    """The outfits a day can be pinned to, newest first, with a thumbnail."""
+    with get_conn() as conn:
+        pool = _outfit_pool(conn, user["id"], favorites_only)
+        fav = {r["id"] for r in conn.execute(
+            "SELECT id FROM outfits WHERE user_id = ? AND is_favorite = 1",
+            (user["id"],))}
+        names = {r["id"]: r for r in conn.execute(
+            "SELECT id, name, brand FROM clothes WHERE user_id = ?",
+            (user["id"],))}
+    return {"items": [{
+        "id": o["id"], "cloth_ids": o["cloth_ids"],
+        "is_favorite": o["id"] in fav,
+        "thumb_url": thumb_url_for(o["path"], 400),
+        "search": " ".join(
+            f"{names[c]['name']} {names[c]['brand'] or ''}"
+            for c in o["cloth_ids"] if c in names).lower(),
+    } for o in pool]}
 
 
 @router.post("/apply")
@@ -301,6 +484,11 @@ def apply_plan(req: ApplyRequest, user=Depends(get_current_user)):
             r["id"] for r in conn.execute(
                 "SELECT id FROM clothes WHERE user_id = ?", (user["id"],))
         }
+        own_outfits = {
+            r["id"] for r in conn.execute(
+                "SELECT id FROM outfits WHERE user_id = ? AND status = 'done'",
+                (user["id"],))
+        }
         for day in days:
             try:
                 date.fromisoformat(day)
@@ -318,7 +506,8 @@ def apply_plan(req: ApplyRequest, user=Depends(get_current_user)):
                     continue
                 conn.execute("DELETE FROM agenda WHERE id = ?", (existing[day],))
 
-            outfit_id = conn.execute(
+            reuse = int((req.outfits or {}).get(day) or 0)
+            outfit_id = reuse if reuse in own_outfits else conn.execute(
                 "INSERT INTO outfits (user_id, cloth_ids, status, kind, "
                 "model_tier, generated_path) "
                 "VALUES (?, ?, 'done', 'plan', 'flex', '')",

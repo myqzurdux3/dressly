@@ -4,8 +4,10 @@ import '../../app.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
+import '../../models/outfit.dart';
 import '../../models/plan.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/outfit_pick_grid.dart';
 import 'week_options_sheet.dart';
 
 /// A week of outfits, one card per day.
@@ -36,6 +38,12 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
   /// which replaces every PlanDay — cannot lose them.
   final Set<String> _locked = {};
 
+  /// Days pinned to one of the user's existing outfits (day -> outfit id).
+  final Map<String, int> _pinnedOutfits = {};
+
+  /// The user's outfits, for "choose an outfit" on a day. Loaded on first use.
+  List<Outfit>? _outfits;
+
   @override
   void initState() {
     super.initState();
@@ -50,8 +58,54 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     if (plan == null) return const {};
     return {
       for (final d in plan.days)
-        if (_locked.contains(d.day) && d.clothIds.isNotEmpty) d.day: d.clothIds,
+        if (_locked.contains(d.day) &&
+            d.clothIds.isNotEmpty &&
+            d.outfitId == null &&
+            !_pinnedOutfits.containsKey(d.day))
+          d.day: d.clothIds,
     };
+  }
+
+  /// Locked days that wear an existing outfit, plus days just pinned to one.
+  Map<String, int> get _keepOutfits {
+    final plan = _plan;
+    return {
+      if (plan != null)
+        for (final d in plan.days)
+          if (_locked.contains(d.day) && d.outfitId != null) d.day: d.outfitId!,
+      ..._pinnedOutfits,
+    };
+  }
+
+  /// Put one of the user's outfits on [day], then redraw around it.
+  Future<void> _pickOutfit(PlanDay day) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final title = tr(context, 'plan.pickOutfit');
+    var outfits = _outfits;
+    if (outfits == null) {
+      try {
+        outfits = (await outfitsServiceOf(context).list())
+            .where((o) => o.status == 'done' && o.generatedUrl.isNotEmpty)
+            .toList();
+        _outfits = outfits;
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
+        return;
+      }
+    }
+    if (!mounted) return;
+    final id = await showOutfitPicker(
+      context,
+      outfits: outfits,
+      title: title,
+      initial: _pinnedOutfits[day.day] ?? day.outfitId,
+    );
+    if (id == null || !mounted) return;
+    setState(() {
+      _pinnedOutfits[day.day] = id;
+      _locked.add(day.day);
+    });
+    await _draw();
   }
 
   /// The wardrobe, for the options sheet's brand/tag/colour lists. Loaded once
@@ -84,7 +138,11 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
       _error = null;
     });
     try {
-      final plan = await svc.preview(keep: keep, options: _options);
+      final plan = await svc.preview(
+        keep: keep,
+        keepOutfits: _keepOutfits,
+        options: _options,
+      );
       if (!mounted) return;
       setState(() {
         _plan = plan;
@@ -107,7 +165,7 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     final navigator = Navigator.of(context);
     setState(() => _saving = true);
     try {
-      final result = await svc.apply(plan.applicable);
+      final result = await svc.apply(plan.applicable, outfits: plan.outfits);
       if (!mounted) return;
       setState(() => _saving = false);
       messenger.showSnackBar(
@@ -132,7 +190,11 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
 
   void _toggleLock(PlanDay day) {
     setState(() {
-      if (!_locked.remove(day.day)) _locked.add(day.day);
+      if (_locked.remove(day.day)) {
+        _pinnedOutfits.remove(day.day);
+      } else {
+        _locked.add(day.day);
+      }
     });
   }
 
@@ -220,7 +282,19 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
       'auto' => tr(context, 'algo.autoWeather'),
       _ => tr(context, 'algo.any'),
     };
+    final source = switch (_options.source) {
+      'outfits' => tr(context, 'week.sourceOutfits'),
+      'mix' => tr(context, 'week.sourceMix'),
+      _ => '',
+    };
     final details = [
+      if (source.isNotEmpty) source,
+      if (_options.holdDays > 1)
+        tr(context, 'week.holdShort', {'count': '${_options.holdDays}'}),
+      if (_options.holdByCategory.isNotEmpty)
+        tr(context, 'week.holdByTypeCount', {
+          'count': '${_options.holdByCategory.length}',
+        }),
       weather,
       if (_options.categories.isNotEmpty)
         tr(context, 'week.typesCount', {
@@ -246,7 +320,11 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    names.isEmpty ? tr(context, 'week.pickAtLeastOne') : names,
+                    _options.source == 'outfits'
+                        ? tr(context, 'week.sourceOutfits')
+                        : (names.isEmpty
+                              ? tr(context, 'week.pickAtLeastOne')
+                              : names),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: ds.typo.label,
@@ -317,6 +395,9 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
                       day: day,
                       locked: _locked.contains(day.day),
                       onToggleLock: () => _toggleLock(day),
+                      onPickOutfit: _loading || _saving
+                          ? null
+                          : () => _pickOutfit(day),
                     ),
                   ),
               ],
@@ -333,11 +414,13 @@ class _DayCard extends StatelessWidget {
     required this.day,
     required this.locked,
     required this.onToggleLock,
+    this.onPickOutfit,
   });
 
   final PlanDay day;
   final bool locked;
   final VoidCallback onToggleLock;
+  final VoidCallback? onPickOutfit;
 
   String _dayLabel(BuildContext context) {
     final parsed = DateTime.tryParse(day.day);
@@ -401,6 +484,12 @@ class _DayCard extends StatelessWidget {
                 Text(day.shortTemp, style: ds.typo.mono),
               ],
               IconButton(
+                icon: const Icon(Icons.swap_horiz),
+                color: c.textMuted,
+                tooltip: tr(context, 'plan.pickOutfit'),
+                onPressed: onPickOutfit,
+              ),
+              IconButton(
                 icon: Icon(locked ? Icons.lock : Icons.lock_open_outlined),
                 color: locked ? c.accent : c.textMuted,
                 tooltip: locked
@@ -421,11 +510,37 @@ class _DayCard extends StatelessWidget {
           else
             SizedBox(
               height: 92,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: day.cloths.length,
-                separatorBuilder: (_, _) => SizedBox(width: ds.space.xs),
-                itemBuilder: (_, i) => _clothTile(context, day.cloths[i]),
+              child: Row(
+                children: [
+                  // An existing outfit shows its picture first.
+                  if (day.outfitThumbUrl.isNotEmpty) ...[
+                    ClipRRect(
+                      borderRadius: ds.shape.smallRadius,
+                      child: SizedBox(
+                        width: 72,
+                        height: 92,
+                        child: AppImage.path(
+                          day.outfitThumbUrl,
+                          cacheKey: day.outfitThumbUrl,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: ds.space.xs),
+                  ],
+                  Expanded(
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: day.cloths.length,
+                      separatorBuilder: (_, _) => SizedBox(width: ds.space.xs),
+                      itemBuilder: (_, i) => _clothTile(
+                        context,
+                        day.cloths[i],
+                        carried: day.carriedIds.contains(day.cloths[i].id),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           if (day.algo.isNotEmpty)
@@ -436,6 +551,19 @@ class _DayCard extends StatelessWidget {
                         (day.theme.isEmpty ? '' : ' · ${day.theme}'))
                     .toUpperCase(),
                 style: note,
+              ),
+            ),
+          if (day.isContinued || day.source == 'outfit')
+            Padding(
+              padding: EdgeInsets.only(top: ds.space.xs / 2),
+              child: Wrap(
+                spacing: ds.space.xs,
+                children: [
+                  if (day.source == 'outfit')
+                    DsBadge(text: tr(context, 'plan.myOutfit')),
+                  if (day.isContinued)
+                    DsBadge(text: tr(context, 'plan.continued')),
+                ],
               ),
             ),
           if (day.repeated)
@@ -456,7 +584,11 @@ class _DayCard extends StatelessWidget {
     );
   }
 
-  Widget _clothTile(BuildContext context, PlanCloth cloth) {
+  Widget _clothTile(
+    BuildContext context,
+    PlanCloth cloth, {
+    bool carried = false,
+  }) {
     final ds = context.ds;
     final c = ds.colors;
     return SizedBox(
@@ -470,6 +602,11 @@ class _DayCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: c.surfaceHigh,
                 borderRadius: ds.shape.smallRadius,
+                // Worn again from the day before: outlined, so a held jogging
+                // reads at a glance.
+                border: carried
+                    ? Border.all(color: c.accent.withValues(alpha: 0.6))
+                    : null,
               ),
               child: cloth.thumbUrl.isEmpty
                   ? Icon(Icons.checkroom, color: c.textMuted)

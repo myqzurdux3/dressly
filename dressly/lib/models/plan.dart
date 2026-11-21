@@ -1,4 +1,3 @@
-
 /// One algorithm in a week's mix, with its own value when it needs one.
 class PlanAlgoChoice {
   const PlanAlgoChoice({
@@ -19,18 +18,18 @@ class PlanAlgoChoice {
       color.isNotEmpty ? color : (brand.isNotEmpty ? brand : tag);
 
   Map<String, dynamic> toJson() => {
-        'algo': algo,
-        'color': color,
-        'brand': brand,
-        'tag': tag,
-      };
+    'algo': algo,
+    'color': color,
+    'brand': brand,
+    'tag': tag,
+  };
 
   factory PlanAlgoChoice.fromJson(Map<String, dynamic> j) => PlanAlgoChoice(
-        algo: (j['algo'] ?? 'random') as String,
-        color: (j['color'] ?? '') as String,
-        brand: (j['brand'] ?? '') as String,
-        tag: (j['tag'] ?? '') as String,
-      );
+    algo: (j['algo'] ?? 'random') as String,
+    color: (j['color'] ?? '') as String,
+    brand: (j['brand'] ?? '') as String,
+    tag: (j['tag'] ?? '') as String,
+  );
 }
 
 /// Whether an algorithm needs an argument before it can be used, and which.
@@ -56,6 +55,10 @@ class PlanOptions {
     this.minScore = 0,
     this.fillGaps = true,
     this.allowRepeatTheme = false,
+    this.source = 'algo',
+    this.favoritesOnly = false,
+    this.holdDays = 1,
+    this.holdByCategory = const {},
   });
 
   final List<PlanAlgoChoice> algos;
@@ -68,13 +71,45 @@ class PlanOptions {
   /// is the thing this exists to prevent.
   final bool allowRepeatTheme;
 
+  /// Where a day's outfit comes from: 'algo' (drawn), 'outfits' (the ones the
+  /// user already made) or 'mix' (alternating).
+  final String source;
+
+  /// With 'outfits' or 'mix': only reuse favourite outfits.
+  final bool favoritesOnly;
+
+  /// How many days in a row each pick is worn.
+  final int holdDays;
+
+  /// Per clothing type, overrides [holdDays] for drawn days: jogging 3 days,
+  /// t-shirt 1 day.
+  final Map<String, int> holdByCategory;
+
+  PlanOptions copyWith({
+    String? source,
+    bool? favoritesOnly,
+    int? holdDays,
+    Map<String, int>? holdByCategory,
+  }) => PlanOptions(
+    algos: algos,
+    weather: weather,
+    categories: categories,
+    minScore: minScore,
+    fillGaps: fillGaps,
+    allowRepeatTheme: allowRepeatTheme,
+    source: source ?? this.source,
+    favoritesOnly: favoritesOnly ?? this.favoritesOnly,
+    holdDays: holdDays ?? this.holdDays,
+    holdByCategory: holdByCategory ?? this.holdByCategory,
+  );
+
   /// What opening the planner proposes before anybody chooses: varied outfits,
   /// dressed for the forecast.
   factory PlanOptions.defaults() => const PlanOptions(
-        algos: [PlanAlgoChoice(algo: 'random')],
-        weather: 'auto',
-        fillGaps: true,
-      );
+    algos: [PlanAlgoChoice(algo: 'random')],
+    weather: 'auto',
+    fillGaps: true,
+  );
 }
 
 /// A garment as a plan card shows it: a name and a picture, nothing more.
@@ -94,12 +129,12 @@ class PlanCloth {
   final String thumbUrl;
 
   factory PlanCloth.fromJson(Map<String, dynamic> j) => PlanCloth(
-        id: (j['id'] as num).toInt(),
-        name: (j['name'] ?? '') as String,
-        brand: (j['brand'] ?? '') as String,
-        category: (j['category'] ?? '') as String,
-        thumbUrl: (j['thumb_url'] ?? '') as String,
-      );
+    id: (j['id'] as num).toInt(),
+    name: (j['name'] ?? '') as String,
+    brand: (j['brand'] ?? '') as String,
+    category: (j['category'] ?? '') as String,
+    thumbUrl: (j['thumb_url'] ?? '') as String,
+  );
 }
 
 /// One day of a proposed or saved week.
@@ -118,6 +153,10 @@ class PlanDay {
     this.weatherMode = 'any',
     this.weatherAvailable = false,
     this.tempMax,
+    this.outfitId,
+    this.outfitThumbUrl = '',
+    this.carriedIds = const [],
+    this.source = 'algo',
   });
 
   final String day; // 'YYYY-MM-DD'
@@ -147,24 +186,41 @@ class PlanDay {
   final bool weatherAvailable;
   final double? tempMax;
 
+  /// Set when the day wears one of the user's existing outfits: saving points
+  /// the agenda at it, picture included.
+  final int? outfitId;
+  final String outfitThumbUrl;
+
+  /// Garments still worn from the day before (a held jogging, a held outfit).
+  final List<int> carriedIds;
+
+  /// 'algo' | 'outfit' | 'kept'.
+  final String source;
+
+  bool get isContinued => carriedIds.isNotEmpty;
+
   bool get isEmpty => clothIds.isEmpty;
   String get shortTemp => tempMax == null ? '' : '${tempMax!.round()}°';
 
   PlanDay copyWith({bool? locked}) => PlanDay(
-        day: day,
-        clothIds: clothIds,
-        cloths: cloths,
-        locked: locked ?? this.locked,
-        repeated: repeated,
-        alreadyPlanned: alreadyPlanned,
-        rendered: rendered,
-        worn: worn,
-        algo: algo,
-        theme: theme,
-        weatherMode: weatherMode,
-        weatherAvailable: weatherAvailable,
-        tempMax: tempMax,
-      );
+    day: day,
+    clothIds: clothIds,
+    cloths: cloths,
+    locked: locked ?? this.locked,
+    repeated: repeated,
+    alreadyPlanned: alreadyPlanned,
+    rendered: rendered,
+    worn: worn,
+    algo: algo,
+    theme: theme,
+    weatherMode: weatherMode,
+    weatherAvailable: weatherAvailable,
+    tempMax: tempMax,
+    outfitId: outfitId,
+    outfitThumbUrl: outfitThumbUrl,
+    carriedIds: carriedIds,
+    source: source,
+  );
 
   factory PlanDay.fromJson(Map<String, dynamic> j) {
     final w = (j['weather'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -187,6 +243,12 @@ class PlanDay {
       weatherMode: (w['mode'] ?? 'any') as String,
       weatherAvailable: w['available'] == true,
       tempMax: (w['temp_max'] as num?)?.toDouble(),
+      outfitId: (j['outfit_id'] as num?)?.toInt(),
+      outfitThumbUrl: (j['outfit_thumb_url'] ?? '') as String,
+      carriedIds: [
+        for (final id in (j['carried_ids'] as List? ?? [])) (id as num).toInt(),
+      ],
+      source: (j['source'] ?? 'algo') as String,
     );
   }
 }
@@ -203,15 +265,21 @@ class WeekPlan {
   /// What applying would actually write: the days that have clothes and are not
   /// already spoken for.
   Map<String, List<int>> get applicable => {
-        for (final d in days)
-          if (d.clothIds.isNotEmpty) d.day: d.clothIds,
-      };
+    for (final d in days)
+      if (d.clothIds.isNotEmpty) d.day: d.clothIds,
+  };
+
+  /// The days that wear an existing outfit, for the agenda to point at.
+  Map<String, int> get outfits => {
+    for (final d in days)
+      if (d.outfitId != null && d.clothIds.isNotEmpty) d.day: d.outfitId!,
+  };
 
   factory WeekPlan.fromJson(Map<String, dynamic> j) => WeekPlan(
-        algo: (j['algo'] ?? 'random') as String,
-        days: [
-          for (final raw in (j['days'] as List? ?? []))
-            PlanDay.fromJson((raw as Map).cast<String, dynamic>()),
-        ],
-      );
+    algo: (j['algo'] ?? 'random') as String,
+    days: [
+      for (final raw in (j['days'] as List? ?? []))
+        PlanDay.fromJson((raw as Map).cast<String, dynamic>()),
+    ],
+  );
 }

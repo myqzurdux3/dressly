@@ -6,6 +6,7 @@ import '../../l10n/app_text.dart';
 import '../../models/agenda.dart';
 import '../../models/outfit.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/outfit_pick_grid.dart';
 import '../outfit/outfit_result_dialog.dart';
 import 'week_plan_screen.dart';
 
@@ -451,54 +452,35 @@ class _ScheduleSheet extends StatefulWidget {
 
 class _ScheduleSheetState extends State<_ScheduleSheet> {
   final _title = TextEditingController();
-  final _search = TextEditingController();
   int? _selected;
-  bool _favOnly = false;
-  String _query = '';
 
   @override
   void dispose() {
     _title.dispose();
-    _search.dispose();
     super.dispose();
-  }
-
-  List<Outfit> get _filtered {
-    final q = _query.trim().toLowerCase();
-    return widget.outfits.where((o) {
-      if (_favOnly && !o.isFavorite) return false;
-      if (q.isEmpty) return true;
-      final hay = [
-        o.modelName ?? '',
-        o.cloths.map((c) => c.name).join(' '),
-        o.cloths.map((c) => c.brand).join(' '),
-      ].join(' ').toLowerCase();
-      return hay.contains(q);
-    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
-    final c = ds.colors;
-    final muted = ds.typo.label.copyWith(color: c.textMuted);
-    final outfits = _filtered;
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: DraggableScrollableSheet(
-        initialChildSize: 0.75,
+        initialChildSize: 0.85,
         maxChildSize: 0.95,
         minChildSize: 0.4,
         expand: false,
-        builder: (context, scroll) => SingleChildScrollView(
-          controller: scroll,
+        // Header and label on top, the outfits scrolling in between, and the
+        // confirm button always on screen: with hundreds of outfits it used to
+        // sit after the last thumbnail.
+        builder: (context, scroll) => Padding(
           padding: EdgeInsets.fromLTRB(
             ds.space.gutter,
-            0,
+            ds.space.m,
             ds.space.gutter,
-            ds.space.l,
+            ds.space.m,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -515,75 +497,15 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                 ),
               ),
               DsSectionTitle(tr(context, 'agenda.pickOutfit')),
-              if (widget.outfits.isEmpty)
-                Text(tr(context, 'agenda.noOutfits'), style: muted)
-              else ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: DsSearchField(
-                        controller: _search,
-                        hint: tr(context, 'agenda.searchHint'),
-                        clearLabel: tr(context, 'common.clear'),
-                        onChanged: (v) => setState(() => _query = v),
-                      ),
-                    ),
-                    SizedBox(width: ds.space.xs),
-                    DsChip(
-                      label: tr(context, 'agenda.saved'),
-                      selected: _favOnly,
-                      onTap: () => setState(() => _favOnly = !_favOnly),
-                    ),
-                  ],
+              Expanded(
+                child: OutfitPickGrid(
+                  outfits: widget.outfits,
+                  selected: _selected,
+                  controller: scroll,
+                  onSelected: (id) => setState(() => _selected = id),
                 ),
-                SizedBox(height: ds.space.s),
-                if (outfits.isEmpty)
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: ds.space.m),
-                    child: Text(tr(context, 'agenda.noMatch'), style: muted),
-                  )
-                else
-                  GridView.builder(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: ds.space.xs,
-                      mainAxisSpacing: ds.space.xs,
-                      childAspectRatio: 0.8,
-                    ),
-                    itemCount: outfits.length,
-                    itemBuilder: (context, i) {
-                      final o = outfits[i];
-                      final sel = _selected == o.id;
-                      return GestureDetector(
-                        onTap: () =>
-                            setState(() => _selected = sel ? null : o.id),
-                        child: AnimatedContainer(
-                          duration: ds.motion.fast,
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            color: c.surfaceHigh,
-                            borderRadius: ds.shape.smallRadius,
-                            border: Border.all(
-                              color: sel ? c.accent : c.hairline,
-                              width: sel ? 3 : 1,
-                            ),
-                          ),
-                          // Three per row: the grid-sized copy is plenty.
-                          child: AppImage(
-                            url: outfitThumbUrl(o),
-                            cacheKey: outfitThumbUrl(o),
-                            fit: BoxFit.cover,
-                            memWidth: 160,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-              ],
-              SizedBox(height: ds.space.l),
+              ),
+              SizedBox(height: ds.space.s),
               DsButton(
                 label: tr(context, 'agenda.addToAgenda'),
                 expand: true,

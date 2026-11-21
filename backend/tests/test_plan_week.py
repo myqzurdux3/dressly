@@ -10,7 +10,7 @@ import pytest
 
 import db
 import weather
-from conftest import create_cloth
+from conftest import create_cloth, gen_outfit
 
 
 @pytest.fixture(autouse=True)
@@ -484,3 +484,68 @@ def test_a_day_lists_its_clothes_in_the_order_they_are_worn(client, auth):
     order = {"jeans": 0, "tshirt": 1, "jacket": 2, "sneakers": 3}
     ranks = [order[c] for c in cats if c in order]
     assert ranks == sorted(ranks), f"out of order: {cats}"
+
+
+# --- holding, and reusing outfits ------------------------------------------
+
+def test_hold_days_wears_each_pick_for_that_many_days(client, auth):
+    _wardrobe(client, auth)
+    days = _preview(client, auth, hold_days=2)["days"]
+    assert days[0]["cloth_ids"] == days[1]["cloth_ids"]
+    assert days[2]["cloth_ids"] == days[3]["cloth_ids"]
+    assert set(_garments(days[0], {})) != set(_garments(days[2], {}))
+
+
+def test_hold_by_category_keeps_one_type_longer(client, auth):
+    _wardrobe(client, auth)
+    days = _preview(client, auth, hold_by_category={"jeans": 3})["days"]
+
+    def of(day, cat):
+        return [c["id"] for c in day["cloths"] if c["category"] == cat]
+
+    assert of(days[0], "jeans") == of(days[1], "jeans") == of(days[2], "jeans")
+    assert of(days[3], "jeans") != of(days[0], "jeans")
+    tees = {tuple(of(d, "tshirt")) for d in days[:3]}
+    assert len(tees) == 3
+
+
+def _make_outfit(client, auth, cloth_ids, favorite=False):
+    out = gen_outfit(client, auth, cloth_ids)
+    if favorite:
+        client.post(f"/outfits/{out['id']}/favorite", headers=auth)
+    return out["id"]
+
+
+def test_source_outfits_uses_existing_outfits_and_apply_reuses_them(client, auth):
+    _wardrobe(client, auth, tops=3, bottoms=3)
+    clothes = client.get("/clothes", headers=auth).json()
+    clothes = clothes.get("items", clothes) if isinstance(clothes, dict) else clothes
+    tees = [c["id"] for c in clothes if c["category"] == "tshirt"]
+    jeans = [c["id"] for c in clothes if c["category"] == "jeans"]
+    made = {_make_outfit(client, auth, [t, j]) for t, j in zip(tees, jeans)}
+
+    plan = _preview(client, auth, days=3, source="outfits", hold_days=1)
+    used = [d["outfit_id"] for d in plan["days"]]
+    assert set(used) == made
+    assert all(d["source"] == "outfit" and d["outfit_thumb_url"] for d in plan["days"])
+
+    r = client.post("/agenda/plan/apply", headers=auth, json={
+        "days": _plan_map(plan),
+        "outfits": {d["day"]: d["outfit_id"] for d in plan["days"]},
+    })
+    assert r.status_code == 200, r.text
+    assert {c["outfit_id"] for c in r.json()["created"]} == made
+
+
+def test_a_day_can_be_pinned_to_an_outfit(client, auth):
+    _wardrobe(client, auth, tops=2, bottoms=2)
+    clothes = client.get("/clothes", headers=auth).json()
+    clothes = clothes.get("items", clothes) if isinstance(clothes, dict) else clothes
+    ids = [clothes[0]["id"], clothes[-1]["id"]]
+    oid = _make_outfit(client, auth, ids)
+    today = date.today().isoformat()
+    plan = _preview(client, auth, days=2, keep_outfits={today: oid})
+    assert plan["days"][0]["outfit_id"] == oid
+    assert plan["days"][0]["locked"] is True
+    listed = client.get("/agenda/plan/outfits", headers=auth).json()["items"]
+    assert [o["id"] for o in listed] == [oid]

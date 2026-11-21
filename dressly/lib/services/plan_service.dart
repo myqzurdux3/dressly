@@ -19,30 +19,44 @@ class PlanService {
     int days = 7,
     PlanOptions? options,
     Map<String, List<int>> keep = const {},
+    Map<String, int> keepOutfits = const {},
   }) async {
     final opts = options ?? PlanOptions.defaults();
-    final data = await _api.post('/agenda/plan/preview', {
-      'start_day': startDay,
-      'days': days,
-      'algos': [for (final a in opts.algos) a.toJson()],
-      'min_score': opts.minScore,
-      'fill_gaps': opts.fillGaps,
-      'weather': opts.weather,
-      'categories': opts.categories,
-      'allow_repeat_theme': opts.allowRepeatTheme,
-      'keep': keep,
-    }) as Map<String, dynamic>;
+    final data =
+        await _api.post('/agenda/plan/preview', {
+              'start_day': startDay,
+              'days': days,
+              'algos': [for (final a in opts.algos) a.toJson()],
+              'min_score': opts.minScore,
+              'fill_gaps': opts.fillGaps,
+              'weather': opts.weather,
+              'categories': opts.categories,
+              'allow_repeat_theme': opts.allowRepeatTheme,
+              'keep': keep,
+              'keep_outfits': keepOutfits,
+              'source': opts.source,
+              'favorites_only': opts.favoritesOnly,
+              'hold_days': opts.holdDays,
+              'hold_by_category': opts.holdByCategory,
+            })
+            as Map<String, dynamic>;
     return WeekPlan.fromJson(data);
   }
 
   /// Write the accepted days into the agenda. Returns how many days were
   /// created and which were skipped (already planned, nothing to wear).
   Future<({int created, List<String> skipped})> apply(
-      Map<String, List<int>> days, {bool replace = false}) async {
-    final data = await _api.post('/agenda/plan/apply', {
-      'days': days,
-      'replace': replace,
-    }) as Map<String, dynamic>;
+    Map<String, List<int>> days, {
+    bool replace = false,
+    Map<String, int> outfits = const {},
+  }) async {
+    final data =
+        await _api.post('/agenda/plan/apply', {
+              'days': days,
+              'replace': replace,
+              'outfits': outfits,
+            })
+            as Map<String, dynamic>;
     return (
       created: (data['created'] as List? ?? []).length,
       skipped: [
@@ -51,5 +65,4 @@ class PlanService {
       ],
     );
   }
-
 }
