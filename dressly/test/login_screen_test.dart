@@ -50,7 +50,7 @@ Future<void> _fillIn(
   String email = 'a@b.co',
   String password = 'hunter22',
 }) async {
-  await tester.enterText(find.widgetWithText(TextField, 'Email'), email);
+  await tester.enterText(find.widgetWithText(TextField, 'Email or user name'), email);
   await tester.enterText(find.widgetWithText(TextField, 'Password'), password);
 }
 

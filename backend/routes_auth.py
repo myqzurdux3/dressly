@@ -1,3 +1,4 @@
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -14,6 +15,32 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class Credentials(BaseModel):
     email: EmailStr
     password: str
+    username: str = ""
+
+
+class LoginCredentials(BaseModel):
+    # Email or user name: the field keeps its old name so every client that
+    # already sends ``email`` keeps working.
+    email: str
+    password: str
+
+
+class UsernameChange(BaseModel):
+    username: str
+
+
+# Letters, digits, dot, dash, underscore; no "@" so a user name can never be
+# mistaken for (or collide with) somebody's email address.
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
+
+
+def _clean_username(raw: str) -> str:
+    name = (raw or "").strip()
+    if not USERNAME_RE.match(name):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "A user name is 3 to 32 letters, digits, '.', '-' or '_'")
+    return name
 
 
 class PasswordChange(BaseModel):
@@ -27,12 +54,13 @@ MIN_PASSWORD_LENGTH = 6
 def _public_user(row) -> dict:
     from auth import is_admin as _is_admin
 
+    keys = row.keys() if hasattr(row, "keys") else ()
     user = {"id": row["id"], "email": row["email"],
+            "username": (row["username"] if "username" in keys else None) or "",
             "created_at": row["created_at"]}
     # Included from the first response, not only from /auth/me: the app decides
     # what to show the moment somebody signs in, and asking again for one
     # boolean would be a second round trip on the login screen.
-    keys = row.keys() if hasattr(row, "keys") else ()
     user["is_admin"] = _is_admin({
         "email": user["email"],
         "is_admin": row["is_admin"] if "is_admin" in keys else 0,
@@ -46,16 +74,22 @@ def signup(creds: Credentials):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+    username = _clean_username(creds.username) if creds.username.strip() else None
     with get_conn() as conn:
         exists = conn.execute("SELECT 1 FROM users WHERE email = ?", (creds.email,)).fetchone()
         if exists:
             raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
+        if username and conn.execute(
+                "SELECT 1 FROM users WHERE username = ? COLLATE NOCASE",
+                (username,)).fetchone():
+            raise HTTPException(status.HTTP_409_CONFLICT, "User name already taken")
         cur = conn.execute(
-            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
-            (creds.email, hash_password(creds.password)),
+            "INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)",
+            (creds.email, username, hash_password(creds.password)),
         )
         user = conn.execute(
-            "SELECT id, email, is_admin, created_at FROM users WHERE id = ?", (cur.lastrowid,)
+            "SELECT id, email, username, is_admin, created_at FROM users WHERE id = ?",
+            (cur.lastrowid,)
         ).fetchone()
     token = issue_token(user["id"], user["email"])
     audit_record(_public_user(user), "auth.signup")
@@ -63,18 +97,24 @@ def signup(creds: Credentials):
 
 
 @router.post("/login", dependencies=[Depends(auth_guard)])
-def login(creds: Credentials, request: Request):
+def login(creds: LoginCredentials, request: Request):
+    ident = (creds.email or "").strip()
+    # An "@" means an email; anything else is a user name. Never both, so a
+    # user name cannot shadow someone else's address.
+    column = "email" if "@" in ident else "username"
     with get_conn() as conn:
         user = conn.execute(
-            "SELECT id, email, is_admin, created_at, password_hash FROM users WHERE email = ?",
-            (creds.email,),
-        ).fetchone()
+            "SELECT id, email, username, is_admin, created_at, password_hash "
+            f"FROM users WHERE {column} = ? COLLATE NOCASE",
+            (ident,),
+        ).fetchone() if ident else None
     if not user or not verify_password(creds.password, user["password_hash"]):
         audit_record(None, "auth.login_failed", detail=str(creds.email))
         # Charge the failure against the tighter budget BEFORE answering, so a
         # word-list run is cut off rather than merely logged.
         note_failed_login(request)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED,
+                            "Invalid email, user name or password")
     token = issue_token(user["id"], user["email"])
     audit_record(_public_user(user), "auth.login")
     return {"token": token, "user": _public_user(user)}
@@ -88,6 +128,26 @@ def me(user=Depends(get_current_user)):
     from auth import is_admin as _is_admin
 
     return {**user, "is_admin": _is_admin(user)}
+
+@router.post("/username", dependencies=[Depends(auth_guard)])
+def change_username(req: UsernameChange, user=Depends(get_current_user)):
+    """Set or change the name this account can sign in with. Empty clears it."""
+    name = _clean_username(req.username) if req.username.strip() else None
+    with get_conn() as conn:
+        if name and conn.execute(
+                "SELECT 1 FROM users WHERE username = ? COLLATE NOCASE AND id != ?",
+                (name, user["id"])).fetchone():
+            raise HTTPException(status.HTTP_409_CONFLICT, "User name already taken")
+        conn.execute("UPDATE users SET username = ? WHERE id = ?",
+                     (name, user["id"]))
+    audit_record(user, "auth.username_changed", detail=name or "")
+    from auth import is_admin as _is_admin
+
+    # The effective admin answer, as /auth/me gives it: the app replaces its
+    # user with this one, and the raw DB flag would hide the admin screens
+    # from an allowlisted account.
+    return {**user, "username": name or "", "is_admin": _is_admin(user)}
+
 
 @router.post("/password", dependencies=[Depends(auth_guard)])
 def change_password(req: PasswordChange, request: Request,

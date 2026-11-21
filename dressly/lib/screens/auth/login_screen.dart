@@ -64,11 +64,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextField(
                     controller: _email,
                     decoration: InputDecoration(
-                      labelText: tr(context, 'auth.email'),
+                      labelText: tr(context, 'auth.emailOrUsername'),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
-                    autofillHints: const [AutofillHints.email],
+                    autofillHints: const [
+                      AutofillHints.username,
+                      AutofillHints.email,
+                    ],
                   ),
                   gap,
                   TextField(

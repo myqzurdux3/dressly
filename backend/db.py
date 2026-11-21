@@ -546,6 +546,22 @@ def _cutout_started_at(conn) -> None:
         conn.execute("ALTER TABLE cloth_images ADD COLUMN cutout_started_at TEXT")
 
 
+@migration
+def _usernames(conn) -> None:
+    """An optional user name to sign in with instead of the email.
+
+    Unique regardless of case through its own index: SQLite cannot add a
+    UNIQUE column with ALTER TABLE, and existing rows all start NULL, which a
+    unique index allows any number of.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    if "username" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN username TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS users_username "
+        "ON users (username COLLATE NOCASE)")
+
+
 def fail_stale_cutouts(conn, timeout_s: float) -> int:
     """Mark abandoned background removals as failed. Returns how many.
 

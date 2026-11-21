@@ -28,6 +28,65 @@ class SettingsScreen extends StatelessWidget {
     context.read<Session>().logout();
   }
 
+  String _usernameDetail(BuildContext context) {
+    final name = context.watch<Session>().user?.username ?? '';
+    return name.isEmpty ? tr(context, 'settings.usernameNone') : name;
+  }
+
+  /// Ask for a new user name and save it. Empty clears it.
+  Future<void> _editUsername(BuildContext context) async {
+    final session = context.read<Session>();
+    final messenger = ScaffoldMessenger.of(context);
+    final savedText = tr(context, 'settings.usernameSaved');
+    final field = TextEditingController(text: session.user?.username ?? '');
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr(ctx, 'settings.username')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: field,
+              autofocus: true,
+              autocorrect: false,
+              decoration: InputDecoration(
+                hintText: tr(ctx, 'settings.usernameHint'),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+            SizedBox(height: ctx.ds.space.xs),
+            Text(
+              tr(ctx, 'settings.usernameRules'),
+              style: ctx.ds.typo.label.copyWith(color: ctx.ds.colors.textMuted),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(tr(ctx, 'common.cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, field.text.trim()),
+            child: Text(tr(ctx, 'common.save')),
+          ),
+        ],
+      ),
+    );
+    field.dispose();
+    final token = session.token;
+    if (picked == null || token == null) return;
+    try {
+      final user = await const AuthService().changeUsername(token, picked);
+      session.setSession(user, token);
+      messenger.showSnackBar(SnackBar(content: Text(savedText)));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
@@ -151,6 +210,12 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
                   DsSectionTitle(tr(context, 'settings.account')),
+                  DsInfoRow(
+                    icon: Icons.alternate_email,
+                    title: tr(context, 'settings.username'),
+                    detail: _usernameDetail(context),
+                    onTap: () => _editUsername(context),
+                  ),
                   DsInfoRow(
                     icon: Icons.lock_outline,
                     title: tr(context, 'settings.changePassword'),

@@ -38,11 +38,10 @@ class AuthService {
     required String currentPassword,
     required String newPassword,
   }) async {
-    final res = await _post(
-      '/auth/password',
-      {'current_password': currentPassword, 'new_password': newPassword},
-      token: token,
-    );
+    final res = await _post('/auth/password', {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    }, token: token);
     final fresh = res['token'] as String;
     await _saveToken(fresh);
     return (
@@ -51,8 +50,19 @@ class AuthService {
     );
   }
 
+  /// Set (or clear, with an empty [username]) the name this account signs in
+  /// with. Returns the updated user.
+  Future<AppUser> changeUsername(String token, String username) async {
+    final res = await _post('/auth/username', {
+      'username': username,
+    }, token: token);
+    return AppUser.fromJson(res);
+  }
+
   Future<({AppUser user, String token})> signup(
-      String email, String password) async {
+    String email,
+    String password,
+  ) async {
     final res = await _post('/auth/signup', {
       'email': email,
       'password': password,
@@ -63,7 +73,9 @@ class AuthService {
   }
 
   Future<({AppUser user, String token})> login(
-      String email, String password) async {
+    String email,
+    String password,
+  ) async {
     final res = await _post('/auth/login', {
       'email': email,
       'password': password,
@@ -79,7 +91,10 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> _post(
-      String path, Map<String, dynamic> body, {String? token}) async {
+    String path,
+    Map<String, dynamic> body, {
+    String? token,
+  }) async {
     // The shared API client, not a bare http.post: same connection pool, same
     // certificate pinning, same timeouts as every other call.
     final resp = await PinnedHttp.api.post(
@@ -97,10 +112,12 @@ class AuthService {
     // Same pool and same deadline as _post and as ApiClient. me() runs at
     // startup to restore the session, so a bare http.get with no timeout meant
     // one stalled socket held the launch screen open indefinitely.
-    final resp = await PinnedHttp.api.get(
-      Uri.parse(apiUrl(path)),
-      headers: {'Authorization': 'Bearer $token'},
-    ).timeout(ApiClient.timeoutFor(path));
+    final resp = await PinnedHttp.api
+        .get(
+          Uri.parse(apiUrl(path)),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(ApiClient.timeoutFor(path));
     return _decode(resp);
   }
 

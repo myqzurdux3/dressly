@@ -58,7 +58,7 @@ def get_current_user(
     user_id = int(payload["sub"])
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT id, email, is_admin, created_at, tokens_valid_from "
+            "SELECT id, email, username, is_admin, created_at, tokens_valid_from "
             "FROM users WHERE id = ?",
             (user_id,),
         ).fetchone()
