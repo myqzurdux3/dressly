@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
+import 'package:provider/provider.dart';
+
 import '../../models/stylist.dart';
+import '../../state/gen_prefs_controller.dart';
 import '../../services/stylist_service.dart';
 import '../../widgets/app_image.dart';
 import '../outfit/outfit_result_dialog.dart';
@@ -29,6 +32,15 @@ class _StylistScreenState extends State<StylistScreen> {
   /// The question in flight, shown until the server's copy comes back.
   String? _sending;
   bool _loadingThread = false;
+
+  /// Where the chosen speed is kept; absent in tests that provide no prefs.
+  GenPrefsController? get _prefs {
+    try {
+      return context.read<GenPrefsController>();
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Proposals being saved, so their button shows a spinner.
   final Set<int> _saving = {};
@@ -64,12 +76,13 @@ class _StylistScreenState extends State<StylistScreen> {
     final text = (preset ?? _input.text).trim();
     if (text.isEmpty || _sending != null) return;
     final svc = stylistServiceOf(context);
+    final speed = _prefs?.stylistSpeed ?? 'balanced';
     setState(() {
       _sending = text;
       _input.clear();
     });
     try {
-      final id = await svc.send(text, threadId: _threadId);
+      final id = await svc.send(text, threadId: _threadId, speed: speed);
       _threadId = id;
       final thread = await svc.waitForReply(id);
       if (!mounted) return;
@@ -403,29 +416,55 @@ class _StylistScreenState extends State<StylistScreen> {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: c.hairline)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _input,
-              enabled: !busy,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              decoration: InputDecoration(
-                hintText: tr(context, 'stylist.inputHint'),
+          _speedPicker(),
+          SizedBox(height: ds.space.xs),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _input,
+                  enabled: !busy,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  decoration: InputDecoration(
+                    hintText: tr(context, 'stylist.inputHint'),
+                  ),
+                ),
               ),
-            ),
-          ),
-          SizedBox(width: ds.space.xs),
-          DsButton.icon(
-            icon: Icons.send,
-            semanticLabel: tr(context, 'stylist.send'),
-            onPressed: busy ? null : _send,
+              SizedBox(width: ds.space.xs),
+              DsButton.icon(
+                icon: Icons.send,
+                semanticLabel: tr(context, 'stylist.send'),
+                onPressed: busy ? null : _send,
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Fast, balanced or expert: which model answers. Remembered.
+  Widget _speedPicker() {
+    final prefs = _prefs;
+    if (prefs == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (context, _) => DsSegment<String>(
+        options: [
+          ('fast', tr(context, 'stylist.speedFast')),
+          ('balanced', tr(context, 'stylist.speedBalanced')),
+          ('expert', tr(context, 'stylist.speedExpert')),
+        ],
+        value: prefs.stylistSpeed,
+        onChanged: (v) => prefs.setStylistSpeed(v),
       ),
     );
   }

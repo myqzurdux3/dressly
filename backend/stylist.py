@@ -8,12 +8,16 @@ keeps a misread request from creating or changing anything on its own.
 The conversation is replayed in full on every turn (``api_messages``), exactly
 as the API returned it, because thinking blocks must come back unchanged.
 """
+import base64
+import io
 import json
 import logging
+import time
 from datetime import date, timedelta
 from typing import Callable, Dict, List, Optional
 
 import anthropic
+from PIL import Image
 
 import weather as weather_mod
 from config import (
@@ -23,6 +27,15 @@ from config import (
     STYLIST_MODEL,
     STYLIST_TIMEOUT_S,
 )
+
+# The speeds the app offers: (model, effort, server-side refusal fallback).
+# Claude Haiku 5.5 has no server-side fallback, so none is sent for it.
+MODELS = {
+    "fast": ("claude-haiku-5-5", "low", False),
+    "balanced": ("claude-sonnet-5-5", "low", True),
+    "expert": (STYLIST_MODEL, STYLIST_EFFORT, True),
+}
+DEFAULT_SPEED = "balanced"
 from generator import layer_sorted, role_of, slots_of
 
 log = logging.getLogger(__name__)
@@ -33,14 +46,17 @@ SYSTEM_PROMPT = """You are the personal stylist inside Dressly, a wardrobe app. 
 You talk with one person about what to wear, using only the clothes they own.
 
 How to work:
-- Look things up before advising. get_wardrobe lists every garment with its \
-attributes and the owner's own rating; get_weather gives the forecast for \
-their saved place; get_agenda shows what is planned and what was worn lately; \
-get_outfits lists outfits they already made.
+- The first message of a conversation carries the whole wardrobe, today's \
+forecast and the agenda, so most questions need no look-up. Use \
+search_wardrobe to filter (by text, category, colour, brand, tag, rating, \
+favourites), view_garments to see what pieces actually look like when the \
+look matters, get_weather for another day, get_agenda and get_outfits for \
+plans and outfits already made.
 - Recommend only garments returned by get_wardrobe, by their exact id. Never \
 invent a garment, and say so plainly when the wardrobe lacks something.
 - Every time you recommend a complete outfit, call propose_outfit with its \
-garment ids. The app shows each proposal as a card the person can add to \
+garment ids. Write your short answer first, then make the propose_outfit \
+calls in the same reply; nothing needs to follow them. The app shows each proposal as a card the person can add to \
 their outfits with one tap. Propose one to three outfits per answer unless \
 asked for more.
 - A complete outfit has one top, one bottom and shoes; add a layer, socks, a \
@@ -95,6 +111,46 @@ TOOLS = [
                                    "Empty string for everything."},
             },
             "required": ["category"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "search_wardrobe",
+        "description": (
+            "Search the garments. Every filter is optional: pass an empty "
+            "string, 0 or false to ignore it. 'text' matches name, brand, cut "
+            "and tags. Same columns as get_wardrobe."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "category": {"type": "string"},
+                "color": {"type": "string",
+                          "description": "English colour name, e.g. 'Black'."},
+                "brand": {"type": "string"},
+                "tag": {"type": "string"},
+                "min_rating": {"type": "integer", "description": "0-5"},
+                "favorites_only": {"type": "boolean"},
+                "include_excluded": {"type": "boolean"},
+            },
+            "required": ["text", "category", "color", "brand", "tag",
+                         "min_rating", "favorites_only", "include_excluded"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "view_garments",
+        "description": (
+            "See photos of up to 6 garments, to judge shape, texture, print "
+            "or exact shade."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cloth_ids": {"type": "array", "items": {"type": "integer"}},
+            },
+            "required": ["cloth_ids"],
             "additionalProperties": False,
         },
         "strict": True,
@@ -169,20 +225,45 @@ TOOLS = [
 ]
 
 
-def _wardrobe(conn, user_id: int, category: str = "") -> str:
+def _wardrobe(conn, user_id: int, category: str = "", *, text: str = "",
+              color: str = "", brand: str = "", tag: str = "",
+              min_rating: int = 0, favorites_only: bool = False,
+              include_excluded: bool = True) -> str:
     params: list = [user_id]
-    where = "c.user_id = ?"
+    where = ["c.user_id = ?"]
     if category.strip():
-        where += " AND c.category = ?"
-        params.append(category.strip())
+        where.append("c.category = ?")
+        params.append(category.strip().lower())
+    if brand.strip():
+        where.append("c.brand LIKE ?")
+        params.append(f"%{brand.strip()}%")
+    if tag.strip():
+        where.append("c.custom_tags LIKE ?")
+        params.append(f"%{tag.strip()}%")
+    if text.strip():
+        where.append("(c.name LIKE ? OR c.brand LIKE ? OR c.cut LIKE ? "
+                     "OR c.custom_tags LIKE ? OR c.category LIKE ?)")
+        params += [f"%{text.strip()}%"] * 5
+    if color.strip():
+        where.append("EXISTS (SELECT 1 FROM cloth_colors k WHERE "
+                     "k.cloth_id = c.id AND k.color = ? COLLATE NOCASE)")
+        params.append(color.strip())
+    if min_rating:
+        where.append("c.score >= ?")
+        params.append(int(min_rating))
+    if favorites_only:
+        where.append("c.is_favorite = 1")
+    if not include_excluded:
+        where.append("c.exclude_from_algo = 0")
     rows = conn.execute(
-        f"SELECT c.id, c.name, c.brand, c.category, c.cut, c.custom_tags, "
-        f"c.score, c.is_favorite, c.exclude_from_algo, c.last_worn_at, "
-        f"(SELECT COUNT(*) FROM cloth_wears w WHERE w.cloth_id = c.id) AS wears "
-        f"FROM clothes c WHERE {where} ORDER BY c.category, c.name",
+        "SELECT c.id, c.name, c.brand, c.category, c.cut, c.custom_tags, "
+        "c.score, c.is_favorite, c.exclude_from_algo, c.last_worn_at, "
+        "substr(c.created_at, 1, 10) AS added, "
+        "(SELECT COUNT(*) FROM cloth_wears w WHERE w.cloth_id = c.id) AS wears "
+        f"FROM clothes c WHERE {' AND '.join(where)} ORDER BY c.category, c.name",
         params).fetchall()
     if not rows:
-        return "No garments" + (f" in category '{category}'." if category else ".")
+        return "No garment matches."
     colors: Dict[int, List[str]] = {}
     ids = [r["id"] for r in rows]
     ph = ",".join("?" * len(ids))
@@ -190,8 +271,8 @@ def _wardrobe(conn, user_id: int, category: str = "") -> str:
             f"SELECT cloth_id, color, dominance FROM cloth_colors "
             f"WHERE cloth_id IN ({ph})", ids):
         colors.setdefault(c["cloth_id"], []).append(f"{c['color']}({c['dominance']})")
-    lines = ["id | name | brand | category | cut | colours | tags | rating | "
-             "favourite | excluded | worn | last worn"]
+    lines = [f"{len(rows)} garment(s). id | name | brand | category | cut | "
+             "colours | tags | rating | favourite | excluded | worn | last worn | added"]
     for r in rows:
         try:
             tags = ", ".join(json.loads(r["custom_tags"] or "[]"))
@@ -202,8 +283,48 @@ def _wardrobe(conn, user_id: int, category: str = "") -> str:
             r["cut"] or "-", " ".join(colors.get(r["id"], [])) or "-",
             tags or "-", r["score"] or 0, "yes" if r["is_favorite"] else "no",
             "yes" if r["exclude_from_algo"] else "no", r["wears"],
-            r["last_worn_at"] or "never")))
+            r["last_worn_at"] or "never", r["added"] or "-")))
     return "\n".join(lines)
+
+
+def _photo_path(conn, user_id: int, cloth_id: int) -> Optional[str]:
+    im = conn.execute(
+        "SELECT i.cutout_path, i.original_path, i.bg_accepted "
+        "FROM cloth_images i JOIN clothes c ON c.id = i.cloth_id "
+        "WHERE i.cloth_id = ? AND c.user_id = ? "
+        "ORDER BY CASE i.role WHEN 'front' THEN 0 ELSE 1 END, "
+        "i.sort_order, i.id LIMIT 1", (cloth_id, user_id)).fetchone()
+    if not im:
+        return None
+    return (im["original_path"] if im["bg_accepted"] == "rejected"
+            else (im["cutout_path"] or im["original_path"]))
+
+
+def _view(conn, user_id: int, ids: List[int]) -> list:
+    """Tool-result content: a label and a small JPEG per garment."""
+    out: list = []
+    names = {r["id"]: r["name"] for r in conn.execute(
+        "SELECT id, name FROM clothes WHERE user_id = ?", (user_id,))}
+    for cid in list(dict.fromkeys(int(i) for i in ids))[:6]:
+        if cid not in names:
+            out.append({"type": "text", "text": f"{cid}: not in the wardrobe"})
+            continue
+        path = _photo_path(conn, user_id, cid)
+        try:
+            im = Image.open(path).convert("RGBA")
+        except Exception:  # noqa: BLE001 — a missing photo is reported, not fatal
+            out.append({"type": "text", "text": f"{cid} {names[cid]}: no photo"})
+            continue
+        im.thumbnail((512, 512))
+        flat = Image.new("RGB", im.size, (255, 255, 255))
+        flat.paste(im, mask=im.split()[3])
+        buf = io.BytesIO()
+        flat.save(buf, "JPEG", quality=82)
+        out.append({"type": "text", "text": f"{cid} {names[cid]}:"})
+        out.append({"type": "image", "source": {
+            "type": "base64", "media_type": "image/jpeg",
+            "data": base64.b64encode(buf.getvalue()).decode()}})
+    return out or [{"type": "text", "text": "No garment given."}]
 
 
 def _weather(conn, user_id: int, day: str) -> str:
@@ -303,10 +424,21 @@ def check_outfit(conn, user_id: int, cloth_ids: List[int]) -> List[int]:
 
 
 def run_tool(conn, user_id: int, name: str, args: dict,
-             on_proposal: Callable[[str, List[int], str], int]) -> str:
-    """Run one tool and return its text result; ValueError means a bad call."""
+             on_proposal: Callable[[str, List[int], str], int]):
+    """Run one tool and return its result (text, or content blocks for
+    view_garments); ValueError means a bad call."""
     if name == "get_wardrobe":
         return _wardrobe(conn, user_id, str(args.get("category") or ""))
+    if name == "search_wardrobe":
+        return _wardrobe(
+            conn, user_id, str(args.get("category") or ""),
+            text=str(args.get("text") or ""), color=str(args.get("color") or ""),
+            brand=str(args.get("brand") or ""), tag=str(args.get("tag") or ""),
+            min_rating=int(args.get("min_rating") or 0),
+            favorites_only=bool(args.get("favorites_only")),
+            include_excluded=bool(args.get("include_excluded")))
+    if name == "view_garments":
+        return _view(conn, user_id, args.get("cloth_ids") or [])
     if name == "get_weather":
         return _weather(conn, user_id, str(args.get("day") or ""))
     if name == "get_agenda":
@@ -328,8 +460,17 @@ def _block_dict(block) -> dict:
     return block.model_dump(exclude_none=True)
 
 
+def opening_context(conn, user_id: int) -> str:
+    """What a new conversation starts with, so the first answer needs no
+    look-up: the wardrobe, today's forecast and the agenda."""
+    return ("<wardrobe>\n" + _wardrobe(conn, user_id) + "\n</wardrobe>\n"
+            "<weather_today>\n" + _weather(conn, user_id, "") + "\n</weather_today>\n"
+            "<agenda>\n" + _agenda(conn, user_id, 7) + "\n</agenda>")
+
+
 def converse(conn, user_id: int, history: List[dict], user_text: str,
-             on_proposal: Callable[[str, List[int], str], int]) -> dict:
+             on_proposal: Callable[[str, List[int], str], int],
+             speed: str = DEFAULT_SPEED) -> dict:
     """Send one user message, run the tool calls, return the final reply.
 
     ``history`` is the stored message list; the returned ``messages`` is the
@@ -339,22 +480,41 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
     # The date rides on the user turn, not in the system prompt, so the cached
     # prefix stays the same from one day to the next.
     stamped = f"[Today is {today.strftime('%A')} {today.isoformat()}.]\n{user_text}"
-    messages = list(history) + [{"role": "user", "content": stamped}]
+    history = list(history)
+    carried: list = []
+    if history and history[-1]["role"] == "user" and isinstance(
+            history[-1]["content"], list) and all(
+            b.get("type") == "tool_result" for b in history[-1]["content"]):
+        # The last turn ended on proposals whose results were never sent: they
+        # open this turn, before the new question (see below).
+        carried = history.pop()["content"]
+    if not history:
+        # Context first, question last: it stays in the cached prefix for the
+        # rest of the conversation.
+        content = [{"type": "text", "text": opening_context(conn, user_id)},
+                   {"type": "text", "text": stamped}]
+    else:
+        content = [*carried, {"type": "text", "text": stamped}] if carried else stamped
+    messages = history + [{"role": "user", "content": content}]
+    model, effort, fallback = MODELS.get(speed, MODELS[DEFAULT_SPEED])
     texts: List[str] = []
     api = client()
-    for _ in range(STYLIST_MAX_STEPS):
+    started = time.monotonic()
+    for step in range(STYLIST_MAX_STEPS):
+        t0 = time.monotonic()
         try:
+            extra = ({"betas": [FALLBACK_BETA], "fallbacks": "default"}
+                     if fallback else {})
             resp = api.beta.messages.create(
-                model=STYLIST_MODEL,
+                model=model,
                 max_tokens=16000,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=messages,
                 thinking={"type": "adaptive"},
-                output_config={"effort": STYLIST_EFFORT},
+                output_config={"effort": effort},
                 cache_control={"type": "ephemeral"},
-                betas=[FALLBACK_BETA],
-                fallbacks="default",
+                **extra,
             )
         except anthropic.AuthenticationError as e:
             raise StylistUnavailable("The stylist's API key was refused") from e
@@ -365,6 +525,9 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
         except anthropic.APIConnectionError as e:
             raise StylistUnavailable("The stylist could not be reached") from e
 
+        uses = [b.name for b in resp.content if b.type == "tool_use"]
+        log.info("stylist step %s: %s %.1fs stop=%s tools=%s", step, model,
+                 time.monotonic() - t0, resp.stop_reason, uses)
         messages.append({"role": "assistant",
                          "content": [_block_dict(b) for b in resp.content]})
         texts.extend(b.text for b in resp.content
@@ -390,6 +553,12 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
                 results.append({"type": "tool_result", "tool_use_id": b.id,
                                 "content": f"Error: {e}", "is_error": True})
         messages.append({"role": "user", "content": results})
+        # A turn that only proposed outfits, and already said something, is
+        # done: asking the model to wrap up would cost a whole extra call for
+        # a sentence. The results ride along with the next question instead.
+        if (texts and set(uses) == {"propose_outfit"}
+                and not any(r.get("is_error") for r in results)):
+            break
     else:
         log.warning("stylist hit %s steps for user %s", STYLIST_MAX_STEPS, user_id)
         # The last message is tool results nobody answered: drop the dangling
@@ -397,4 +566,5 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
         if messages and messages[-1]["role"] == "user":
             messages = messages[:-2]
         texts.append("I went round in circles on that one. Could you rephrase?")
+    log.info("stylist turn: %s %.1fs", model, time.monotonic() - started)
     return {"messages": messages, "text": "\n\n".join(texts).strip()}

@@ -54,12 +54,14 @@ def fake(monkeypatch):
     return install
 
 
-def _turn(client, auth, message, thread_id=None):
+def _turn(client, auth, message, thread_id=None, speed=None):
     """Send a message and read the thread once the background turn is done
     (TestClient runs background tasks before returning)."""
     body = {"message": message}
     if thread_id:
         body["thread_id"] = thread_id
+    if speed:
+        body["speed"] = speed
     r = client.post("/stylist/chat", headers=auth, json=body)
     assert r.status_code == 200, r.text
     tid = r.json()["thread_id"]
@@ -96,14 +98,15 @@ def test_a_turn_reads_the_wardrobe_and_proposes_an_outfit(client, auth, fake):
     api = fake([
         ([text("Je regarde."), tool("get_wardrobe", {"category": ""})], "tool_use"),
         after_wardrobe,
-        ([text("Voici une tenue.")], "end_turn"),
     ])
     tid, t = _turn(client, auth, "Quoi porter ?")
     listing = seen["wardrobe"].lower()
     assert "tee blanc" in listing and "jogging gris" in listing
     user_msg, reply = t["messages"]
     assert user_msg["role"] == "user" and user_msg["text"] == "Quoi porter ?"
-    assert reply["text"] == "Je regarde.\n\nVoici une tenue."
+    # Text already said and only proposals left: no wrap-up call.
+    assert reply["text"] == "Je regarde."
+    assert len(api.calls) == 2
     (prop,) = reply["proposals"]
     assert prop["title"] == "Samedi"
     # Stored in wearing order, with pictures for the card.
@@ -117,9 +120,14 @@ def test_a_turn_reads_the_wardrobe_and_proposes_an_outfit(client, auth, fake):
     api2 = fake([([text("Avec plaisir.")], "end_turn")])
     _turn(client, auth, "Merci", tid)
     replay = api2.calls[0]["messages"]
-    assert replay[0]["content"].endswith("Quoi porter ?")
+    # The proposal's result was held back and opens the next question.
+    last = replay[-1]["content"]
+    assert last[0]["type"] == "tool_result" and last[0]["tool_use_id"] == "tu2"
+    # The first turn opened with the wardrobe, then the question.
+    assert "<wardrobe>" in replay[0]["content"][0]["text"]
+    assert replay[0]["content"][1]["text"].endswith("Quoi porter ?")
     assert replay[1]["content"][1]["type"] == "tool_use"
-    assert replay[-1]["content"].endswith("Merci")
+    assert last[-1]["text"].endswith("Merci")
 
 
 def test_bad_ids_go_back_to_the_model_as_an_error(client, auth, fake):
@@ -198,3 +206,47 @@ def test_api_failure_keeps_nothing_half_written(client, auth, monkeypatch):
     assert t["pending"] is False
     assert t["error"] == "The stylist could not be reached"
     assert t["messages"] == []
+
+
+def test_speeds_pick_the_model_and_fallback(client, auth, fake):
+    api = fake([([text("ok")], "end_turn")] * 3)
+    _turn(client, auth, "a", speed="fast")
+    _turn(client, auth, "b", speed="expert")
+    _turn(client, auth, "c")
+    fast, expert, default = api.calls
+    assert fast["model"] == "claude-haiku-5-5" and "fallbacks" not in fast
+    assert expert["model"] == "claude-opus-5-5" and expert["fallbacks"] == "default"
+    assert default["model"] == "claude-sonnet-5-5"
+    speeds = client.get("/stylist/status", headers=auth).json()["speeds"]
+    assert set(speeds) == {"fast", "balanced", "expert"}
+
+
+def test_search_filters_and_photos(client, auth, fake):
+    import db
+
+    tee, jog, shoes = _wardrobe(client, auth)
+    with db.get_conn() as conn:
+        conn.execute("UPDATE clothes SET score = 5, custom_tags = '[\"sport\"]' "
+                     "WHERE id = ?", (jog,))
+    got = {}
+
+    def search(kw):
+        return ([tool("search_wardrobe", {
+            "text": "", "category": "", "color": "", "brand": "", "tag": "sport",
+            "min_rating": 4, "favorites_only": False, "include_excluded": False},
+            "s1"), tool("view_garments", {"cloth_ids": [jog, 99999]}, "v1")],
+            "tool_use")
+
+    def read(kw):
+        res = kw["messages"][-1]["content"]
+        got["search"], got["view"] = res[0]["content"], res[1]["content"]
+        return ([text("ok")], "end_turn")
+
+    fake([search, read])
+    _turn(client, auth, "go")
+    assert got["search"].startswith("1 garment(s)")
+    assert "jogging gris" in got["search"].lower()
+    kinds = [b["type"] for b in got["view"]]
+    assert kinds == ["text", "image", "text"]
+    assert got["view"][1]["source"]["media_type"] == "image/jpeg"
+    assert "not in the wardrobe" in got["view"][2]["text"]

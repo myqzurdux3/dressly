@@ -27,11 +27,16 @@ class StylistService {
 
   /// Send [message]; returns the thread id (a new one when [threadId] is
   /// null).
-  Future<int> send(String message, {int? threadId}) async {
+  Future<int> send(
+    String message, {
+    int? threadId,
+    String speed = 'balanced',
+  }) async {
     final data =
         await _api.post('/stylist/chat', {
               'message': message,
               'thread_id': ?threadId,
+              'speed': speed,
             })
             as Map<String, dynamic>;
     return (data['thread_id'] as num).toInt();
@@ -40,7 +45,7 @@ class StylistService {
   /// Poll until the stylist has answered (or failed).
   Future<StylistThread> waitForReply(
     int threadId, {
-    Duration every = const Duration(seconds: 2),
+    Duration every = const Duration(seconds: 1),
     Duration max = const Duration(minutes: 6),
   }) async {
     final end = DateTime.now().add(max);

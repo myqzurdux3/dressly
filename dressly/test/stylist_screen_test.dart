@@ -107,7 +107,7 @@ void main() {
     await tester.tap(find.text('What should I wear today?'));
     await tester.pump();
     expect(find.text('Looking through your wardrobe…'), findsOneWidget);
-    // The service polls every two seconds.
+    // The service polls every second.
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
 

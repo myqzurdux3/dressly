@@ -26,6 +26,8 @@ STALE_TURN_S = 360
 class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[int] = None
+    # 'fast' | 'balanced' | 'expert' — which model answers this turn.
+    speed: str = stylist.DEFAULT_SPEED
 
 
 def _thread(conn, user_id: int, thread_id: int):
@@ -64,7 +66,9 @@ def _messages_json(conn, user_id: int, thread_id: int) -> List[dict]:
 
 @router.get("/status")
 def stylist_status(user=Depends(get_current_user)):
-    return {"available": stylist.available(), "model": stylist.STYLIST_MODEL}
+    return {"available": stylist.available(),
+            "default_speed": stylist.DEFAULT_SPEED,
+            "speeds": {k: v[0] for k, v in stylist.MODELS.items()}}
 
 
 @router.get("/threads")
@@ -140,12 +144,14 @@ def chat(req: ChatRequest, background: BackgroundTasks,
             "UPDATE stylist_threads SET pending = 1, error = '', "
             "updated_at = CURRENT_TIMESTAMP WHERE id = ?", (thread_id,))
         messages = _messages_json(conn, user["id"], thread_id)
-    background.add_task(_run_turn, user, thread_id, user_msg, text)
+    speed = req.speed if req.speed in stylist.MODELS else stylist.DEFAULT_SPEED
+    background.add_task(_run_turn, user, thread_id, user_msg, text, speed)
     return {"thread_id": thread_id, "pending": True,
             "messages": [m for m in messages if m["id"] == user_msg]}
 
 
-def _run_turn(user: dict, thread_id: int, user_msg: int, text: str) -> None:
+def _run_turn(user: dict, thread_id: int, user_msg: int, text: str,
+              speed: str = stylist.DEFAULT_SPEED) -> None:
     with get_conn() as conn:
         history = json.loads(conn.execute(
             "SELECT api_messages FROM stylist_threads WHERE id = ?",
@@ -159,7 +165,8 @@ def _run_turn(user: dict, thread_id: int, user_msg: int, text: str) -> None:
 
     try:
         with get_conn() as conn:
-            out = stylist.converse(conn, user["id"], history, text, on_proposal)
+            out = stylist.converse(conn, user["id"], history, text,
+                                   on_proposal, speed)
     except Exception as e:  # noqa: BLE001 — any failure must clear "pending"
         if not isinstance(e, stylist.StylistUnavailable):
             log.exception("stylist turn failed for thread %s", thread_id)
@@ -186,7 +193,8 @@ def _run_turn(user: dict, thread_id: int, user_msg: int, text: str) -> None:
             "UPDATE stylist_threads SET api_messages = ?, pending = 0, error = '', "
             "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (json.dumps(out["messages"]), thread_id))
-    audit_record(user, "stylist.chat", f"thread #{thread_id} proposals={len(pending)}")
+    audit_record(user, "stylist.chat",
+                 f"thread #{thread_id} {speed} proposals={len(pending)}")
 
 
 def _cutout_paths(conn, user_id: int, ids: List[int]) -> List[str]:

@@ -12,6 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class GenPrefsController extends ChangeNotifier {
   static const _kHqOnly = 'gen_high_quality_only';
   static const _kOpenRouter = 'gen_use_openrouter';
+  static const _kStylistSpeed = 'stylist_speed';
+
+  /// Which model answers in the stylist: 'fast' | 'balanced' | 'expert'.
+  String _stylistSpeed;
+  String get stylistSpeed => _stylistSpeed;
 
   bool _highQualityOnly;
 
@@ -21,6 +26,7 @@ class GenPrefsController extends ChangeNotifier {
   GenPrefsController([
     this._highQualityOnly = false,
     this._useOpenRouter = false,
+    this._stylistSpeed = 'balanced',
   ]);
 
   bool get useOpenRouter => _useOpenRouter;
@@ -37,6 +43,7 @@ class GenPrefsController extends ChangeNotifier {
     return GenPrefsController(
       prefs.getBool(_kHqOnly) ?? false,
       prefs.getBool(_kOpenRouter) ?? false,
+      prefs.getString(_kStylistSpeed) ?? 'balanced',
     );
   }
 
@@ -54,5 +61,13 @@ class GenPrefsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kOpenRouter, value);
+  }
+
+  Future<void> setStylistSpeed(String value) async {
+    if (value == _stylistSpeed) return;
+    _stylistSpeed = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kStylistSpeed, value);
   }
 }
