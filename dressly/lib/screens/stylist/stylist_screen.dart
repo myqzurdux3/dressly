@@ -5,7 +5,9 @@ import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/model.dart';
 import '../../models/stylist.dart';
+import '../../state/data_bus.dart';
 import '../../state/gen_prefs_controller.dart';
 import '../../services/stylist_service.dart';
 import '../../widgets/app_image.dart';
@@ -82,7 +84,12 @@ class _StylistScreenState extends State<StylistScreen> {
       _input.clear();
     });
     try {
-      final id = await svc.send(text, threadId: _threadId, speed: speed);
+      final id = await svc.send(
+        text,
+        threadId: _threadId,
+        speed: speed,
+        renderTier: _prefs?.startTier ?? 'flex',
+      );
       _threadId = id;
       final thread = await svc.waitForReply(id);
       if (!mounted) return;
@@ -90,6 +97,8 @@ class _StylistScreenState extends State<StylistScreen> {
         _messages = thread.messages;
         _sending = null;
       });
+      // The stylist may have saved, rendered or edited something.
+      DataBus.allChanged();
       if (thread.error.isNotEmpty) {
         // The server dropped the question: give it back to edit or resend.
         _input.text = text;
@@ -144,6 +153,25 @@ class _StylistScreenState extends State<StylistScreen> {
     }
   }
 
+  /// [m] with proposal [id] replaced by [f] of it.
+  void _replace(
+    StylistMessage m,
+    int id,
+    StylistProposal Function(StylistProposal) f,
+  ) {
+    _messages = [
+      for (final x in _messages)
+        x.id != m.id
+            ? x
+            : StylistMessage(
+                id: x.id,
+                role: x.role,
+                text: x.text,
+                proposals: [for (final q in x.proposals) q.id == id ? f(q) : q],
+              ),
+    ];
+  }
+
   Future<void> _save(StylistMessage m, StylistProposal p) async {
     final svc = stylistServiceOf(context);
     final saved = tr(context, 'stylist.saved');
@@ -153,22 +181,43 @@ class _StylistScreenState extends State<StylistScreen> {
       if (!mounted) return;
       setState(() {
         _saving.remove(p.id);
-        _messages = [
-          for (final x in _messages)
-            x.id != m.id
-                ? x
-                : StylistMessage(
-                    id: x.id,
-                    role: x.role,
-                    text: x.text,
-                    proposals: [
-                      for (final q in x.proposals)
-                        q.id == p.id ? q.saved(outfitId) : q,
-                    ],
-                  ),
-        ];
+        _replace(m, p.id, (q) => q.saved(outfitId));
       });
+      DataBus.outfitsChanged();
       _toast(saved);
+    } catch (e) {
+      if (mounted) setState(() => _saving.remove(p.id));
+      _toast('$e');
+    }
+  }
+
+  /// Asks who wears the render, then starts it. Paid, so it asks first.
+  Future<void> _render(StylistMessage m, StylistProposal p) async {
+    final svc = stylistServiceOf(context);
+    final started = tr(context, 'stylist.renderStarted');
+    final tier = _prefs?.startTier ?? 'flex';
+    List<ModelEntity> models = const [];
+    try {
+      models = await modelsServiceOf(context).list();
+    } catch (_) {}
+    if (!mounted) return;
+    final person = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _PersonSheet(models: models),
+    );
+    if (person == null || !mounted) return;
+    setState(() => _saving.add(p.id));
+    try {
+      final rid = await svc.renderProposal(p.id, person: person, tier: tier);
+      if (!mounted) return;
+      setState(() {
+        _saving.remove(p.id);
+        _replace(m, p.id, (q) => q.rendered(rid));
+      });
+      DataBus.outfitsChanged();
+      _toast(started);
     } catch (e) {
       if (mounted) setState(() => _saving.remove(p.id));
       _toast('$e');
@@ -395,6 +444,10 @@ class _StylistScreenState extends State<StylistScreen> {
                 onOpen: p.outfitId == null
                     ? null
                     : () => _openOutfit(p.outfitId!),
+                onRender: () => _render(m, p),
+                onOpenRender: p.renderId == null
+                    ? null
+                    : () => _openOutfit(p.renderId!),
               ),
             ),
         ],
@@ -538,12 +591,16 @@ class _ProposalCard extends StatelessWidget {
     required this.saving,
     required this.onSave,
     this.onOpen,
+    required this.onRender,
+    this.onOpenRender,
   });
 
   final StylistProposal proposal;
   final bool saving;
   final VoidCallback onSave;
   final VoidCallback? onOpen;
+  final VoidCallback onRender;
+  final VoidCallback? onOpenRender;
 
   @override
   Widget build(BuildContext context) {
@@ -629,6 +686,22 @@ class _ProposalCard extends StatelessWidget {
                   loading: saving,
                   onPressed: saving ? null : onSave,
                 ),
+          SizedBox(height: ds.space.xs),
+          proposal.renderId != null
+              ? DsButton(
+                  label: tr(context, 'stylist.openRender'),
+                  icon: Icons.photo_outlined,
+                  kind: DsButtonKind.secondary,
+                  expand: true,
+                  onPressed: onOpenRender,
+                )
+              : DsButton(
+                  label: tr(context, 'stylist.render'),
+                  icon: Icons.auto_awesome,
+                  kind: DsButtonKind.secondary,
+                  expand: true,
+                  onPressed: saving ? null : onRender,
+                ),
         ],
       ),
     );
@@ -700,6 +773,57 @@ class _HistorySheetState extends State<_HistorySheet> {
                 tooltip: tr(context, 'agenda.remove'),
                 onPressed: () => _delete(t),
               ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who wears an AI render: nobody, someone at random, or one of the models.
+class _PersonSheet extends StatelessWidget {
+  const _PersonSheet({required this.models});
+  final List<ModelEntity> models;
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = context.ds;
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.fromLTRB(
+          ds.space.gutter,
+          0,
+          ds.space.gutter,
+          ds.space.l,
+        ),
+        children: [
+          Text(
+            tr(context, 'stylist.renderOn').toUpperCase(),
+            style: ds.typo.headline,
+          ),
+          SizedBox(height: ds.space.xs),
+          Text(
+            tr(context, 'stylist.renderCost'),
+            style: ds.typo.label.copyWith(color: ds.colors.textMuted),
+          ),
+          SizedBox(height: ds.space.s),
+          DsInfoRow(
+            icon: Icons.checkroom,
+            title: tr(context, 'stylist.renderNoPerson'),
+            onTap: () => Navigator.pop(context, 'none'),
+          ),
+          if (models.isNotEmpty)
+            DsInfoRow(
+              icon: Icons.shuffle,
+              title: tr(context, 'stylist.renderRandom'),
+              onTap: () => Navigator.pop(context, 'random'),
+            ),
+          for (final m in models)
+            DsInfoRow(
+              icon: Icons.person_outline,
+              title: m.name,
+              onTap: () => Navigator.pop(context, '${m.id}'),
             ),
         ],
       ),

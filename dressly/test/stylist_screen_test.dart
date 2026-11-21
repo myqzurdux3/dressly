@@ -72,6 +72,10 @@ Future<List<String>> _pump(WidgetTester tester, {bool available = true}) async {
           200,
         );
       }
+      if (path.endsWith('/stylist/proposals/3/render')) {
+        return http.Response(jsonEncode({'outfit_id': 41}), 200);
+      }
+      if (path.endsWith('/models')) return http.Response('[]', 200);
       return http.Response('{}', 404);
     }),
   );
@@ -119,5 +123,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, contains('POST /stylist/proposals/3/save'));
     expect(find.text('Open the outfit'), findsOneWidget);
+
+    // The AI render asks who wears it, then starts.
+    await tester.ensureVisible(find.text('AI render'));
+    await tester.tap(find.text('AI render'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Just the clothes'));
+    await tester.pumpAndSettle();
+    expect(calls, contains('POST /stylist/proposals/3/render'));
+    expect(find.text('Open the render'), findsOneWidget);
   });
 }

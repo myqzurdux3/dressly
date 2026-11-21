@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../state/data_bus.dart';
+
 import '../../l10n/app_text.dart';
 
 import '../../app.dart';
@@ -38,10 +40,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
     );
     _reload();
+    DataBus.outfits.addListener(_reload);
   }
 
   @override
   void dispose() {
+    DataBus.outfits.removeListener(_reload);
     _outfits.dispose();
     super.dispose();
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../state/data_bus.dart';
+
 import '../../app.dart';
 import '../../design/ds.dart';
 import '../../config/api_config.dart';
@@ -64,10 +66,14 @@ class _OutfitScreenState extends State<OutfitScreen> {
           ),
     );
     _loadAll();
+    DataBus.outfits.addListener(_refreshHistory);
   }
+
+  void _refreshHistory() => _history.refresh();
 
   @override
   void dispose() {
+    DataBus.outfits.removeListener(_refreshHistory);
     _history.dispose();
     _prompt.dispose();
     super.dispose();

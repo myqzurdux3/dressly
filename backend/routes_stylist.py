@@ -2,6 +2,7 @@
 into an outfit."""
 import json
 import logging
+import threading
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -13,6 +14,7 @@ from auth import get_current_user
 from bfl import _tile
 from config import OUTFITS_DIR
 from db import get_conn
+from ratelimit import generation_guard
 from routes_plan import _cloth_cards
 
 router = APIRouter(prefix="/stylist", tags=["stylist"])
@@ -28,6 +30,15 @@ class ChatRequest(BaseModel):
     thread_id: Optional[int] = None
     # 'fast' | 'balanced' | 'expert' — which model answers this turn.
     speed: str = stylist.DEFAULT_SPEED
+    # Where an AI render starts when the stylist is asked for one: the app's
+    # own setting ('flex' | 'pro' | 'openrouter').
+    render_tier: str = "flex"
+
+
+class RenderRequest(BaseModel):
+    # 'none' | 'random' | 'random_male' | 'random_female' | a model id.
+    person: str = "none"
+    tier: str = "flex"
 
 
 def _thread(conn, user_id: int, thread_id: int):
@@ -46,7 +57,8 @@ def _proposal_json(conn, user_id: int, row) -> dict:
         ids = []
     return {"id": row["id"], "title": row["title"], "reason": row["reason"],
             "cloth_ids": ids, "cloths": _cloth_cards(conn, user_id, ids),
-            "outfit_id": row["outfit_id"]}
+            "outfit_id": row["outfit_id"],
+            "render_id": row["render_id"] if "render_id" in row.keys() else None}
 
 
 def _messages_json(conn, user_id: int, thread_id: int) -> List[dict]:
@@ -145,28 +157,32 @@ def chat(req: ChatRequest, background: BackgroundTasks,
             "updated_at = CURRENT_TIMESTAMP WHERE id = ?", (thread_id,))
         messages = _messages_json(conn, user["id"], thread_id)
     speed = req.speed if req.speed in stylist.MODELS else stylist.DEFAULT_SPEED
-    background.add_task(_run_turn, user, thread_id, user_msg, text, speed)
+    background.add_task(_run_turn, user, thread_id, user_msg, text, speed,
+                        req.render_tier)
     return {"thread_id": thread_id, "pending": True,
             "messages": [m for m in messages if m["id"] == user_msg]}
 
 
 def _run_turn(user: dict, thread_id: int, user_msg: int, text: str,
-              speed: str = stylist.DEFAULT_SPEED) -> None:
+              speed: str = stylist.DEFAULT_SPEED,
+              render_tier: str = "flex") -> None:
     with get_conn() as conn:
         history = json.loads(conn.execute(
             "SELECT api_messages FROM stylist_threads WHERE id = ?",
             (thread_id,)).fetchone()["api_messages"] or "[]")
     pending: List[tuple] = []
 
-    def on_proposal(title, ids, reason) -> int:
+    def on_proposal(title, ids, reason, outfit_id=None, render_id=None) -> int:
         # Numbered in this turn; the rows are written with the reply below.
-        pending.append((title, ids, reason))
+        pending.append((title, ids, reason, outfit_id, render_id))
         return len(pending)
 
+    actions = _Actions(user, on_proposal, render_tier)
     try:
         with get_conn() as conn:
             out = stylist.converse(conn, user["id"], history, text,
-                                   on_proposal, speed)
+                                   on_proposal, speed, actions=actions,
+                                   on_usage=lambda m, u: record_usage(user["id"], m, u))
     except Exception as e:  # noqa: BLE001 — any failure must clear "pending"
         if not isinstance(e, stylist.StylistUnavailable):
             log.exception("stylist turn failed for thread %s", thread_id)
@@ -184,17 +200,20 @@ def _run_turn(user: dict, thread_id: int, user_msg: int, text: str,
         msg_id = conn.execute(
             "INSERT INTO stylist_messages (thread_id, role, text) "
             "VALUES (?, 'assistant', ?)", (thread_id, reply)).lastrowid
-        for title, ids, reason in pending:
+        for title, ids, reason, outfit_id, render_id in pending:
             conn.execute(
                 "INSERT INTO stylist_proposals (thread_id, message_id, user_id, "
-                "title, reason, cloth_ids) VALUES (?, ?, ?, ?, ?, ?)",
-                (thread_id, msg_id, user["id"], title, reason, json.dumps(ids)))
+                "title, reason, cloth_ids, outfit_id, render_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (thread_id, msg_id, user["id"], title, reason, json.dumps(ids),
+                 outfit_id, render_id))
         conn.execute(
             "UPDATE stylist_threads SET api_messages = ?, pending = 0, error = '', "
             "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (json.dumps(out["messages"]), thread_id))
     audit_record(user, "stylist.chat",
-                 f"thread #{thread_id} {speed} proposals={len(pending)}")
+                 f"thread #{thread_id} {speed} cards={len(pending)} "
+                 f"actions={','.join(actions.done) or '-'}")
 
 
 def _cutout_paths(conn, user_id: int, ids: List[int]) -> List[str]:
@@ -212,6 +231,202 @@ def _cutout_paths(conn, user_id: int, ids: List[int]) -> List[str]:
         paths.append(im["original_path"] if im["bg_accepted"] == "rejected"
                      else (im["cutout_path"] or im["original_path"]))
     return paths
+
+
+def make_flat_outfit(user: dict, ids: List[int]) -> int:
+    """A manual outfit whose picture is the garments side by side."""
+    with get_conn() as conn:
+        paths = _cutout_paths(conn, user["id"], ids)
+        outfit_id = conn.execute(
+            "INSERT INTO outfits (user_id, cloth_ids, status, kind, layout) "
+            "VALUES (?, ?, 'done', 'manual', '')",
+            (user["id"], json.dumps(ids))).lastrowid
+    tile = _tile(paths, max_px=1024) if paths else None
+    OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUTFITS_DIR / f"{outfit_id}.png"
+    if tile:
+        import shutil
+        shutil.move(tile, out_path)
+    with get_conn() as conn:
+        conn.execute("UPDATE outfits SET generated_path = ? WHERE id = ?",
+                     (str(out_path) if tile else "", outfit_id))
+    return outfit_id
+
+
+class _Now:
+    """BackgroundTasks look-alike for routes called outside a request: the
+    task starts at once on its own thread."""
+
+    def add_task(self, fn, *args, **kwargs):
+        threading.Thread(target=fn, args=args, kwargs=kwargs,
+                         daemon=True).start()
+
+
+def start_render(user: dict, ids: List[int], person: str, tier: str) -> int:
+    """Start an AI render of the garments; returns the new outfit's id."""
+    import routes_outfits
+    person = (person or "none").strip().lower()
+    kw: dict = {}
+    if person.startswith("random"):
+        kw["random_model"] = True
+        kw["random_model_gender"] = person.partition("_")[2]
+    elif person not in ("", "none"):
+        try:
+            kw["model_id"] = int(person)
+        except ValueError as e:
+            raise ValueError(f"person must be none, random or a model id, "
+                             f"not {person!r}") from e
+    req = routes_outfits.GenerateRequest(
+        cloth_ids=ids, tier=tier if tier in ("flex", "pro", "openrouter") else "flex",
+        **kw)
+    try:
+        out = routes_outfits.generate_outfit(req, _Now(), user)
+    except HTTPException as e:
+        raise ValueError(str(e.detail)) from e
+    return int(out["id"])
+
+
+class _Actions:
+    """The stylist's write tools, done as the user through the app's routes."""
+
+    def __init__(self, user: dict, on_proposal, render_tier: str):
+        self.user = user
+        self.on_proposal = on_proposal
+        self.render_tier = render_tier
+        self.renders = 0
+        self.done: List[str] = []
+        # Flat lays made in this turn, by garment set, so "save it and put it
+        # in the agenda" makes one outfit, not two.
+        self.flat: dict = {}
+
+    def _flat(self, ids: List[int]) -> int:
+        key = tuple(sorted(ids))
+        if key not in self.flat:
+            self.flat[key] = make_flat_outfit(self.user, ids)
+        return self.flat[key]
+
+    def run(self, name: str, a: dict):
+        try:
+            out = getattr(self, "_" + name)(a)
+        except HTTPException as e:
+            raise ValueError(str(e.detail)) from e
+        self.done.append(name)
+        return out
+
+    def _save_outfit(self, a):
+        oid = self._flat(a["cloth_ids"])
+        self.on_proposal(str(a.get("title") or "")[:80], a["cloth_ids"],
+                         str(a.get("reason") or "")[:400], oid, None)
+        return f"Saved as outfit {oid}; shown as a card."
+
+    def _render_outfit(self, a):
+        if self.renders >= stylist.MAX_RENDERS_PER_TURN:
+            raise ValueError(f"at most {stylist.MAX_RENDERS_PER_TURN} renders "
+                             "per message")
+        rid = start_render(self.user, a["cloth_ids"], str(a.get("person") or ""),
+                           self.render_tier)
+        self.renders += 1
+        self.on_proposal(str(a.get("title") or "")[:80], a["cloth_ids"], "",
+                         None, rid)
+        return (f"Render started as outfit {rid}; it takes about a minute and "
+                "the card opens it.")
+
+    def _list_models(self, a):
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT id, name, gender FROM models WHERE user_id = ? "
+                "ORDER BY id", (self.user["id"],)).fetchall()
+        if not rows:
+            return "No models yet: render with person 'none'."
+        return "\n".join(f"{r['id']} | {r['name']} | {r['gender'] or '-'}"
+                         for r in rows)
+
+    def _schedule_outfit(self, a):
+        import routes_agenda
+        oid = int(a.get("outfit_id") or 0) or None
+        ids = a.get("cloth_ids") or []
+        if oid is None and ids:
+            with get_conn() as conn:
+                ids = stylist.check_outfit(conn, self.user["id"], ids)
+            oid = self._flat(ids)
+        routes_agenda.create_agenda(routes_agenda.AgendaCreate(
+            day=str(a.get("day") or ""), outfit_id=oid,
+            title=str(a.get("title") or "")[:80]), self.user)
+        return f"Added to the agenda on {a.get('day')}" + (
+            f" with outfit {oid}." if oid else ".")
+
+    def _update_garment(self, a):
+        import routes_clothes as rc
+        cid = int(a["cloth_id"])
+        changed = []
+        if int(a.get("rating", -1)) >= 0:
+            rc.set_score(cid, rc.ScoreRequest(score=int(a["rating"])), self.user)
+            changed.append(f"rating {int(a['rating'])}")
+        for key, fn, model, field in (
+                ("favorite", rc.toggle_cloth_favorite, rc.FavoriteRequest, "is_favorite"),
+                ("excluded", rc.set_cloth_exclude_algo, rc.ExcludeAlgoRequest, "exclude")):
+            v = a.get(key, "keep")
+            if v in ("yes", "no"):
+                fn(cid, model(**{field: v == "yes"}), self.user)
+                changed.append(f"{key} {v}")
+        return f"Garment {cid}: " + (", ".join(changed) or "nothing changed") + "."
+
+    def _mark_worn(self, a):
+        import routes_clothes as rc
+        day = str(a.get("day") or "").strip() or None
+        ids = [int(i) for i in a.get("cloth_ids") or []]
+        for cid in ids:
+            rc.wear_cloth(cid, rc.WearRequest(day=day), self.user)
+        return f"Marked {len(ids)} garment(s) worn."
+
+    def _favorite_outfit(self, a):
+        import routes_outfits
+        out = routes_outfits.toggle_favorite(
+            int(a["outfit_id"]),
+            routes_outfits.FavoriteRequest(is_favorite=bool(a["favorite"])),
+            self.user)
+        return f"Outfit {a['outfit_id']} favourite: {out['is_favorite']}."
+
+
+def record_usage(user_id: int, model: str, usage: dict) -> None:
+    """One model call, priced now. Never breaks a turn."""
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO llm_usage (user_id, model, input_tokens, "
+                "output_tokens, cache_read, cache_write, cost_usd) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, model, usage["input_tokens"], usage["output_tokens"],
+                 usage["cache_read"], usage["cache_write"],
+                 stylist.price(model, usage)))
+    except Exception:  # noqa: BLE001
+        log.exception("could not record stylist usage")
+
+
+@router.post("/proposals/{proposal_id}/render")
+def render_proposal(proposal_id: int, req: RenderRequest,
+                    user=Depends(generation_guard)):
+    """Start an AI render of a proposal. Rendering again starts a new one."""
+    with get_conn() as conn:
+        p = conn.execute(
+            "SELECT * FROM stylist_proposals WHERE id = ? AND user_id = ?",
+            (proposal_id, user["id"])).fetchone()
+        if not p:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Proposal not found")
+        try:
+            ids = stylist.check_outfit(conn, user["id"],
+                                       json.loads(p["cloth_ids"] or "[]"))
+        except ValueError as e:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+    try:
+        rid = start_render(user, ids, req.person, req.tier)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    with get_conn() as conn:
+        conn.execute("UPDATE stylist_proposals SET render_id = ? WHERE id = ?",
+                     (rid, proposal_id))
+    audit_record(user, "stylist.render", f"proposal #{proposal_id} -> outfit #{rid}")
+    return {"outfit_id": rid}
 
 
 @router.post("/proposals/{proposal_id}/save")
@@ -237,20 +452,8 @@ def save_proposal(proposal_id: int, user=Depends(get_current_user)):
         except ValueError as e:
             # A garment was deleted since the proposal was made.
             raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
-        paths = _cutout_paths(conn, user["id"], ids)
-        outfit_id = conn.execute(
-            "INSERT INTO outfits (user_id, cloth_ids, status, kind, layout) "
-            "VALUES (?, ?, 'done', 'manual', '')",
-            (user["id"], json.dumps(ids))).lastrowid
-    tile = _tile(paths, max_px=1024) if paths else None
-    OUTFITS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTFITS_DIR / f"{outfit_id}.png"
-    if tile:
-        import shutil
-        shutil.move(tile, out_path)
+    outfit_id = make_flat_outfit(user, ids)
     with get_conn() as conn:
-        conn.execute("UPDATE outfits SET generated_path = ? WHERE id = ?",
-                     (str(out_path) if tile else "", outfit_id))
         conn.execute("UPDATE stylist_proposals SET outfit_id = ? WHERE id = ?",
                      (outfit_id, proposal_id))
     audit_record(user, "stylist.save", f"proposal #{proposal_id} -> outfit #{outfit_id}")

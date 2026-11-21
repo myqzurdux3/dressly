@@ -31,12 +31,14 @@ class StylistService {
     String message, {
     int? threadId,
     String speed = 'balanced',
+    String renderTier = 'flex',
   }) async {
     final data =
         await _api.post('/stylist/chat', {
               'message': message,
               'thread_id': ?threadId,
               'speed': speed,
+              'render_tier': renderTier,
             })
             as Map<String, dynamic>;
     return (data['thread_id'] as num).toInt();
@@ -59,6 +61,22 @@ class StylistService {
   Future<void> deleteThread(int id) => _api.delete('/stylist/threads/$id');
 
   /// Add a proposal to the user's outfits; returns the outfit id.
+  /// Starts an AI render of a proposal; returns the new outfit's id.
+  /// [person]: 'none' | 'random' | a model id.
+  Future<int> renderProposal(
+    int proposalId, {
+    String person = 'none',
+    String tier = 'flex',
+  }) async {
+    final data =
+        await _api.post('/stylist/proposals/$proposalId/render', {
+              'person': person,
+              'tier': tier,
+            })
+            as Map<String, dynamic>;
+    return (data['outfit_id'] as num).toInt();
+  }
+
   Future<int> saveProposal(int proposalId) async {
     final data =
         await _api.post('/stylist/proposals/$proposalId/save', {})

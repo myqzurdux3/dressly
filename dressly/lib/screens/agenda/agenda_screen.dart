@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../state/data_bus.dart';
+
 import '../../app.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
@@ -35,6 +37,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
   void initState() {
     super.initState();
     _reload();
+    DataBus.agenda.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    DataBus.agenda.removeListener(_reload);
+    super.dispose();
   }
 
   void _reload() {

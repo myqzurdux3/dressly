@@ -41,7 +41,11 @@ class FakeAPI:
         if callable(step):
             step = step(kw)
         blocks, stop = step
-        return SimpleNamespace(content=blocks, stop_reason=stop)
+        return SimpleNamespace(content=blocks, stop_reason=stop,
+                               model=kw["model"], usage=SimpleNamespace(
+                                   input_tokens=1000, output_tokens=200,
+                                   cache_read_input_tokens=0,
+                                   cache_creation_input_tokens=0))
 
 
 @pytest.fixture()
@@ -250,3 +254,64 @@ def test_search_filters_and_photos(client, auth, fake):
     assert kinds == ["text", "image", "text"]
     assert got["view"][1]["source"]["media_type"] == "image/jpeg"
     assert "not in the wardrobe" in got["view"][2]["text"]
+
+
+def test_actions_save_render_rate_schedule_and_cost(client, auth, fake,
+                                                     monkeypatch):
+    import db
+    import routes_stylist
+
+    tee, jog, shoes = _wardrobe(client, auth)
+    started = []
+    monkeypatch.setattr(routes_stylist, "start_render",
+                        lambda user, ids, person, tier: started.append(
+                            (ids, person, tier)) or 999)
+    fake([
+        ([text("Je m'en occupe."),
+          tool("save_outfit", {"title": "A", "cloth_ids": [tee, jog, shoes],
+                               "reason": "r"}, "a1"),
+          tool("render_outfit", {"title": "B", "cloth_ids": [tee, jog, shoes],
+                                 "person": "random"}, "a2"),
+          tool("update_garment", {"cloth_id": jog, "rating": 5,
+                                  "favorite": "yes", "excluded": "keep"}, "a3"),
+          tool("schedule_outfit", {"day": "2026-12-01", "outfit_id": 0,
+                                   "cloth_ids": [tee, jog, shoes],
+                                   "title": "Dîner"}, "a4")], "tool_use"),
+        ([text("Fait.")], "end_turn"),
+    ])
+    body = {"message": "go", "render_tier": "openrouter"}
+    r = client.post("/stylist/chat", json=body, headers=auth)
+    tid = r.json()["thread_id"]
+    th = client.get(f"/stylist/threads/{tid}", headers=auth).json()
+    cards = th["messages"][-1]["proposals"]
+    assert [c["title"] for c in cards] == ["A", "B"]
+    assert cards[0]["outfit_id"] and cards[1]["render_id"] == 999
+    assert started[0][1:] == ("random", "openrouter")
+    c = client.get(f"/clothes/{jog}", headers=auth).json()
+    assert c["score"] == 5 and c["is_favorite"] is True
+    agenda = client.get("/agenda", headers=auth).json()
+    day = [e for e in agenda if e["day"] == "2026-12-01"]
+    # Saved and scheduled in one turn: the same outfit, not a second copy.
+    assert day and day[0]["outfit_id"] == cards[0]["outfit_id"]
+    with db.get_conn() as conn:
+        rows = conn.execute("SELECT model, cost_usd FROM llm_usage").fetchall()
+    # Sonnet 5.5: 1000 in at $2/M + 200 out at $10/M = $0.004 per call.
+    assert len(rows) == 2 and abs(rows[0]["cost_usd"] - 0.004) < 1e-9
+
+
+def test_render_a_proposal_from_the_app(client, auth, fake, monkeypatch):
+    import routes_stylist
+
+    tee, jog, shoes = _wardrobe(client, auth)
+    monkeypatch.setattr(routes_stylist, "start_render",
+                        lambda user, ids, person, tier: 777)
+    fake([([text("Voilà."), tool("propose_outfit", {
+        "title": "T", "cloth_ids": [tee, jog, shoes], "reason": ""})],
+        "tool_use")])
+    tid, th = _turn(client, auth, "go")
+    pid = th["messages"][-1]["proposals"][0]["id"]
+    r = client.post(f"/stylist/proposals/{pid}/render",
+                    json={"person": "none", "tier": "flex"}, headers=auth)
+    assert r.json() == {"outfit_id": 777}
+    th = client.get(f"/stylist/threads/{tid}", headers=auth).json()
+    assert th["messages"][-1]["proposals"][0]["render_id"] == 777

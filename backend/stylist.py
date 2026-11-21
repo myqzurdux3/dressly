@@ -36,6 +36,30 @@ MODELS = {
     "expert": (STYLIST_MODEL, STYLIST_EFFORT, True),
 }
 DEFAULT_SPEED = "balanced"
+
+# USD per million tokens: (input, cache write 5 min, cache read, output).
+# From https://platform.claude.com/docs/en/about-claude/pricing (2026-11-21).
+# Haiku 5.5 costs more past 100k input tokens; a stylist turn never gets there.
+PRICES = {
+    "claude-haiku-5-5": (0.10, 0.125, 0.01, 0.50),
+    "claude-sonnet-5-5": (2.0, 2.50, 0.10, 10.0),
+    "claude-opus-5-5": (4.0, 5.0, 0.20, 20.0),
+}
+
+# Renders the stylist may start in one turn: they cost money, and a loop
+# must not be able to start dozens.
+MAX_RENDERS_PER_TURN = 4
+
+
+def price(model: str, usage: dict) -> float:
+    """What one call cost, in USD; 0 for a model not in the table."""
+    p = next((v for k, v in PRICES.items() if model.startswith(k)), None)
+    if not p:
+        return 0.0
+    return (usage.get("input_tokens", 0) * p[0]
+            + usage.get("cache_write", 0) * p[1]
+            + usage.get("cache_read", 0) * p[2]
+            + usage.get("output_tokens", 0) * p[3]) / 1_000_000
 from generator import layer_sorted, role_of, slots_of
 
 log = logging.getLogger(__name__)
@@ -64,6 +88,18 @@ cap or accessories when they fit. Never two garments of the same kind.
 - Respect the owner's preferences: favour well-rated and favourite pieces, \
 never use a garment marked "excluded", avoid what was worn in the last few \
 days unless asked, and dress for the weather.
+- You can also act, but only when the person asks for it:
+  - save_outfit adds an outfit to their outfits as a flat lay (free);
+  - render_outfit starts an AI picture of an outfit. It costs money, so only \
+when they ask for a render or a picture ("génère-le", "fais le rendu"). \
+When they say they like an outfit you proposed and want it generated, \
+render that outfit's exact garments. Use person "none" unless they ask to \
+see it worn: then a model's id from list_models, or "random";
+  - schedule_outfit puts an outfit in the agenda for a day;
+  - update_garment changes a garment's rating, favourite or excluded flag;
+  - mark_worn records that garments were worn on a day;
+  - favorite_outfit stars or unstars an existing outfit.
+  After acting, say in one sentence what you did.
 - Reply in the language the person writes in; in French, use "tu", as the \
 app does. Keep answers short and \
 concrete: name the pieces, say why in a sentence. Plain, sober tone; no \
@@ -223,6 +259,125 @@ TOOLS = [
         "strict": True,
     },
 ]
+
+
+_PERSON = ('"none" (just the clothes), "random", "random_male", '
+           '"random_female", or a model id from list_models as text.')
+TOOLS += [
+    {
+        "name": "save_outfit",
+        "description": "Add an outfit to the owner's outfits as a flat lay "
+                       "of the garments. Free. Shown as a card.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "cloth_ids": {"type": "array", "items": {"type": "integer"}},
+                "reason": {"type": "string"},
+            },
+            "required": ["title", "cloth_ids", "reason"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "render_outfit",
+        "description": "Start an AI picture of an outfit (paid, about a "
+                       "minute). Only when the owner asks for it. Shown as "
+                       "a card that opens the render.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "cloth_ids": {"type": "array", "items": {"type": "integer"}},
+                "person": {"type": "string", "description": _PERSON},
+            },
+            "required": ["title", "cloth_ids", "person"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "list_models",
+        "description": "The people (models) an outfit can be rendered on.",
+        "input_schema": {"type": "object", "properties": {},
+                         "additionalProperties": False},
+        "strict": True,
+    },
+    {
+        "name": "schedule_outfit",
+        "description": "Put an outfit in the agenda. Give outfit_id for an "
+                       "existing outfit (0 otherwise) or cloth_ids to save "
+                       "them as a new outfit first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "day": {"type": "string", "description": "YYYY-MM-DD"},
+                "outfit_id": {"type": "integer"},
+                "cloth_ids": {"type": "array", "items": {"type": "integer"}},
+                "title": {"type": "string"},
+            },
+            "required": ["day", "outfit_id", "cloth_ids", "title"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "update_garment",
+        "description": "Change a garment's rating (0-5, -1 to keep), "
+                       "favourite and excluded flags ('yes', 'no' or 'keep').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cloth_id": {"type": "integer"},
+                "rating": {"type": "integer"},
+                "favorite": {"type": "string", "enum": ["yes", "no", "keep"]},
+                "excluded": {"type": "string", "enum": ["yes", "no", "keep"]},
+            },
+            "required": ["cloth_id", "rating", "favorite", "excluded"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "mark_worn",
+        "description": "Record that garments were worn on a day "
+                       "(empty day = today).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cloth_ids": {"type": "array", "items": {"type": "integer"}},
+                "day": {"type": "string"},
+            },
+            "required": ["cloth_ids", "day"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "name": "favorite_outfit",
+        "description": "Star (true) or unstar (false) an existing outfit.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "outfit_id": {"type": "integer"},
+                "favorite": {"type": "boolean"},
+            },
+            "required": ["outfit_id", "favorite"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+]
+
+# Tools that change the owner's data, carried out by the route (it has the
+# user and the other routers); see routes_stylist._Actions.
+ACTION_TOOLS = {"save_outfit", "render_outfit", "list_models",
+                "schedule_outfit", "update_garment", "mark_worn",
+                "favorite_outfit"}
+# Tools whose result the owner already sees as a card: a turn that only made
+# cards, and already said something, needs no wrap-up call.
+CARD_TOOLS = {"propose_outfit", "save_outfit", "render_outfit"}
 
 
 def _wardrobe(conn, user_id: int, category: str = "", *, text: str = "",
@@ -424,7 +579,8 @@ def check_outfit(conn, user_id: int, cloth_ids: List[int]) -> List[int]:
 
 
 def run_tool(conn, user_id: int, name: str, args: dict,
-             on_proposal: Callable[[str, List[int], str], int]):
+             on_proposal: Callable[[str, List[int], str], int],
+             actions=None):
     """Run one tool and return its result (text, or content blocks for
     view_garments); ValueError means a bad call."""
     if name == "get_wardrobe":
@@ -450,6 +606,13 @@ def run_tool(conn, user_id: int, name: str, args: dict,
         pid = on_proposal(str(args.get("title") or "").strip()[:80], ids,
                           str(args.get("reason") or "").strip()[:400])
         return f"Shown to the owner as proposal {pid}."
+    if name in ACTION_TOOLS:
+        if actions is None:
+            raise ValueError(f"{name} is not available here")
+        if name in ("save_outfit", "render_outfit"):
+            args = {**args, "cloth_ids": check_outfit(
+                conn, user_id, args.get("cloth_ids") or [])}
+        return actions.run(name, args)
     raise ValueError(f"unknown tool {name}")
 
 
@@ -470,7 +633,8 @@ def opening_context(conn, user_id: int) -> str:
 
 def converse(conn, user_id: int, history: List[dict], user_text: str,
              on_proposal: Callable[[str, List[int], str], int],
-             speed: str = DEFAULT_SPEED) -> dict:
+             speed: str = DEFAULT_SPEED, actions=None,
+             on_usage: Optional[Callable[[str, dict], None]] = None) -> dict:
     """Send one user message, run the tool calls, return the final reply.
 
     ``history`` is the stored message list; the returned ``messages`` is the
@@ -525,6 +689,14 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
         except anthropic.APIConnectionError as e:
             raise StylistUnavailable("The stylist could not be reached") from e
 
+        if on_usage is not None and getattr(resp, "usage", None) is not None:
+            u = resp.usage
+            on_usage(getattr(resp, "model", "") or model, {
+                "input_tokens": getattr(u, "input_tokens", 0) or 0,
+                "output_tokens": getattr(u, "output_tokens", 0) or 0,
+                "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
+                "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0,
+            })
         uses = [b.name for b in resp.content if b.type == "tool_use"]
         log.info("stylist step %s: %s %.1fs stop=%s tools=%s", step, model,
                  time.monotonic() - t0, resp.stop_reason, uses)
@@ -546,7 +718,7 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
                 continue
             try:
                 out = run_tool(conn, user_id, b.name, dict(b.input or {}),
-                               on_proposal)
+                               on_proposal, actions)
                 results.append({"type": "tool_result", "tool_use_id": b.id,
                                 "content": out})
             except (ValueError, TypeError) as e:
@@ -556,7 +728,7 @@ def converse(conn, user_id: int, history: List[dict], user_text: str,
         # A turn that only proposed outfits, and already said something, is
         # done: asking the model to wrap up would cost a whole extra call for
         # a sentence. The results ride along with the next question instead.
-        if (texts and set(uses) == {"propose_outfit"}
+        if (texts and uses and set(uses) <= CARD_TOOLS
                 and not any(r.get("is_error") for r in results)):
             break
     else:

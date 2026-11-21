@@ -9,6 +9,7 @@ class StylistProposal {
     required this.clothIds,
     required this.cloths,
     this.outfitId,
+    this.renderId,
   });
 
   final int id;
@@ -20,6 +21,9 @@ class StylistProposal {
   /// Set once saved to the user's outfits.
   final int? outfitId;
 
+  /// The AI render started from it, if any.
+  final int? renderId;
+
   StylistProposal saved(int outfitId) => StylistProposal(
     id: id,
     title: title,
@@ -27,6 +31,17 @@ class StylistProposal {
     clothIds: clothIds,
     cloths: cloths,
     outfitId: outfitId,
+    renderId: renderId,
+  );
+
+  StylistProposal rendered(int renderId) => StylistProposal(
+    id: id,
+    title: title,
+    reason: reason,
+    clothIds: clothIds,
+    cloths: cloths,
+    outfitId: outfitId,
+    renderId: renderId,
   );
 
   factory StylistProposal.fromJson(Map<String, dynamic> j) => StylistProposal(
@@ -41,6 +56,7 @@ class StylistProposal {
         PlanCloth.fromJson((c as Map).cast<String, dynamic>()),
     ],
     outfitId: (j['outfit_id'] as num?)?.toInt(),
+    renderId: (j['render_id'] as num?)?.toInt(),
   );
 }
 

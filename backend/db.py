@@ -612,6 +612,33 @@ def _stylist(conn) -> None:
         conn.execute(stmt)
 
 
+@migration
+def _stylist_actions(conn) -> None:
+    """The stylist can render a proposal, and what each turn costs is kept.
+
+    ``render_id`` is the AI outfit rendered from a proposal (``outfit_id``
+    stays the flat lay). ``llm_usage`` holds one row per model call, priced
+    when it is recorded so a later price change does not rewrite history.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(stylist_proposals)")}
+    if "render_id" not in cols:
+        conn.execute("ALTER TABLE stylist_proposals ADD COLUMN render_id INTEGER")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS llm_usage (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER,
+            model         TEXT NOT NULL DEFAULT '',
+            input_tokens  INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_read    INTEGER NOT NULL DEFAULT 0,
+            cache_write   INTEGER NOT NULL DEFAULT 0,
+            cost_usd      REAL NOT NULL DEFAULT 0,
+            created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_usage_created "
+                 "ON llm_usage(created_at)")
+
+
 def fail_stale_cutouts(conn, timeout_s: float) -> int:
     """Mark abandoned background removals as failed. Returns how many.
 

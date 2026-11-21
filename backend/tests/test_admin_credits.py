@@ -376,3 +376,20 @@ def test_a_try_on_reports_its_cost_too(client, monkeypatch, tmp_path):
     spent = client.get("/admin/credits", headers=h).json()["spent"]
     assert spent["credits_spent"] == 2.5
     assert spent["by_tier"]["vto"]["credits"] == 2.5
+
+
+def test_costs_split_openrouter_bfl_and_stylist(client, auth):
+    admin = _admin(client)
+    assert client.get("/admin/costs", headers=auth).status_code == 403
+    with db.get_conn() as conn:
+        conn.execute("INSERT INTO api_usage (tier, slug, ok, cost) "
+                     "VALUES ('openrouter', 'openrouter:m', 1, 7.0)")
+        conn.execute("INSERT INTO api_usage (tier, slug, ok, cost) "
+                     "VALUES ('flex', 'flux', 1, 3.0)")
+        conn.execute("INSERT INTO llm_usage (model, cost_usd) "
+                     "VALUES ('claude-sonnet-5-5', 0.01)")
+    r = client.get("/admin/costs", headers=admin).json()
+    assert r["openrouter"]["today"] == {"count": 1, "usd": 0.07}
+    assert r["bfl"]["all"]["usd"] == 0.03
+    assert r["stylist"]["month"]["usd"] == 0.01
+    assert len(r["recent"]) == 3

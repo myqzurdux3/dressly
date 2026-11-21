@@ -12,6 +12,7 @@ import '../../state/session.dart';
 import '../../state/theme_controller.dart';
 import 'change_password_screen.dart';
 import 'api_credits_screen.dart';
+import 'costs_screen.dart';
 import 'weather_location_screen.dart';
 
 /// Appearance customization + account. Keeps "Sign out" here, away from the
@@ -207,6 +208,12 @@ class SettingsScreen extends StatelessWidget {
                       title: tr(context, 'settings.apiCredits'),
                       detail: tr(context, 'settings.apiCreditsHint'),
                       onTap: () => push(const ApiCreditsScreen()),
+                    ),
+                    DsInfoRow(
+                      icon: Icons.receipt_long_outlined,
+                      title: tr(context, 'costs.title'),
+                      detail: tr(context, 'costs.hint'),
+                      onTap: () => push(const CostsScreen()),
                     ),
                   ],
                   DsSectionTitle(tr(context, 'settings.account')),

@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../state/data_bus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/ds.dart';
@@ -44,6 +46,7 @@ class _WardrobeScreenState extends ConsumerState<WardrobeScreen> {
     super.initState();
     _searchCtrl.text = ref.read(wardrobeFilterProvider).search ?? '';
     _scroll.addListener(_maybeLoadMore);
+    DataBus.wardrobe.addListener(_reloadList);
     // Autocomplete lists rarely change: fetched once per screen, not on every
     // refresh. Failures only cost the suggestions.
     _service
@@ -60,8 +63,11 @@ class _WardrobeScreenState extends ConsumerState<WardrobeScreen> {
         .catchError((_) {});
   }
 
+  void _reloadList() => _list.refresh();
+
   @override
   void dispose() {
+    DataBus.wardrobe.removeListener(_reloadList);
     _searchDebounce?.cancel();
     _searchCtrl.dispose();
     _scroll.dispose();

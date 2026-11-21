@@ -1,3 +1,4 @@
+import '../models/costs.dart';
 import '../models/credits.dart';
 import 'api_client.dart';
 
@@ -9,5 +10,10 @@ class AdminService {
   Future<ApiCredits> credits() async {
     final data = await _api.get('/admin/credits') as Map<String, dynamic>;
     return ApiCredits.fromJson(data);
+  }
+
+  Future<GenerationCosts> costs() async {
+    final data = await _api.get('/admin/costs') as Map<String, dynamic>;
+    return GenerationCosts.fromJson(data);
   }
 }
