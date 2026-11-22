@@ -74,7 +74,7 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
 import imagesign
-from config import BLOBS_DIR, IMAGES_DIR
+from config import BLOBS_DIR, IMAGES_DIR, THUMBS_DIR
 
 log = logging.getLogger(__name__)
 
@@ -627,10 +627,22 @@ def transform_image(src_path: Path, dst_path: Path, *, rotate: int = 0,
     return link_bytes(payload, Path(dst_path))
 
 
-def remove_cloth_files(cloth_id: int) -> None:
+def remove_cloth_files(cloth_id: int | str) -> None:
+    """Drop a cloth's (or a model's, ``model_<id>``) photos and the thumbnails
+    rendered from them. The blobs those photos linked to are reclaimed by
+    gc_orphan_blobs at the next start."""
     d = IMAGES_DIR / str(cloth_id)
     if d.exists():
         shutil.rmtree(d, ignore_errors=True)
+    # Thumbnails mirror the source path: THUMBS_DIR/<width>/images/<cloth_id>/
+    # (see routes_thumbs._thumb_path). Nothing else ever deletes them, so they
+    # would outlive the garment forever. Every width directory is swept, not
+    # only today's ladder, so variants from an older ladder go too.
+    if THUMBS_DIR.exists():
+        for width_dir in THUMBS_DIR.iterdir():
+            t = width_dir / "images" / str(cloth_id)
+            if t.is_dir():
+                shutil.rmtree(t, ignore_errors=True)
 
 
 @lru_cache(maxsize=8192)

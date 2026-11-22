@@ -80,6 +80,16 @@ async def lifespan(_app: FastAPI):
             fail_stale_cutouts(conn, CUTOUT_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - never block startup on recovery
         logging.getLogger(__name__).warning("startup sweep failed: %s", exc)
+    # Deleting a garment drops its hard links but not the blobs behind them;
+    # reclaim those here. One stat per blob, no image decoding: cheap at this
+    # wardrobe's size, and a failure only leaves disk space unclaimed.
+    try:
+        import images
+        freed = images.gc_orphan_blobs()
+        if freed:
+            logging.getLogger(__name__).info("reclaimed %s orphan blob(s)", freed)
+    except Exception as exc:  # noqa: BLE001 - never block startup on cleanup
+        logging.getLogger(__name__).warning("orphan blob sweep failed: %s", exc)
     # Count every paid image job from here on.
     try:
         import apiusage

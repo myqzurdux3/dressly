@@ -2,6 +2,7 @@
 into an outfit."""
 import json
 import logging
+import sqlite3
 import threading
 from typing import List, Optional
 
@@ -117,8 +118,8 @@ def get_thread(thread_id: int, user=Depends(get_current_user)):
 def delete_thread(thread_id: int, user=Depends(get_current_user)):
     with get_conn() as conn:
         _thread(conn, user["id"], thread_id)
-        conn.execute("DELETE FROM stylist_proposals WHERE thread_id = ?", (thread_id,))
-        conn.execute("DELETE FROM stylist_messages WHERE thread_id = ?", (thread_id,))
+        # Messages and proposals go with it: ON DELETE CASCADE, and get_conn
+        # turns foreign_keys on for every connection.
         conn.execute("DELETE FROM stylist_threads WHERE id = ?", (thread_id,))
     return {"ok": True}
 
@@ -167,9 +168,13 @@ def _run_turn(user: dict, thread_id: int, user_msg: int, text: str,
               speed: str = stylist.DEFAULT_SPEED,
               render_tier: str = "flex") -> None:
     with get_conn() as conn:
-        history = json.loads(conn.execute(
+        row = conn.execute(
             "SELECT api_messages FROM stylist_threads WHERE id = ?",
-            (thread_id,)).fetchone()["api_messages"] or "[]")
+            (thread_id,)).fetchone()
+    if row is None:
+        log.info("stylist thread %s deleted before its turn ran", thread_id)
+        return
+    history = json.loads(row["api_messages"] or "[]")
     pending: List[tuple] = []
 
     def on_proposal(title, ids, reason, outfit_id=None, render_id=None) -> int:
@@ -195,22 +200,29 @@ def _run_turn(user: dict, thread_id: int, user_msg: int, text: str,
             conn.execute("UPDATE stylist_threads SET pending = 0, error = ? "
                          "WHERE id = ?", (message, thread_id))
         return
-    with get_conn() as conn:
-        reply = out["text"] or ("Here is what I suggest." if pending else "…")
-        msg_id = conn.execute(
-            "INSERT INTO stylist_messages (thread_id, role, text) "
-            "VALUES (?, 'assistant', ?)", (thread_id, reply)).lastrowid
-        for title, ids, reason, outfit_id, render_id in pending:
+    try:
+        with get_conn() as conn:
+            reply = out["text"] or ("Here is what I suggest." if pending else "…")
+            msg_id = conn.execute(
+                "INSERT INTO stylist_messages (thread_id, role, text) "
+                "VALUES (?, 'assistant', ?)", (thread_id, reply)).lastrowid
+            for title, ids, reason, outfit_id, render_id in pending:
+                conn.execute(
+                    "INSERT INTO stylist_proposals (thread_id, message_id, user_id, "
+                    "title, reason, cloth_ids, outfit_id, render_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (thread_id, msg_id, user["id"], title, reason, json.dumps(ids),
+                     outfit_id, render_id))
             conn.execute(
-                "INSERT INTO stylist_proposals (thread_id, message_id, user_id, "
-                "title, reason, cloth_ids, outfit_id, render_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (thread_id, msg_id, user["id"], title, reason, json.dumps(ids),
-                 outfit_id, render_id))
-        conn.execute(
-            "UPDATE stylist_threads SET api_messages = ?, pending = 0, error = '', "
-            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (json.dumps(out["messages"]), thread_id))
+                "UPDATE stylist_threads SET api_messages = ?, pending = 0, error = '', "
+                "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(out["messages"]), thread_id))
+    except sqlite3.IntegrityError:
+        # The user deleted the thread while the stylist was answering: the
+        # reply has nowhere to go, and nobody is waiting for it.
+        log.info("stylist thread %s deleted during its turn; reply dropped",
+                 thread_id)
+        return
     audit_record(user, "stylist.chat",
                  f"thread #{thread_id} {speed} cards={len(pending)} "
                  f"actions={','.join(actions.done) or '-'}")

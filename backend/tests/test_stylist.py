@@ -335,3 +335,20 @@ def test_a_rendering_outfit_lists_its_garment_pictures(client, auth):
     listed = [o for o in client.get("/outfits", headers=auth).json()
               if o["id"] == oid][0]
     assert all("thumb_url" in c for c in listed["cloths"])
+
+
+def test_deleting_a_thread_during_its_turn_drops_the_reply(client, auth, fake):
+    """The thread goes while the stylist is still answering: the reply has
+    nowhere to land and the turn must end quietly, not crash."""
+    def delete_then_answer(_kw):
+        tid = client.get("/stylist/threads", headers=auth).json()["items"][0]["id"]
+        assert client.delete(f"/stylist/threads/{tid}", headers=auth).status_code == 200
+        return ([text("Trop tard.")], "end_turn")
+
+    fake([delete_then_answer])
+    r = client.post("/stylist/chat", headers=auth, json={"message": "Salut"})
+    assert r.status_code == 200
+    assert client.get("/stylist/threads", headers=auth).json()["items"] == []
+    from db import get_conn
+    with get_conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM stylist_messages").fetchone()[0] == 0

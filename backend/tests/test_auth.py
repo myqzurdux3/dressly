@@ -31,3 +31,14 @@ def test_signup_is_closed_when_disabled(client, monkeypatch):
     monkeypatch.setattr(config, "ALLOW_SIGNUP", False)
     r = client.post("/auth/signup", json={"email": "x@b.co", "password": "pw123456"})
     assert r.status_code == 403
+
+
+def test_token_without_a_numeric_subject_is_401(client):
+    import jwt
+
+    from config import JWT_ALG, SECRET_KEY
+
+    for claims in ({}, {"sub": "abc"}):
+        token = jwt.encode(claims, SECRET_KEY, algorithm=JWT_ALG)
+        r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 401, (claims, r.status_code)

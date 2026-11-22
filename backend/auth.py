@@ -55,7 +55,13 @@ def get_current_user(
     if creds is None or not creds.credentials:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing auth token")
     payload = _decode(creds.credentials)
-    user_id = int(payload["sub"])
+    # A token signed with our key but without a numeric subject is still not a
+    # session: answer 401 like any other bad token, not a 500.
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED,
+                            "Invalid or expired token") from e
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id, email, username, is_admin, created_at, tokens_valid_from "

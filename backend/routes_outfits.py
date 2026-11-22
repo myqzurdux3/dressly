@@ -28,6 +28,7 @@ from routes_thumbs import thumb_url_for
 import imagesign
 import openrouter
 from ratelimit import generation_guard, worker_id
+from uploads import PAYLOAD_TOO_LARGE
 from generator import (
     ALGOS,
     combo_key,
@@ -38,7 +39,7 @@ from generator import (
     select as algo_select,
     why_empty as algo_why_empty,
 )
-from images import public_url_for  # noqa: F401  (shared helper, kept for parity)
+from images import public_url_for
 
 router = APIRouter(prefix="/outfits", tags=["outfits"])
 log = logging.getLogger(__name__)
@@ -1221,7 +1222,7 @@ async def _read_manual_png(image: UploadFile) -> bytes:
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty image")
     if len(data) > _MAX_MANUAL_PNG_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Image too large")
+        raise HTTPException(PAYLOAD_TOO_LARGE, "Image too large")
     try:  # reject anything that isn't a real image
         with Image.open(io.BytesIO(data)) as im:
             im.verify()
@@ -1724,8 +1725,9 @@ def _today_iso() -> str:
 
 
 def _mark_clothes_worn(conn, cloth_ids: List[int], user_id: int, day: str) -> int:
-    """Set last_worn_at=day on every owned cloth and record the wear (deduped
-    per day) so each cloth's detail can show a wear history. Returns count."""
+    """Move last_worn_at forward to day on every owned cloth and record the wear
+    (deduped per day) so each cloth's detail can show a wear history. Returns
+    count."""
     ids = [int(i) for i in cloth_ids]
     if not ids:
         return 0
@@ -1733,16 +1735,55 @@ def _mark_clothes_worn(conn, cloth_ids: List[int], user_id: int, day: str) -> in
     # Two statements instead of two per garment. The INSERT selects from the
     # rows the UPDATE actually touched, so a cloth belonging to somebody else
     # still gets no wear recorded.
+    # Keep the latest day: logging an older wear after the fact must not pull
+    # last_worn_at back and make a garment look unworn for weeks.
     cur = conn.execute(
-        f"UPDATE clothes SET last_worn_at = ?, updated_at = CURRENT_TIMESTAMP "
+        f"UPDATE clothes SET last_worn_at = CASE "
+        f"WHEN last_worn_at IS NULL OR last_worn_at < ? THEN ? ELSE last_worn_at END, "
+        f"updated_at = CURRENT_TIMESTAMP "
         f"WHERE user_id = ? AND id IN ({ph})",
-        [day, user_id] + ids)
+        [day, day, user_id] + ids)
     n = cur.rowcount
     conn.execute(
         f"INSERT OR IGNORE INTO cloth_wears (user_id, cloth_id, day) "
         f"SELECT ?, id, ? FROM clothes WHERE user_id = ? AND id IN ({ph})",
         [user_id, day, user_id] + ids)
     return n
+
+
+def _unmark_clothes_worn(conn, cloth_ids: List[int], user_id: int, day: str,
+                         keep_entry_id: Optional[int] = None) -> None:
+    """Undo _mark_clothes_worn for one day: drop that day's wear of each owned
+    cloth and put last_worn_at back to the latest wear left (NULL if none).
+
+    A cloth that another worn agenda entry of the same day still covers keeps
+    its wear; keep_entry_id is the entry being un-confirmed, left out of that
+    check.
+    """
+    ids = [int(i) for i in cloth_ids]
+    if not ids:
+        return
+    still_worn = set()
+    for r in conn.execute(
+            "SELECT o.cloth_ids FROM agenda a JOIN outfits o ON o.id = a.outfit_id "
+            "WHERE a.user_id = ? AND a.day = ? AND a.worn = 1 AND a.id != ?",
+            (user_id, day, keep_entry_id if keep_entry_id is not None else -1)):
+        try:
+            still_worn.update(int(i) for i in json.loads(r["cloth_ids"] or "[]"))
+        except (TypeError, ValueError):
+            continue
+    ids = [i for i in ids if i not in still_worn]
+    if not ids:
+        return
+    ph = ",".join("?" for _ in ids)
+    conn.execute(
+        f"DELETE FROM cloth_wears WHERE user_id = ? AND day = ? AND cloth_id IN ({ph})",
+        [user_id, day] + ids)
+    conn.execute(
+        f"UPDATE clothes SET last_worn_at = (SELECT MAX(w.day) FROM cloth_wears w "
+        f"WHERE w.cloth_id = clothes.id), updated_at = CURRENT_TIMESTAMP "
+        f"WHERE user_id = ? AND id IN ({ph})",
+        [user_id] + ids)
 
 
 @router.post("/{outfit_id}/wear")
@@ -2065,14 +2106,18 @@ def report(outfit_id: int, req: ReportRequest, user=Depends(get_current_user)):
 def delete_outfit(outfit_id: int, user=Depends(get_current_user)):
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT generated_path FROM outfits WHERE id = ? AND user_id = ?",
+            "SELECT generated_path, ai_path, manual_path FROM outfits "
+            "WHERE id = ? AND user_id = ?",
             (outfit_id, user["id"]),
         ).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Outfit not found")
-        path = row["generated_path"]
+        # The cover is one of the two versions, but each version has its own
+        # file: dropping only the cover left the other one on disk for good.
+        paths = {p for p in (row["generated_path"], row["ai_path"],
+                             row["manual_path"]) if p}
         conn.execute("DELETE FROM outfits WHERE id = ?", (outfit_id,))
-    if path:
+    for path in paths:
         Path(path).unlink(missing_ok=True)
     audit_record(user, "outfit.delete", f"#{outfit_id}")
     return {"ok": True}

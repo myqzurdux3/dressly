@@ -15,6 +15,10 @@ import os
 from fastapi import HTTPException, UploadFile, status
 from PIL import Image
 
+# Plain 413: Starlette renamed its constant (REQUEST_ENTITY_TOO_LARGE ->
+# CONTENT_TOO_LARGE), and the server may run either version.
+PAYLOAD_TOO_LARGE = 413
+
 # One photo. 64 MB is many times a 12-megapixel JPEG (~6 MB) or a lossless PNG
 # export from a phone — generous on purpose, since the owner is the only user.
 MAX_UPLOAD_BYTES = int(os.environ.get("CLOTHESAPP_UPLOAD_MAX_BYTES", 64 * 1024 * 1024))
@@ -38,7 +42,7 @@ def check_count(uploads) -> None:
     """Reject a request carrying more parts than we are willing to process."""
     if len(uploads) > MAX_UPLOAD_FILES:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            PAYLOAD_TOO_LARGE,
             f"Too many images (max {MAX_UPLOAD_FILES})",
         )
 
@@ -58,7 +62,7 @@ class UploadBudget:
         self.used += n
         if self.used > self.limit:
             raise HTTPException(
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                PAYLOAD_TOO_LARGE,
                 f"Upload too large in total (max {self.limit // (1024 * 1024)} MB "
                 "per request)",
             )
@@ -86,7 +90,7 @@ async def read_capped(upload: UploadFile, *, max_bytes: int = 0,
             budget.take(len(chunk))
         if total > max_bytes:
             raise HTTPException(
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                PAYLOAD_TOO_LARGE,
                 f"Image too large (max {max_bytes // (1024 * 1024)} MB)",
             )
         chunks.append(chunk)

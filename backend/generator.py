@@ -346,38 +346,6 @@ def _fetch_pool(conn, user_id: int, min_score: int, weather: str = "any",
     return pool
 
 
-def _pick_one_per_role(items: List[dict]) -> List[dict]:
-    """Take the first item for each role (preserve input order). Never two of
-    the same role → never two of the same clothing type."""
-    seen = set()
-    out = []
-    for it in items:
-        if it["role"] in seen:
-            continue
-        seen.add(it["role"])
-        out.append(it)
-    return out
-
-
-def _complete(picked: List[dict], pool: List[dict]) -> List[dict]:
-    """Fill missing core roles (top or onepiece, then bottom) from the pool so
-    the outfit is wearable even if the theme didn't cover every role."""
-    roles = {p["role"] for p in picked}
-    if "top" not in roles and "onepiece" not in roles:
-        for c in pool:
-            if c["role"] in ("top", "onepiece") and c["id"] not in {p["id"] for p in picked}:
-                picked.append(c)
-                roles.add(c["role"])
-                break
-    if "onepiece" not in roles and "bottom" not in roles:
-        for c in pool:
-            if c["role"] == "bottom" and c["id"] not in {p["id"] for p in picked}:
-                picked.append(c)
-                roles.add("bottom")
-                break
-    return picked
-
-
 # Algorithms whose whole promise is that every GARMENT shares one property.
 # "Fill gaps" may still borrow shoes for them — nobody asks a brand to make
 # trainers — but borrowing a top is the difference between "same brand" and
@@ -495,7 +463,6 @@ def _shuffle(items: List[dict]) -> List[dict]:
     s = list(items)
     _random.shuffle(s)
     return s
-
 
 
 # --- composing an outfit ---------------------------------------------------
@@ -891,57 +858,6 @@ def _algo_single_color(pool, locked=(), avoid=(), weather="any"):
     return _compose(themed, weather, locked)
 
 
-def _largest_compatible_set(with_color):
-    """Greedy: try each seed colour family, keep the largest compatible set.
-
-    Two things keep this off the O(n^2 * k^2) it used to be, measured at 148 ms
-    per draw on a 300-garment wardrobe (and a preview asks for up to 32 draws):
-
-    * Seeds are deduplicated by their COLOUR SIGNATURE. The result depends on
-      the seed's colours, not on which garment carried them, and two garments
-      with the same colours build sets of the same size — so trying "black +
-      white" three hundred times could only ever give the same answer.
-    * A candidate is checked against the colours already accepted, instead of
-      re-verifying every pair of the whole trial set from scratch. Everything
-      already in the set was checked when it went in; compatibility is
-      pairwise, so it cannot become false later.
-    """
-    seeds = {}
-    for c in with_color:
-        seeds.setdefault(frozenset(c["colors"]), c)
-
-    # A garment can carry colours that clash with EACH OTHER (navy + orange).
-    # The original algorithm handled that by accident: it re-checked the whole
-    # set on every candidate, so such a seed could never accept anything and
-    # ended up alone. Checking only the new colours is what makes this fast, so
-    # the case has to be excluded explicitly — otherwise a self-clashing seed
-    # accumulates a set that violates the very rule the algorithm exists for.
-    usable = [c for sig, c in seeds.items() if _colors_compatible(sorted(sig))]
-    if not usable:
-        return [next(iter(seeds.values()))]
-
-    best = []
-    for seed in usable:
-        colors = set(seed["colors"])
-        chosen = [seed]
-        for c in with_color:
-            if c["id"] == seed["id"]:
-                continue
-            fresh = [col for col in c["colors"] if col not in colors]
-            if not fresh:
-                chosen.append(c)          # adds no colour: always compatible
-                continue
-            if not _colors_compatible(fresh):
-                continue
-            if all(_pair_compatible(new_c, old_c)
-                   for new_c in fresh for old_c in colors):
-                chosen.append(c)
-                colors.update(fresh)
-        if len(chosen) > len(best):
-            best = chosen
-    return best
-
-
 def _algo_color_match(pool, locked=(), weather="any"):
     """Colours that go together: every piece is checked against the ones
     already chosen, clashes are refused and a second bright colour is rare."""
@@ -1077,19 +993,6 @@ def _algo_random(pool, weather="any", locked=()):
     if not pool:
         return []
     return _compose(pool, weather, locked)
-
-
-def _ensure_role(picked, pool, role):
-    if not role:
-        return picked
-    if any(p["role"] == role for p in picked):
-        return picked
-    if role == "top" and any(p["role"] == "onepiece" for p in picked):
-        return picked
-    for c in pool:
-        if c["role"] == role and c["id"] not in {p["id"] for p in picked}:
-            return picked + [c]
-    return picked
 
 
 def _ensure_socks(picked, pool):

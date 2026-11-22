@@ -10,6 +10,7 @@ from routes_outfits import (
     _hydrate as _hydrate_outfit,
     _hydrate_many as _hydrate_outfits_many,
     _mark_clothes_worn,
+    _unmark_clothes_worn,
 )
 
 router = APIRouter(prefix="/agenda", tags=["agenda"])
@@ -139,14 +140,21 @@ def mark_worn(entry_id: int, req: AgendaWornRequest, user=Depends(get_current_us
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Agenda entry not found")
         conn.execute("UPDATE agenda SET worn = ? WHERE id = ?", (1 if worn else 0, entry_id))
         marked = 0
-        if worn and row["outfit_id"] is not None:
+        if row["outfit_id"] is not None:
             o = conn.execute(
                 "SELECT cloth_ids FROM outfits WHERE id = ? AND user_id = ?",
                 (row["outfit_id"], user["id"]),
             ).fetchone()
             if o is not None:
                 cloth_ids = json.loads(o["cloth_ids"] or "[]")
-                marked = _mark_clothes_worn(conn, cloth_ids, user["id"], row["day"])
+                if worn:
+                    marked = _mark_clothes_worn(conn, cloth_ids, user["id"], row["day"])
+                elif row["worn"]:
+                    # Un-confirming must take back the wear it recorded, or
+                    # the history and "not worn recently" keep a day that
+                    # never happened.
+                    _unmark_clothes_worn(conn, cloth_ids, user["id"], row["day"],
+                                         keep_entry_id=entry_id)
         updated = conn.execute("SELECT * FROM agenda WHERE id = ?", (entry_id,)).fetchone()
         out = _hydrate_entry(conn, updated)
     out["clothes_marked"] = marked

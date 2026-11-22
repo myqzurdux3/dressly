@@ -16,8 +16,8 @@ no top got one from wherever.
 Fixing a report at a time is how the second one survived the first. This walks
 the whole matrix instead: every algorithm, locked and not, gap-filling on and
 off, in all three weather modes — because each of those is a separate code path
-that can add a cloth to the outfit (_complete, _fill_missing_roles,
-_ensure_socks, _ensure_feet).
+that can add a cloth to the outfit (_fill_missing_roles, _ensure_socks,
+_ensure_feet).
 
 The rule under test: every GARMENT in a themed outfit shares the theme. Shoes,
 socks and accessories may be borrowed — no brand is expected to make everything,

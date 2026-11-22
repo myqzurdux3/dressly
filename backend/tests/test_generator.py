@@ -39,17 +39,6 @@ def test_dedupe_slots_dress_blocks_separate_bottom():
     assert kept == {1, 3}
 
 
-def test_pick_one_per_role_dedupes():
-    items = [
-        {"id": 1, "role": "top"},
-        {"id": 2, "role": "top"},
-        {"id": 3, "role": "bottom"},
-    ]
-    picked = generator._pick_one_per_role(items)
-    roles = [p["role"] for p in picked]
-    assert roles == ["top", "bottom"]  # first top kept, second dropped
-
-
 def test_hot_and_cold_generation_includes_socks(client, auth):
     # A wardrobe covering both hot and cold weather, plus a competing accessory
     # (cap) and a pair of socks.

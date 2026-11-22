@@ -869,9 +869,12 @@ def wear_cloth(cloth_id: int, req: WearRequest, user=Depends(get_current_user)):
         ).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Cloth not found")
+        # Keep the latest day: logging an older wear must not pull it back.
         conn.execute(
-            "UPDATE clothes SET last_worn_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (day, cloth_id),
+            "UPDATE clothes SET last_worn_at = CASE "
+            "WHEN last_worn_at IS NULL OR last_worn_at < ? THEN ? ELSE last_worn_at END, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (day, day, cloth_id),
         )
         # Record the wear (deduped per day) so the detail can show a history.
         conn.execute(
@@ -1539,11 +1542,19 @@ def _run_enhance(cloth_id: int, image_id: int, mode: str, tier: str = "flex") ->
         else:
             enhance_deterministic(src, img["cutout_path"], str(dst))
         with get_conn() as conn:
-            conn.execute(
+            # Only land on a run that is still wanted: a reject (or a
+            # stale-run sweep) while the job ran has cleared 'processing', and
+            # writing 'ready' then would resurrect a candidate nobody asked for.
+            landed = conn.execute(
                 "UPDATE cloth_images SET enhanced_path = ?, enhance_status = 'ready', "
-                "enhance_tier = ?, enhance_started_at = NULL WHERE id = ?",
+                "enhance_tier = ?, enhance_started_at = NULL "
+                "WHERE id = ? AND enhance_status = 'processing'",
                 (str(dst), used_tier, image_id),
-            )
+            ).rowcount
+        if not landed:
+            log.info("enhance result for image %s discarded: run no longer wanted",
+                     image_id)
+            dst.unlink(missing_ok=True)
     except Exception as e:  # pragma: no cover - depends on rembg/bfl/PIL
         log.warning("enhance (%s) failed for image %s: %s", mode, image_id, e)
         with get_conn() as conn:
@@ -1607,12 +1618,17 @@ def enhance_image(cloth_id: int, image_id: int, req: EnhanceRequest,
         if not img:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
         old_enhanced = img["enhanced_path"]
-        conn.execute(
+        # Claim the image atomically: a double tap (or a retry while a run is
+        # still going) would otherwise start a second paid BFL call.
+        claimed = conn.execute(
             "UPDATE cloth_images SET enhance_status = 'processing', enhanced_path = NULL, "
             "enhance_pending_method = ?, enhance_tier = NULL, enhance_error = NULL, "
-            "enhance_started_at = datetime('now') WHERE id = ?",
+            "enhance_started_at = datetime('now') WHERE id = ? "
+            "AND COALESCE(enhance_status, '') NOT IN ('processing', 'accepting')",
             (mode, image_id),
-        )
+        ).rowcount
+        if not claimed:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Enhancement already running")
         if req.describe is not None:
             conn.execute(
                 "UPDATE cloth_images SET enhance_describe = ? WHERE id = ?",
@@ -1665,24 +1681,35 @@ def accept_enhance(cloth_id: int, image_id: int, user=Depends(get_current_user))
         new_original = img["enhanced_path"]
         method = img["enhance_pending_method"] or "auto"
 
-    new_cutout = canonical_cutout_path(new_original)
     try:
-        remove_background(new_original, str(new_cutout))
-    except Exception as e:  # pragma: no cover
-        log.warning("bg removal after enhance failed for image %s: %s", image_id, e)
-        # A copy, not an alias of the photo: every later "drop the old cutout"
-        # would otherwise delete the user's only copy of the picture.
-        new_cutout = canonical_cutout_path(new_original).with_suffix(".jpg")
-        new_cutout.write_bytes(Path(new_original).read_bytes())
+        new_cutout = canonical_cutout_path(new_original)
+        try:
+            remove_background(new_original, str(new_cutout))
+        except Exception as e:  # pragma: no cover
+            log.warning("bg removal after enhance failed for image %s: %s", image_id, e)
+            # A copy, not an alias of the photo: every later "drop the old cutout"
+            # would otherwise delete the user's only copy of the picture.
+            new_cutout = canonical_cutout_path(new_original).with_suffix(".jpg")
+            new_cutout.write_bytes(Path(new_original).read_bytes())
 
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE cloth_images SET original_path = ?, cutout_path = ?, "
-            "bg_accepted = 'pending', enhanced_path = NULL, enhance_status = NULL, "
-            "enhance_method = ?, enhance_pending_method = NULL, enhance_tier = NULL "
-            "WHERE id = ?",
-            (new_original, str(new_cutout), method, image_id),
-        )
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE cloth_images SET original_path = ?, cutout_path = ?, "
+                "bg_accepted = 'pending', enhanced_path = NULL, enhance_status = NULL, "
+                "enhance_method = ?, enhance_pending_method = NULL, enhance_tier = NULL "
+                "WHERE id = ?",
+                (new_original, str(new_cutout), method, image_id),
+            )
+    except Exception:
+        # Hand the candidate back: left in 'accepting', the image could never
+        # be accepted, rejected-and-rerun or enhanced again.
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE cloth_images SET enhance_status = 'ready' "
+                "WHERE id = ? AND enhance_status = 'accepting'",
+                (image_id,),
+            )
+        raise
     # Drop the superseded files (best-effort; never the new original/cutout).
     for old in (old_original, old_cutout):
         if old and old not in (new_original, str(new_cutout)):
