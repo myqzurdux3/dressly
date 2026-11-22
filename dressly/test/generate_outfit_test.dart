@@ -58,12 +58,18 @@ void main() {
   void serve({
     http.Response Function()? generateResponse,
     List<String> pollStatuses = const [],
+    List<Map<String, dynamic>> history = const [],
+    bool modelsFail = false,
   }) {
     final polls = List.of(pollStatuses);
     PinnedHttp.setClientForTesting(MockClient((req) async {
       requests.add(req);
       final path = req.url.path;
-      if (path.endsWith('/models')) return http.Response('[]', 200);
+      if (path.endsWith('/models')) {
+        return modelsFail
+            ? http.Response(jsonEncode({'detail': 'boom'}), 500)
+            : http.Response('[]', 200);
+      }
       if (path.endsWith('/clothes')) {
         return http.Response(
             jsonEncode([
@@ -73,7 +79,7 @@ void main() {
             200);
       }
       if (path.endsWith('/outfits') && req.method == 'GET') {
-        return http.Response('[]', 200);
+        return http.Response(jsonEncode(history), 200);
       }
       if (path.endsWith('/outfits/generate')) {
         posted.add(req.body);
@@ -205,5 +211,66 @@ void main() {
     expect(
         tester.widget<DsButton>(find.widgetWithText(DsButton, 'Generate outfit')).onPressed,
         isNotNull);
+  });
+
+  group('history', () {
+    Future<void> pumpRaw(WidgetTester tester) async {
+      final session = Session()
+        ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: session),
+          ChangeNotifierProvider(create: (_) => GenPrefsController()),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+          home: const OutfitScreen(),
+        ),
+      ));
+      // Pumped by hand: a processing outfit shows a spinner.
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    int listCalls() => requests
+        .where((r) => r.method == 'GET' && r.url.path.endsWith('/outfits'))
+        .length;
+    int pollCalls() =>
+        requests.where((r) => r.url.path.endsWith('/outfits/42')).length;
+
+    testWidgets('loads even when models fail', (tester) async {
+      serve(modelsFail: true, history: [_outfitJson()]);
+      await pumpRaw(tester);
+      // Before the fix the history refresh sat inside the same try as the
+      // models request and was skipped, leaving the list "empty".
+      expect(listCalls(), 1);
+    });
+
+    testWidgets(
+        'a processing outfit is re-fetched alone, and polling stops after '
+        'ten minutes', (tester) async {
+      serve(
+        history: [_outfitJson(status: 'processing')],
+        // Stays processing forever.
+        pollStatuses: List.filled(500, 'processing'),
+      );
+      await pumpRaw(tester);
+      expect(listCalls(), 1);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(pollCalls(), 1);
+      // The loaded pages are kept: no trip back to page one.
+      expect(listCalls(), 1);
+
+      for (var i = 0; i < 130; i++) {
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(pollCalls(), 120);
+      expect(listCalls(), 1);
+    });
   });
 }

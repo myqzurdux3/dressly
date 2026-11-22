@@ -72,17 +72,50 @@ class _OutfitScreenState extends State<OutfitScreen> {
     _history.addListener(_watchRenders);
   }
 
-  void _refreshHistory() => _history.refresh();
+  void _refreshHistory() {
+    // New activity elsewhere: a fresh render deserves its own polling budget.
+    _renderPolls = 0;
+    _history.refresh();
+  }
 
-  /// A render started elsewhere (the stylist) has no picture yet: reload the
-  /// list every few seconds until none is left processing.
+  /// A render started elsewhere (the stylist) has no picture yet: re-fetch
+  /// those outfits every few seconds until none is left processing.
+  ///
+  /// Only the processing outfits are reloaded and patched in place. Refreshing
+  /// the whole list went back to page one every five seconds, dropping every
+  /// page the user had scrolled through. Polling also stops after
+  /// [_maxRenderPolls] rounds, so an outfit stuck in 'processing' on the
+  /// server no longer keeps the screen polling forever.
+  static const _renderPollEvery = Duration(seconds: 5);
+  static const _maxRenderPolls = 120; // 10 minutes at one round every 5 s
+  int _renderPolls = 0;
   Timer? _renderWatch;
   void _watchRenders() {
     if (_renderWatch != null) return;
-    if (!_history.items.any((o) => o.isProcessing)) return;
-    _renderWatch = Timer(const Duration(seconds: 5), () {
+    final pending = [
+      for (final o in _history.items)
+        if (o.isProcessing) o.id,
+    ];
+    if (pending.isEmpty) {
+      _renderPolls = 0;
+      return;
+    }
+    if (_renderPolls >= _maxRenderPolls) return;
+    _renderWatch = Timer(_renderPollEvery, () async {
+      _renderPolls++;
+      if (!mounted) return;
+      final svc = outfitsServiceOf(context);
+      for (final id in pending) {
+        try {
+          final fresh = await svc.get(id);
+          if (!mounted) return;
+          _history.replaceItem((o) => o.id == id, fresh);
+        } catch (_) {
+          // Transient: the next round asks again, within the same budget.
+        }
+      }
       _renderWatch = null;
-      if (mounted) _history.refresh();
+      if (mounted) _watchRenders();
     });
   }
 
@@ -112,10 +145,12 @@ class _OutfitScreenState extends State<OutfitScreen> {
         _models = models;
         _clothes = clothes;
       });
-      await _history.refresh();
     } catch (e) {
       if (mounted) _toastKey('result.loadFailed', e);
     }
+    // Outside the try: the history does not depend on models or clothes, and
+    // skipping it left the list showing "empty" whenever those failed.
+    if (mounted) await _history.refresh();
   }
 
   Future<void> _openHistorySort() async {
@@ -145,6 +180,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
         tier: genPrefsOf(context).startTier,
         imageMode: _imageMode,
         renderClothIds: _renderClothIds,
+        cancelled: () => !mounted,
       );
       // A render takes tens of seconds; the user may well have left by now.
       if (!mounted) return;
@@ -332,6 +368,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
             describeClothes: _describeClothes,
             tier: tier,
             imageMode: imageMode,
+            cancelled: () => !mounted,
           )
           .then((o) {
             outfits.add(o);

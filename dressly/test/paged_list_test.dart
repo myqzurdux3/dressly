@@ -22,6 +22,36 @@ class _FakeSource {
 }
 
 void main() {
+  group('PagedList dispose', () {
+    test('a page landing after dispose does not notify', () async {
+      final gate = Completer<List<int>>();
+      final list = PagedList<int>(
+          fetchPage: ({required int limit, required int offset}) => gate.future,
+          pageSize: 10);
+
+      final pending = list.refresh();
+      list.dispose();
+      gate.complete([1, 2, 3]);
+
+      // Before the guard, the finally block called notifyListeners() on a
+      // disposed notifier and this threw a FlutterError.
+      await expectLater(pending, completes);
+    });
+
+    test('a failure landing after dispose does not notify', () async {
+      final gate = Completer<List<int>>();
+      final list = PagedList<int>(
+          fetchPage: ({required int limit, required int offset}) => gate.future,
+          pageSize: 10);
+
+      final pending = list.refresh();
+      list.dispose();
+      gate.completeError(Exception('offline'));
+
+      await expectLater(pending, completes);
+    });
+  });
+
   group('PagedList paging', () {
     test('refresh loads the first page only', () async {
       final src = _FakeSource(100);

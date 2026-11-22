@@ -425,7 +425,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       final image = await boundary.toImage(pixelRatio: pr.clamp(1.0, 4.0));
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
-      if (bytes == null) throw Exception('capture failed');
+      if (bytes == null) throw const _CaptureFailed();
       final layout = {
         'background': _bg.toJson(),
         'items': [
@@ -446,7 +446,14 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             : ManualBuilderResult.saved(saved),
       );
     } catch (e) {
-      if (mounted) _toast('$e');
+      if (!mounted) return;
+      // Raw exception text ("Exception: capture failed") used to reach the
+      // user untranslated.
+      _toast(
+        e is _CaptureFailed
+            ? tr(context, 'builder.captureFailed')
+            : '${tr(context, 'form.saveFailed')}: $e',
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -904,4 +911,9 @@ class _Swatch extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The canvas could not be rasterised; reported with a translated message.
+class _CaptureFailed implements Exception {
+  const _CaptureFailed();
 }

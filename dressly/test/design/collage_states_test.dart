@@ -128,6 +128,28 @@ void main() {
     expect(t.binding.hasScheduledFrame, isFalse);
   });
 
+  testWidgets('skeleton survives animations off then on again', (t) async {
+    const sk = DsSkeleton(width: 100, height: 40);
+    await t.pumpWidget(dsFrame(sk));
+    final state = t.state(find.byType(DsSkeleton));
+    final breathing = find.descendant(
+      of: find.byType(DsSkeleton),
+      matching: find.byType(AnimatedBuilder),
+    );
+    expect(breathing, findsOneWidget);
+    await t.pumpWidget(dsFrame(sk, disableAnimations: true));
+    await t.pump();
+    expect(breathing, findsNothing);
+    // Re-enabling used to create a second ticker on a
+    // SingleTickerProviderStateMixin, which asserts.
+    await t.pumpWidget(dsFrame(sk));
+    await t.pump();
+    expect(t.takeException(), isNull);
+    expect(t.state(find.byType(DsSkeleton)), same(state));
+    expect(breathing, findsOneWidget);
+    expect(t.binding.hasScheduledFrame, isTrue);
+  });
+
   testWidgets('skeleton breathes when animations are on', (t) async {
     await t.pumpWidget(dsFrame(const DsSkeleton(width: 100, height: 40)));
     await t.pump();

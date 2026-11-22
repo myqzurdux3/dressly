@@ -111,18 +111,17 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
     if (date == null || !mounted) return;
 
-    // Fetch outfits to choose from (history). May be empty.
-    List<Outfit> outfits = [];
-    try {
-      outfits = await outfitsSvc.list();
-      outfits = outfits.where((o) => o.status != 'failed').toList();
-    } catch (_) {}
-    if (!mounted) return;
-
+    // Outfits to choose from (history). Loaded by the sheet itself, so a
+    // failure shows an error with a retry instead of passing for "no outfits".
     final result = await showModalBottomSheet<_ScheduleResult>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _ScheduleSheet(outfits: outfits),
+      builder: (_) => _ScheduleSheet(
+        load: () async => [
+          for (final o in await outfitsSvc.list())
+            if (o.status != 'failed') o,
+        ],
+      ),
     );
     if (result == null) return;
 
@@ -455,8 +454,10 @@ class _ScheduleResult {
 
 /// Sheet: optional label, then which generated outfit to plan.
 class _ScheduleSheet extends StatefulWidget {
-  const _ScheduleSheet({required this.outfits});
-  final List<Outfit> outfits;
+  const _ScheduleSheet({required this.load});
+
+  /// Fetches the outfits to pick from; called again on retry.
+  final Future<List<Outfit>> Function() load;
 
   @override
   State<_ScheduleSheet> createState() => _ScheduleSheetState();
@@ -465,6 +466,13 @@ class _ScheduleSheet extends StatefulWidget {
 class _ScheduleSheetState extends State<_ScheduleSheet> {
   final _title = TextEditingController();
   int? _selected;
+  late Future<List<Outfit>> _outfits = widget.load();
+
+  void _retry() {
+    setState(() {
+      _outfits = widget.load();
+    });
+  }
 
   @override
   void dispose() {
@@ -510,11 +518,32 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
               ),
               DsSectionTitle(tr(context, 'agenda.pickOutfit')),
               Expanded(
-                child: OutfitPickGrid(
-                  outfits: widget.outfits,
-                  selected: _selected,
-                  controller: scroll,
-                  onSelected: (id) => setState(() => _selected = id),
+                child: FutureBuilder<List<Outfit>>(
+                  future: _outfits,
+                  builder: (context, snap) {
+                    // Waiting first: on retry the snapshot keeps the previous
+                    // error until the new future completes.
+                    if (snap.connectionState != ConnectionState.done) {
+                      return Center(
+                        child: CircularProgressIndicator(
+                          color: ds.colors.accent,
+                        ),
+                      );
+                    }
+                    if (snap.hasError) {
+                      return DsError(
+                        message: tr(context, 'common.loadFailed'),
+                        retryLabel: tr(context, 'common.retry'),
+                        onRetry: _retry,
+                      );
+                    }
+                    return OutfitPickGrid(
+                      outfits: snap.data ?? const [],
+                      selected: _selected,
+                      controller: scroll,
+                      onSelected: (id) => setState(() => _selected = id),
+                    );
+                  },
                 ),
               ),
               SizedBox(height: ds.space.s),

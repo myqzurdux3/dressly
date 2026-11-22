@@ -250,6 +250,7 @@ const Map<String, Map<String, String>> _strings = {
     'builder.gradient': 'Gradient',
     'builder.toFront': 'Bring to front',
     'builder.empty': 'Add at least one item first',
+    'builder.captureFailed': 'Could not capture the outfit image. Please try again.',
     'builder.algoEmpty': 'No matching outfit',
     'create.modelSection': 'Model (person)',
     'create.modelHint':
@@ -1102,6 +1103,7 @@ const Map<String, Map<String, String>> _strings = {
     'builder.gradient': 'Dégradé',
     'builder.toFront': 'Mettre au premier plan',
     'builder.empty': 'Ajoutez au moins un élément',
+    'builder.captureFailed': "Impossible de capturer l'image de la tenue. Veuillez réessayer.",
     'builder.algoEmpty': 'Aucune tenue correspondante',
     'create.modelSection': 'Modèle (personne)',
     'create.modelHint':

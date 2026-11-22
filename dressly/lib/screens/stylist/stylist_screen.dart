@@ -91,8 +91,15 @@ class _StylistScreenState extends State<StylistScreen> {
         renderTier: _prefs?.startTier ?? 'flex',
       );
       _threadId = id;
-      final thread = await svc.waitForReply(id);
+      // Stop polling once this screen is gone.
+      final thread = await svc.waitForReply(id, cancelled: () => !mounted);
       if (!mounted) return;
+      if (thread == null) {
+        // No answer could be fetched at all: give the question back.
+        setState(() => _sending = null);
+        _input.text = text;
+        return;
+      }
       setState(() {
         _messages = thread.messages;
         _sending = null;

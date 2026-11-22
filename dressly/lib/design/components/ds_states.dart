@@ -124,19 +124,24 @@ class DsSkeleton extends StatefulWidget {
 class _DsSkeletonState extends State<DsSkeleton>
     with SingleTickerProviderStateMixin {
   AnimationController? _c;
+  bool _static = false; // animations reduced: draw one still frame
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (widget.gridCount != null) return; // children animate themselves
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _c?.dispose();
-      _c = null;
-    } else {
-      _c ??= AnimationController(
-        vsync: this,
-        duration: context.ds.motion.slow * 4,
-      )..repeat();
+    // One controller for the widget's lifetime, stopped rather than disposed
+    // when animations are reduced: SingleTickerProviderStateMixin allows a
+    // single ticker, so creating a second one after re-enabling asserted.
+    final c = _c ??= AnimationController(
+      vsync: this,
+      duration: context.ds.motion.slow * 4,
+    );
+    _static = MediaQuery.disableAnimationsOf(context);
+    if (_static) {
+      c.stop();
+    } else if (!c.isAnimating) {
+      c.repeat();
     }
   }
 
@@ -179,7 +184,7 @@ class _DsSkeletonState extends State<DsSkeleton>
     );
 
     final c = _c;
-    if (c == null) return block(0.5);
+    if (c == null || _static) return block(0.5);
     return AnimatedBuilder(
       animation: c,
       builder: (_, _) => block((math.sin(c.value * 2 * math.pi) + 1) / 2),

@@ -93,8 +93,11 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
   Future<void> _loadAutocomplete() async {
     final svc = _svc;
     try {
-      final brands = await svc.autocompleteBrands();
-      final tags = await svc.autocompleteTags();
+      // Independent requests: one round trip instead of two.
+      final (brands, tags) = await (
+        svc.autocompleteBrands(),
+        svc.autocompleteTags(),
+      ).wait;
       if (mounted) {
         setState(() {
           _brandSuggestions = brands;
@@ -492,8 +495,11 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
       if (_score != _scoreBeforeEdit) {
         try {
           await svc.setScore(saved.id, _score);
-          saved; // (kept for clarity; unused)
-        } catch (_) {}
+        } catch (e) {
+          // The cloth itself is saved; only the rating was lost. Say so, then
+          // carry on as usual.
+          _toastKey('detail.ratingFailed', e);
+        }
       }
       if (!mounted) return;
       if (widget.isEdit) {

@@ -37,8 +37,14 @@ class _ModelReviewScreenState extends State<ModelReviewScreen> {
   Future<void> _setGender(String gender) async {
     try {
       await modelsServiceOf(context).update(widget.modelId, gender: gender);
+      if (!mounted) return;
       _reload();
-    } catch (_) {}
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${tr(context, 'form.updateFailed')}: $e')),
+      );
+    }
   }
 
   @override

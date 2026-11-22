@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/models/cloth.dart';
@@ -48,7 +49,10 @@ void main() {
   late Map<String, Object?> bodies;
   Object? popped = 'not popped';
 
-  Future<void> pump(WidgetTester t) async {
+  Future<void> pump(
+    WidgetTester t, {
+    ImageProvider Function(String url)? imageProvider,
+  }) async {
     calls = [];
     bodies = {};
     popped = 'not popped';
@@ -80,7 +84,12 @@ void main() {
                     context,
                     MaterialPageRoute(
                       builder: (_) =>
-                          PhotoEditScreen(clothId: 5, image: _image),
+                          PhotoEditScreen(
+                            clothId: 5,
+                            image: _image,
+                            imageProvider:
+                                imageProvider ?? (url) => NetworkImage(url),
+                          ),
                     ),
                   );
                 },
@@ -130,5 +139,38 @@ void main() {
     expect(calls, ['POST /clothes/5/images/11/redo-bg']);
     expect(bodies['/clothes/5/images/11/redo-bg'], {'tolerance': 'high'});
     expect(find.byType(PhotoEditScreen), findsOneWidget);
+  });
+
+  testWidgets('a photo that cannot load shows an error with a retry', (
+    t,
+  ) async {
+    var attempts = 0;
+    // Bytes that are not an image: decoding fails, as a broken download would.
+    await pump(
+      t,
+      imageProvider: (_) {
+        attempts++;
+        return MemoryImage(Uint8List.fromList([attempts, 1, 2, 3]));
+      },
+    );
+    // Decoding is real async work, which only advances inside runAsync.
+    Future<void> waitFor(Finder f) async {
+      for (var i = 0; i < 20 && f.evaluate().isEmpty; i++) {
+        await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await t.pump();
+      }
+    }
+
+    await waitFor(find.text('Retry'));
+    expect(find.text('Could not load'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    final before = attempts;
+    await t.tap(find.text('Retry'));
+    await t.pump();
+    expect(attempts, greaterThan(before));
   });
 }

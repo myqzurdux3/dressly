@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/outfit.dart';
 import '../config/api_config.dart';
 import 'api_client.dart';
+import 'polling.dart';
 
 class AlgoMeta {
   final String id;
@@ -54,19 +55,28 @@ class OutfitsService {
 
   /// Like [get], but if the outfit is still rendering (e.g. the linked view was
   /// just re-rendered after a cloth edit) waits for it to finish.
-  Future<Outfit> getAwait(int id) async => _awaitCompletion(await get(id));
+  Future<Outfit> getAwait(int id, {bool Function()? cancelled}) async =>
+      _awaitCompletion(await get(id), cancelled: cancelled);
 
   /// Generation runs in the background server-side (status 'processing'). Poll
   /// GET /outfits/{id} with short requests until it's done/failed, instead of
   /// holding one long request open for the whole render.
-  Future<Outfit> _awaitCompletion(Outfit o) async {
+  ///
+  /// [cancelled] stops the wait early (the screen closed); the last known
+  /// state is returned. Gives up after five minutes with the latest state.
+  Future<Outfit> _awaitCompletion(
+    Outfit o, {
+    bool Function()? cancelled,
+  }) async {
     if (o.status != 'processing') return o;
-    for (var i = 0; i < 150; i++) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-      final next = await get(o.id);
-      if (next.status != 'processing') return next;
-    }
-    return get(o.id); // give back the latest state on timeout
+    return pollUntil<Outfit>(
+      fetch: () => get(o.id),
+      isDone: (next) => next.status != 'processing',
+      initial: o,
+      every: const Duration(seconds: 2),
+      maxRounds: 150,
+      cancelled: cancelled,
+    );
   }
 
   /// Make (or fetch) a public link to this outfit, and return its absolute URL.
@@ -134,6 +144,7 @@ class OutfitsService {
     bool describeClothes = false,
     String imageMode = 'collage',
     List<int> renderClothIds = const [],
+    bool Function()? cancelled,
   }) async {
     final data = await _api.post('/outfits/generate', {
       'model_id': modelId,
@@ -147,7 +158,10 @@ class OutfitsService {
       'image_mode': imageMode,
       'render_cloth_ids': renderClothIds,
     });
-    return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
+    return _awaitCompletion(
+      Outfit.fromJson(data as Map<String, dynamic>),
+      cancelled: cancelled,
+    );
   }
 
   /// Swap one or more clothes in an existing outfit and re-render at the same
@@ -177,11 +191,18 @@ class OutfitsService {
     return Outfit.fromJson(data as Map<String, dynamic>);
   }
 
-  Future<Outfit> replaceClothes(int outfitId, List<int> clothIds) async {
+  Future<Outfit> replaceClothes(
+    int outfitId,
+    List<int> clothIds, {
+    bool Function()? cancelled,
+  }) async {
     final data = await _api.post('/outfits/$outfitId/replace-clothes', {
       'cloth_ids': clothIds,
     });
-    return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
+    return _awaitCompletion(
+      Outfit.fromJson(data as Map<String, dynamic>),
+      cancelled: cancelled,
+    );
   }
 
   /// Swap the person an outfit is rendered on (or drop the model when both
@@ -190,19 +211,29 @@ class OutfitsService {
     int outfitId, {
     int? modelId,
     bool randomModel = false,
+    bool Function()? cancelled,
   }) async {
     final data = await _api.post('/outfits/$outfitId/replace-model', {
       if (modelId != null) 'model_id': modelId,
       'random_model': randomModel,
     });
-    return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
+    return _awaitCompletion(
+      Outfit.fromJson(data as Map<String, dynamic>),
+      cancelled: cancelled,
+    );
   }
 
   /// Generate the back view of an existing outfit (requires a model with a
   /// back photo). Returns the newly created outfit.
-  Future<Outfit> generateBack(int outfitId) async {
+  Future<Outfit> generateBack(
+    int outfitId, {
+    bool Function()? cancelled,
+  }) async {
     final data = await _api.post('/outfits/$outfitId/back', {});
-    return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
+    return _awaitCompletion(
+      Outfit.fromJson(data as Map<String, dynamic>),
+      cancelled: cancelled,
+    );
   }
 
   Future<Outfit> regenerate(
@@ -212,6 +243,7 @@ class OutfitsService {
     String? addDetail,
     String? imageMode,
     List<int>? renderClothIds,
+    bool Function()? cancelled,
   }) async {
     final data = await _api.post('/outfits/$outfitId/regenerate', {
       if (tier != null) 'tier': tier,
@@ -220,7 +252,10 @@ class OutfitsService {
       if (imageMode != null) 'image_mode': imageMode,
       if (renderClothIds != null) 'render_cloth_ids': renderClothIds,
     });
-    return _awaitCompletion(Outfit.fromJson(data as Map<String, dynamic>));
+    return _awaitCompletion(
+      Outfit.fromJson(data as Map<String, dynamic>),
+      cancelled: cancelled,
+    );
   }
 
   /// Rate an outfit 1-5 (0 clears). Returns the stored rating.

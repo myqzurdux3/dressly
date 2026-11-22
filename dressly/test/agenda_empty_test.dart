@@ -61,4 +61,47 @@ void main() {
     expect(find.widgetWithText(DsButton, 'Schedule outfit'), findsOneWidget);
     expect(find.text('DENTIST'), findsOneWidget);
   });
+
+  testWidgets('outfits that fail to load show an error, not "no outfits"',
+      (tester) async {
+    var outfitCalls = 0;
+    PinnedHttp.setClientForTesting(MockClient((req) async {
+      if (req.url.path.endsWith('/outfits')) {
+        outfitCalls++;
+        // First attempt fails, the retry succeeds.
+        return outfitCalls == 1
+            ? http.Response(jsonEncode({'detail': 'boom'}), 500)
+            : http.Response('[]', 200);
+      }
+      return http.Response('[]', 200);
+    }));
+    final session = Session()
+      ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: session,
+      child: MaterialApp(
+        locale: const Locale('en'),
+        theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+        home: const AgendaScreen(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(DsButton, 'Schedule outfit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK')); // the date picker
+    // Pumped by hand: the sheet shows a spinner while it loads.
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(outfitCalls, 1);
+    expect(find.text('Could not load'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(outfitCalls, 2);
+    expect(find.text('Could not load'), findsNothing);
+  });
 }

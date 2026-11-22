@@ -6,6 +6,7 @@ import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../state/providers.dart';
+import '../../widgets/app_image.dart';
 
 /// Manual photo editor: rotate in 90° steps (instant, client-side) and drag a
 /// crop rectangle. On "Done" the rotation + crop are applied server-side in a
@@ -17,10 +18,16 @@ class PhotoEditScreen extends ConsumerStatefulWidget {
     super.key,
     required this.clothId,
     required this.image,
+    this.imageProvider = appImageProvider,
   });
 
   final int clothId;
   final ClothImage image;
+
+  /// Builds the provider that both measures and displays the photo. Tests
+  /// swap it, because the app's disk cache needs a platform to run.
+  @visibleForTesting
+  final ImageProvider Function(String url) imageProvider;
 
   @override
   ConsumerState<PhotoEditScreen> createState() => _PhotoEditScreenState();
@@ -35,6 +42,7 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
   bool _busy = false;
   late String _tolerance = widget.image.bgTolerance;
   bool _popped = false; // guards against a double-pop (back + button race)
+  bool _loadError = false; // the image could not be loaded; offer a retry
 
   static const double _minSize = 0.12;
 
@@ -46,8 +54,17 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
   }
 
   /// Resolves the natural pixel size of [_url] so the crop frame matches it.
+  ///
+  /// Goes through the app's disk cache (the same provider the crop view
+  /// displays), so the photo is downloaded once rather than twice. The
+  /// provider is not resized, so the reported size is the natural one.
   void _loadSize() {
-    final stream = NetworkImage(_url).resolve(ImageConfiguration.empty);
+    if (_loadError) {
+      // Drop the failed entry so the retry really goes back to the network.
+      widget.imageProvider(_url).evict();
+      setState(() => _loadError = false);
+    }
+    final stream = widget.imageProvider(_url).resolve(ImageConfiguration.empty);
     late final ImageStreamListener l;
     l = ImageStreamListener((info, _) {
       if (mounted) {
@@ -59,7 +76,11 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
         );
       }
       stream.removeListener(l);
-    }, onError: (_, __) => stream.removeListener(l));
+    }, onError: (_, __) {
+      stream.removeListener(l);
+      // Without this the editor showed its spinner forever.
+      if (mounted) setState(() => _loadError = true);
+    });
     stream.addListener(l);
   }
 
@@ -219,7 +240,13 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
               Expanded(
                 child: Center(
                   child: _imgSize == null
-                      ? CircularProgressIndicator(color: c.accent)
+                      ? (_loadError
+                            ? DsError(
+                                message: tr(context, 'common.loadFailed'),
+                                retryLabel: tr(context, 'common.retry'),
+                                onRetry: _loadSize,
+                              )
+                            : CircularProgressIndicator(color: c.accent))
                       : Padding(
                           padding: EdgeInsets.all(ds.space.l),
                           child: AspectRatio(
@@ -241,8 +268,8 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
                                     Positioned.fill(
                                       child: RotatedBox(
                                         quarterTurns: _turns,
-                                        child: Image.network(
-                                          _url,
+                                        child: Image(
+                                          image: widget.imageProvider(_url),
                                           key: ValueKey(_url),
                                           fit: BoxFit.fill,
                                         ),

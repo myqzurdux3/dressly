@@ -96,10 +96,9 @@ void main() {
         // Uses the package's own 200-file cache instead of the app's.
         'CachedNetworkImageProvider(',
       ];
-      // photo_edit_screen pairs a display widget with NetworkImage(...).resolve()
-      // to measure the image for its crop overlay; the two must stay the same
-      // provider, so it is exempt and deliberately re-fetches.
-      const exempt = ['app_image.dart', 'photo_edit_screen.dart'];
+      // photo_edit_screen measures and displays its photo through the same
+      // appImageProvider, so it needs no exemption any more.
+      const exempt = ['app_image.dart'];
 
       final offenders = <String>[];
       for (final f in _dartSources()) {

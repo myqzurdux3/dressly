@@ -67,12 +67,13 @@ class _AddModelScreenState extends State<AddModelScreen> {
 
   Future<void> _pickImage() async {
     final path = await _pickFilePath();
-    if (path != null) setState(() => _images.add(path));
+    // The picker can outlive the screen (back pressed while it was open).
+    if (path != null && mounted) setState(() => _images.add(path));
   }
 
   Future<void> _replace(int i) async {
     final path = await _pickFilePath();
-    if (path != null) setState(() => _images[i] = path);
+    if (path != null && mounted) setState(() => _images[i] = path);
   }
 
   Future<void> _save() async {

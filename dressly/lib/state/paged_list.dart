@@ -33,6 +33,9 @@ class PagedList<T> extends ChangeNotifier {
   // Guards against a stale in-flight request overwriting a newer one when the
   // user retypes a search while the previous query is still running.
   int _generation = 0;
+  // A screen may be closed while a page is in flight; notifying after its
+  // dispose() asserts "used after being disposed".
+  bool _disposed = false;
 
   List<T> get items => List.unmodifiable(_items);
   bool get isLoading => _loading;
@@ -83,7 +86,7 @@ class PagedList<T> extends ChangeNotifier {
       // that just failed.
       _hasMore = false;
     } finally {
-      if (generation == _generation) {
+      if (!_disposed && generation == _generation) {
         _loading = false;
         notifyListeners();
       }
@@ -104,6 +107,12 @@ class PagedList<T> extends ChangeNotifier {
     final before = _items.length;
     _items.removeWhere(test);
     if (_items.length != before) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   /// Insert a freshly created item at the top.

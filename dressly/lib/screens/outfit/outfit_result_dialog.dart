@@ -129,7 +129,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   Future<void> _waitForRender() async {
     final svc = outfitsServiceOf(context);
     try {
-      final done = await svc.getAwait(_outfit.id);
+      final done = await svc.getAwait(_outfit.id, cancelled: () => !mounted);
       if (!mounted) return;
       setState(() => _outfit = done);
       widget.onChanged(done);
@@ -192,12 +192,18 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     'result.retryFailed',
     () => outfitsServiceOf(
       context,
-    ).regenerate(_outfit.id, tier: _outfit.modelTier),
+    ).regenerate(
+      _outfit.id,
+      tier: _outfit.modelTier,
+      cancelled: () => !mounted,
+    ),
   );
 
   Future<void> _regenerate() => _runUpdating(
     'result.regenerateFailed',
-    () => outfitsServiceOf(context).regenerate(_outfit.id),
+    () => outfitsServiceOf(
+      context,
+    ).regenerate(_outfit.id, cancelled: () => !mounted),
   );
 
   /// Flip "describe items to the AI" and re-render at the same tier.
@@ -205,7 +211,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     'result.failed',
     () => outfitsServiceOf(
       context,
-    ).regenerate(_outfit.id, tier: _outfit.modelTier, describeClothes: value),
+    ).regenerate(
+      _outfit.id,
+      tier: _outfit.modelTier,
+      describeClothes: value,
+      cancelled: () => !mounted,
+    ),
   );
 
   /// Re-render the SAME outfit at its current tier with a changed reference-image
@@ -219,6 +230,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
           tier: _outfit.modelTier,
           imageMode: imageMode,
           renderClothIds: renderClothIds,
+          cancelled: () => !mounted,
         ),
       );
 
@@ -286,7 +298,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     }
     final back = await _runUpdating(
       'result.backFailed',
-      () => outfitsServiceOf(context).generateBack(_outfit.id),
+      () => outfitsServiceOf(
+        context,
+      ).generateBack(_outfit.id, cancelled: () => !mounted),
     );
     if (back != null) _toastKey('result.backCreated');
   }
@@ -297,7 +311,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     // the linked outfit may still be processing when we switch to it.
     await _runUpdating(
       'result.failed',
-      () => outfitsServiceOf(context).getAwait(_outfit.linkedId!),
+      () => outfitsServiceOf(
+        context,
+      ).getAwait(_outfit.linkedId!, cancelled: () => !mounted),
     );
   }
 
@@ -315,12 +331,15 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
 
   /// Show every day this outfit was worn + counts (mirrors the per-cloth sheet).
   Future<void> _showWearHistory() async {
-    OutfitWears? w;
+    final OutfitWears wears;
     try {
-      w = await outfitsServiceOf(context).wears(_outfit.id);
-    } catch (_) {}
-    if (!mounted || w == null) return;
-    final wears = w;
+      wears = await outfitsServiceOf(context).wears(_outfit.id);
+    } catch (e) {
+      // Silently ignored before: the button simply did nothing.
+      _toastKey('result.loadFailed', e);
+      return;
+    }
+    if (!mounted) return;
     showDsSheet<void>(
       context,
       title: tr(context, 'result.wornCount')
@@ -478,7 +497,12 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       'result.regenerateFailed',
       () => outfitsServiceOf(
         context,
-      ).regenerate(_outfit.id, tier: _outfit.modelTier, addDetail: detail),
+      ).regenerate(
+        _outfit.id,
+        tier: _outfit.modelTier,
+        addDetail: detail,
+        cancelled: () => !mounted,
+      ),
     );
   }
 
@@ -514,7 +538,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     }
     await _runUpdating(
       'result.removeFailed',
-      () => outfitsServiceOf(context).replaceClothes(_outfit.id, remaining),
+      () => outfitsServiceOf(
+        context,
+      ).replaceClothes(_outfit.id, remaining, cancelled: () => !mounted),
     );
   }
 
@@ -531,7 +557,11 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (picked == null || picked.isEmpty) return;
     await _runUpdating(
       'result.regenerateFailed',
-      () => svc.replaceClothes(_outfit.id, picked.toList()),
+      () => svc.replaceClothes(
+        _outfit.id,
+        picked.toList(),
+        cancelled: () => !mounted,
+      ),
     );
   }
 
@@ -599,6 +629,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
         _outfit.id,
         modelId: choice.modelId,
         randomModel: choice.random,
+        cancelled: () => !mounted,
       ),
     );
   }

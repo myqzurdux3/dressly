@@ -1,5 +1,6 @@
 import '../models/stylist.dart';
 import 'api_client.dart';
+import 'polling.dart';
 
 /// The personal stylist. A turn runs on the server in the background:
 /// [send] returns at once, then [thread] is polled until it is no longer
@@ -45,17 +46,26 @@ class StylistService {
   }
 
   /// Poll until the stylist has answered (or failed).
-  Future<StylistThread> waitForReply(
+  ///
+  /// Returns null when [cancelled] stopped the wait before any answer came
+  /// back (the screen closed). Gives up after [max] with the latest state.
+  Future<StylistThread?> waitForReply(
     int threadId, {
     Duration every = const Duration(seconds: 1),
     Duration max = const Duration(minutes: 6),
-  }) async {
-    final end = DateTime.now().add(max);
-    while (true) {
-      await Future<void>.delayed(every);
-      final t = await thread(threadId);
-      if (!t.pending || DateTime.now().isAfter(end)) return t;
-    }
+    bool Function()? cancelled,
+  }) {
+    final rounds = every == Duration.zero
+        ? 1
+        : (max.inMilliseconds / every.inMilliseconds).ceil();
+    return pollUntil<StylistThread?>(
+      fetch: () => thread(threadId),
+      isDone: (t) => t != null && !t.pending,
+      initial: null,
+      every: every,
+      maxRounds: rounds < 1 ? 1 : rounds,
+      cancelled: cancelled,
+    );
   }
 
   Future<void> deleteThread(int id) => _api.delete('/stylist/threads/$id');

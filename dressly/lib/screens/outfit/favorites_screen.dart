@@ -126,7 +126,18 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 // This screen only ever shows favourites, so the card is
                 // simply gone — no need to refetch every page to learn that.
                 _outfits.removeItem((o) => o.id == outfit.id);
-              } catch (_) {}
+              } catch (e) {
+                // Silently ignored before: the heart stayed filled and the
+                // user had no idea the removal had failed.
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '${tr(this.context, 'result.favoriteFailed')}: $e',
+                    ),
+                  ),
+                );
+              }
             },
           ),
         ),
