@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from audit import record as audit_record
 from auth import get_current_user
 from bfl import next_tier
-from db import clamp_page, get_conn
+from db import clamp_page, front_image, get_conn
 from generator import (KNOWN_CATEGORIES, has_cut, is_multi_angle,
                        normalize_category)
 from config import STAGING_DIR
@@ -1008,11 +1008,7 @@ def detect_cloth_colors(cloth_id: int, user=Depends(get_current_user)):
         ).fetchone()
         if not owned:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Cloth not found")
-        img = conn.execute(
-            "SELECT cutout_path, bg_accepted FROM cloth_images WHERE cloth_id = ? "
-            "ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END, sort_order, id LIMIT 1",
-            (cloth_id,),
-        ).fetchone()
+        img = front_image(conn, cloth_id)
     if not img:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This cloth has no photo yet")
     if img["bg_accepted"] == "rejected":

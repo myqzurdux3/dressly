@@ -845,3 +845,49 @@ def get_conn():
         raise
     finally:
         conn.close()
+
+# --- A garment's representative photo -----------------------------------------
+# One rule, used everywhere a single picture stands for a garment (wardrobe
+# thumbnails, plans, stats, the stylist, flat outfits): the 'front' photo first,
+# then the user's manual order (sort_order), then insertion order (id). The
+# copies this replaced all agreed on that order — the DESC variants were only the
+# "last write wins" trick for batch lookups — but some forgot the ownership check.
+
+_FRONT_ORDER = "CASE i.role WHEN 'front' THEN 0 ELSE 1 END, i.sort_order, i.id"
+_FRONT_COLS = ("i.id, i.cloth_id, i.role, i.original_path, i.cutout_path, "
+               "i.bg_accepted")
+
+
+def front_images(conn, cloth_ids, user_id=None) -> dict:
+    """Map cloth_id -> its representative cloth_images row, in one query.
+
+    Clothes without any photo are simply absent. With `user_id`, rows of clothes
+    the user does not own are ignored (pass it whenever the ids come from the
+    client rather than from an already-scoped query)."""
+    ids = list(dict.fromkeys(int(c) for c in cloth_ids))
+    if not ids:
+        return {}
+    ph = ",".join("?" * len(ids))
+    sql = f"SELECT {_FRONT_COLS} FROM cloth_images i "
+    params: list = list(ids)
+    if user_id is not None:
+        sql += "JOIN clothes c ON c.id = i.cloth_id AND c.user_id = ? "
+        params.insert(0, user_id)
+    sql += f"WHERE i.cloth_id IN ({ph}) ORDER BY {_FRONT_ORDER}"
+    out: dict = {}
+    for row in conn.execute(sql, params).fetchall():
+        out.setdefault(row["cloth_id"], row)  # first row per cloth wins
+    return out
+
+
+def front_image(conn, cloth_id: int, user_id=None):
+    """The representative cloth_images row of one garment, or None."""
+    return front_images(conn, [cloth_id], user_id).get(int(cloth_id))
+
+
+def display_path(row) -> str:
+    """The file to show for an image row: the cut-out unless the user rejected
+    it (or it does not exist yet), in which case the original photo."""
+    if row["bg_accepted"] == "rejected":
+        return row["original_path"]
+    return row["cutout_path"] or row["original_path"]

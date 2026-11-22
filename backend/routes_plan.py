@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 import weather as weather_mod
 from auth import get_current_user
-from db import get_conn
+from db import display_path, front_images, get_conn
 from generator import (
     ALGOS,
     AVOID_EXEMPT_ROLES,
@@ -113,14 +113,7 @@ def _cloth_cards(conn, user_id: int, cloth_ids: List[int]) -> List[dict]:
         list(cloth_ids) + [user_id],
     ).fetchall()
     by_id = {r["id"]: r for r in rows}
-    images = {}
-    for im in conn.execute(
-        f"SELECT cloth_id, cutout_path, original_path, bg_accepted "
-        f"FROM cloth_images WHERE cloth_id IN ({ph}) "
-        f"ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END DESC, sort_order DESC, id DESC",
-        cloth_ids,
-    ).fetchall():
-        images[im["cloth_id"]] = im  # last write wins == the front photo
+    images = front_images(conn, cloth_ids)
     # Shown the way the clothes are worn — shoes, bottom, t-shirt, jacket, cap —
     # not in the order the algorithm happened to pick them. Same LAYER_ORDER the
     # generated render and the manual canvas use, so a garment never appears in
@@ -134,10 +127,7 @@ def _cloth_cards(conn, user_id: int, cloth_ids: List[int]) -> List[dict]:
         if not row:
             continue
         im = images.get(cid)
-        path = ""
-        if im:
-            path = (im["original_path"] if im["bg_accepted"] == "rejected"
-                    else (im["cutout_path"] or im["original_path"]))
+        path = display_path(im) if im else ""
         out.append({
             "id": cid,
             "name": row["name"],

@@ -171,14 +171,14 @@ def test_blacklist_prevents_regeneration(client, auth):
     assert client.get(f"/outfits/{o['id']}", headers=auth).json()["is_blacklisted"] is True
 
     # The random algorithm can only build {a, b} — now banned → nothing to make.
-    r2 = client.post("/outfits/generate-from-algo", headers=auth,
+    r2 = client.post("/outfits/preview-algo", headers=auth,
                      json={"algo": "random"})
     assert r2.status_code == 404
 
     # Un-ban restores it.
     client.post(f"/outfits/{o['id']}/blacklist", headers=auth,
                 json={"blacklisted": False})
-    r3 = client.post("/outfits/generate-from-algo", headers=auth,
+    r3 = client.post("/outfits/preview-algo", headers=auth,
                      json={"algo": "random"})
     assert r3.status_code == 200
 
@@ -339,18 +339,12 @@ def test_algos_list_includes_least_worn(client, auth):
     assert "least-worn" in data["algos_list"]
 
 
-def test_preview_and_generate_from_algo(client, auth):
+def test_preview_algo(client, auth):
     _two_clothes(client, auth)
     r = client.post("/outfits/preview-algo", headers=auth,
                     json={"algo": "random", "count": 1})
     assert r.status_code == 200
     assert len(r.json()["selections"]) >= 1
-
-    r = client.post("/outfits/generate-from-algo", headers=auth,
-                    json={"algo": "random", "tier": "flux"})
-    assert r.status_code == 200
-    o = wait_done(client, auth, r.json()["id"])
-    assert o["status"] == "done"
 
 
 def test_replace_clothes_on_back_view_updates_front(client, auth):

@@ -23,7 +23,7 @@ from bfl import (
     next_outfit_tier,
 )
 from config import GENERATE_DEADLINE_S, OUTFITS_DIR
-from db import clamp_page, get_conn
+from db import clamp_page, display_path, front_image, front_images, get_conn
 from routes_thumbs import thumb_url_for
 import imagesign
 import openrouter
@@ -97,9 +97,6 @@ class AlgoRequest(BaseModel):
     brand: str = ""  # for pick-by-brand
     tag: str = ""    # for pick-by-tag
     count: int = 1  # how many selections to propose (for batch generation)
-    model_id: Optional[int] = None
-    random_model: bool = False
-    random_model_gender: str = ""  # '' any | 'male' | 'female'
     # "any" | "hot" | "cold" — restricts the pool (and the random algo's
     # completion logic) to light or warm outfits. "auto" asks the forecast for
     # `weather_day` (default today) and resolves to hot or cold; with no
@@ -110,12 +107,6 @@ class AlgoRequest(BaseModel):
     # Explicit category list — picks one cloth per requested category from the
     # pool (e.g. ["tshirt","jeans","sneakers"]). Overrides weather.
     categories: List[str] = []
-    view: str = "front"
-    prompt: str = ""
-    tier: str = "flex"
-    describe_clothes: bool = False
-    image_mode: str = "collage"  # 'collage' | 'separate'
-    render_cloth_ids: List[int] = []
     # Clothes the user picked that must stay in the outfit; the algorithm fills
     # the remaining roles around them.
     locked_cloth_ids: List[int] = []
@@ -124,10 +115,8 @@ class AlgoRequest(BaseModel):
     fill_gaps: bool = False
 
 
-def _image_file_path(row) -> str:
-    if row["bg_accepted"] == "rejected":
-        return row["original_path"]
-    return row["cutout_path"] or row["original_path"]
+# Same rule for cloth and model image rows.
+_image_file_path = display_path
 
 
 _ROLE_LABELS = {
@@ -165,15 +154,7 @@ def _cloth_items(conn, cloth_ids: List[int], view: str = "front") -> List[dict]:
     ).fetchall():
         preferred[im["cloth_id"]] = im  # last write wins == first in ASC order
 
-    fallback: dict = {}
-    for im in conn.execute(
-        "SELECT cloth_id, original_path, cutout_path, bg_accepted, role "
-        f"FROM cloth_images WHERE cloth_id IN ({ph}) "
-        "ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END DESC, "
-        "sort_order DESC, id DESC",
-        list(cloth_ids),
-    ).fetchall():
-        fallback[im["cloth_id"]] = im
+    fallback = front_images(conn, cloth_ids)
 
     categories = {
         c["id"]: c["category"]
@@ -1886,12 +1867,7 @@ def _preview_selection(conn, picked: List[dict]) -> List[dict]:
     """Attach a thumbnail URL + label to each picked cloth for the preview UI."""
     out = []
     for c in picked:
-        img = conn.execute(
-            "SELECT original_path, cutout_path, bg_accepted FROM cloth_images "
-            "WHERE cloth_id = ? "
-            "ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END, sort_order, id LIMIT 1",
-            (c["id"],),
-        ).fetchone()
+        img = front_image(conn, c["id"])
         url = public_url_for(_image_file_path(img)) if img else ""
         out.append({
             "id": c["id"], "name": c["name"], "brand": c.get("brand", ""),
@@ -1963,115 +1939,6 @@ def preview_algo(req: AlgoRequest, user=Depends(get_current_user)):
         "weather": resolved_weather,
         "selections": out,
     }
-
-
-@router.post("/generate-from-algo")
-def generate_from_algo(req: AlgoRequest, background: BackgroundTasks,
-                       user=Depends(generation_guard)):
-    """Pick clothes with a generator algorithm, then generate the outfit image.
-    The algorithm guarantees no two of the same clothing category, and (when a
-    min_score is set) only uses clothes the user rated at or above that score.
-    Generation runs in the background (status 'processing' → poll)."""
-    if req.algo not in ALGOS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown algo '{req.algo}'")
-    if req.algo == "pick-by-color" and not req.color.strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "pick-by-color needs a color")
-    if req.algo == "pick-by-brand" and not req.brand.strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "pick-by-brand needs a brand")
-    if req.algo == "pick-by-tag" and not req.tag.strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "pick-by-tag needs a tag")
-
-    from generator import GenerateRequest as GenReq
-    with get_conn() as conn:
-        resolved_weather = _resolve_weather(
-            conn, user["id"], req.weather, req.weather_day)
-    picked = algo_select(GenReq(
-        algo=req.algo, min_score=req.min_score, color=req.color,
-        brand=req.brand, tag=req.tag, user_id=user["id"],
-        weather=resolved_weather,
-        categories=req.categories, locked_cloth_ids=req.locked_cloth_ids,
-        fill_gaps=req.fill_gaps,
-    ))
-    if len(picked) < 1:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            algo_why_empty(GenReq(
-                algo=req.algo, color=req.color, brand=req.brand,
-                tag=req.tag, user_id=user["id"])),
-        )
-    cloth_ids = [c["id"] for c in picked]
-
-    with get_conn() as conn:
-        model_id = req.model_id
-        if req.random_model:
-            model_id = _pick_random_model(conn, user["id"], req.random_model_gender)
-        elif model_id is not None:
-            owned = conn.execute(
-                "SELECT 1 FROM models WHERE id = ? AND user_id = ?",
-                (model_id, user["id"]),
-            ).fetchone()
-            if not owned:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
-        image_mode = _norm_image_mode(getattr(req, "image_mode", "collage"))
-        render_ids = _render_ids(cloth_ids, getattr(req, "render_cloth_ids", []) or [])
-        image_paths: List[str] = []
-        person_path: Optional[str] = None
-        model_used = False
-        if model_id is not None:
-            mp = _model_path(conn, model_id, user["id"], req.view)
-            if mp:
-                image_paths.append(mp)
-                model_used = True
-                person_path = mp
-        garment_paths, _sep = _garment_image_paths(
-            conn, render_ids, req.view, image_mode,
-            person_reserved=person_path is not None)
-        image_paths += garment_paths
-        _algo_is_back = req.view == "back" and model_used
-        _algo_random_person = not model_used and req.random_model
-        prompt = _compose_prompt(
-            conn, render_ids,
-            user_prompt=(req.prompt or "").strip(),
-            has_model=model_used,
-            is_back=_algo_is_back,
-            random_person=_algo_random_person,
-            describe=req.describe_clothes,
-            image_mode=image_mode,
-        )
-        vto_garment, vto_prompt = _vto_inputs(
-            conn, render_ids, req.view, image_mode, model_used,
-            lambda: _compose_prompt(
-                conn, render_ids, user_prompt=(req.prompt or "").strip(),
-                has_model=model_used, is_back=_algo_is_back,
-                random_person=_algo_random_person, describe=req.describe_clothes,
-                image_mode="collage"))
-        prompt, image_paths = _append_extra_refs(conn, render_ids, prompt, image_paths)
-        view = req.view if model_id is not None else "front"
-        start_tier = _fresh_start_tier(req.tier, person_path)
-        cur = conn.execute(
-            "INSERT INTO outfits (user_id, model_id, cloth_ids, prompt, model_tier, "
-            "view, status, describe_clothes, image_mode, render_cloth_ids) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'processing', ?, ?, ?)",
-            (user["id"], model_id, json.dumps(cloth_ids), prompt, start_tier, view,
-             1 if req.describe_clothes else 0, image_mode, json.dumps(render_ids)),
-        )
-        outfit_id = cur.lastrowid
-        conn.execute(
-            "UPDATE users SET outfits_generated = outfits_generated + 1 WHERE id = ?",
-            (user["id"],))
-
-    background.add_task(_run_generation, outfit_id, prompt, image_paths, start_tier,
-                        person_path, vto_garment, vto_prompt)
-    audit_record(user, "outfit.generate",
-                 f"#{outfit_id} algo={req.algo} tier={start_tier} "
-                 f"clothes={len(cloth_ids)}")
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM outfits WHERE id = ?", (outfit_id,)).fetchone()
-        out = _hydrate(conn, row)
-    out["algo"] = req.algo
-    out["algo_label"] = algo_explain(picked, req.algo)
-    out["picked_names"] = [c["name"] for c in picked]
-    return out
 
 
 @router.post("/{outfit_id}/report")

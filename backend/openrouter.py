@@ -66,18 +66,36 @@ def build_body(model_id: str, prompt: str, image_data_uris: List[str],
 
 
 def parse_reply(reply: dict) -> Tuple[bytes, Optional[float]]:
-    """(image bytes, cost in USD or None) from an Images API reply."""
+    """(image bytes, cost in USD or None) from an Images API reply.
+
+    Every failure — a malformed reply, bad base64, a download that breaks —
+    surfaces as OpenRouterError so callers have exactly one thing to catch."""
+    if not isinstance(reply, dict):
+        raise OpenRouterError(f"reply is not a JSON object: {reply!r}"[:400])
     data = reply.get("data") or []
     if not data:
         err = reply.get("error")
         raise OpenRouterError(f"no image in reply: {err or reply}"[:400])
-    first = data[0]
+    first = data[0] if isinstance(data, list) else None
+    if not isinstance(first, dict):
+        raise OpenRouterError(f"malformed image entry: {data!r}"[:400])
     b64 = first.get("b64_json")
     if b64:
-        raw = base64.b64decode(b64)
+        try:
+            raw = base64.b64decode(b64)
+        except (ValueError, TypeError) as e:  # binascii.Error is a ValueError
+            raise OpenRouterError(f"reply image is not valid base64: {e}") from e
     elif first.get("url"):
-        with urllib.request.urlopen(first["url"], timeout=OPENROUTER_TIMEOUT_S) as r:
-            raw = r.read()
+        try:
+            with urllib.request.urlopen(first["url"],
+                                        timeout=OPENROUTER_TIMEOUT_S) as r:
+                raw = r.read()
+        except urllib.error.HTTPError as e:
+            raise OpenRouterError(f"image download: HTTP {e.code}") from e
+        except urllib.error.URLError as e:
+            raise OpenRouterError(f"image download: {e.reason}") from e
+        except (OSError, ValueError) as e:  # timeouts, resets, bad URL
+            raise OpenRouterError(f"image download: {e}") from e
     else:
         raise OpenRouterError("reply image has neither b64_json nor url")
     cost = (reply.get("usage") or {}).get("cost")
@@ -110,5 +128,9 @@ def generate(prompt: str, image_data_uris: List[str], *, width: int,
         raise OpenRouterError(f"{mid}: HTTP {e.code} {detail}") from e
     except urllib.error.URLError as e:
         raise OpenRouterError(f"{mid}: {e.reason}") from e
+    except (OSError, ValueError) as e:
+        # OSError: a timeout or reset while reading the body (not a URLError).
+        # ValueError: the body is not JSON (JSONDecodeError, UnicodeDecodeError).
+        raise OpenRouterError(f"{mid}: unreadable reply: {e}") from e
     raw, cost = parse_reply(reply)
     return raw, mid, cost

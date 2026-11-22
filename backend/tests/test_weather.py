@@ -352,12 +352,3 @@ def test_auto_can_target_another_day(client, auth, monkeypatch):
     r = _preview(client, auth, weather="auto", weather_day=thursday)
     assert r.status_code == 200, r.text
     assert seen and seen[-1][2] == thursday
-
-
-def test_generate_from_algo_also_understands_auto(client, auth, monkeypatch):
-    _stub(monkeypatch, 30.0)
-    _set_location(client, auth)
-    _wardrobe(client, auth)
-    r = client.post("/outfits/generate-from-algo", headers=auth,
-                    json={"algo": "random", "weather": "auto"})
-    assert r.status_code == 200, r.text

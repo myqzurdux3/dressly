@@ -60,6 +60,7 @@ def price(model: str, usage: dict) -> float:
             + usage.get("cache_write", 0) * p[1]
             + usage.get("cache_read", 0) * p[2]
             + usage.get("output_tokens", 0) * p[3]) / 1_000_000
+from db import display_path, front_image
 from generator import layer_sorted, role_of, slots_of
 
 log = logging.getLogger(__name__)
@@ -460,16 +461,8 @@ def _wardrobe(conn, user_id: int, category: str = "", *, text: str = "",
 
 
 def _photo_path(conn, user_id: int, cloth_id: int) -> Optional[str]:
-    im = conn.execute(
-        "SELECT i.cutout_path, i.original_path, i.bg_accepted "
-        "FROM cloth_images i JOIN clothes c ON c.id = i.cloth_id "
-        "WHERE i.cloth_id = ? AND c.user_id = ? "
-        "ORDER BY CASE i.role WHEN 'front' THEN 0 ELSE 1 END, "
-        "i.sort_order, i.id LIMIT 1", (cloth_id, user_id)).fetchone()
-    if not im:
-        return None
-    return (im["original_path"] if im["bg_accepted"] == "rejected"
-            else (im["cutout_path"] or im["original_path"]))
+    im = front_image(conn, cloth_id, user_id)
+    return display_path(im) if im else None
 
 
 def _view(conn, user_id: int, ids: List[int]) -> list:

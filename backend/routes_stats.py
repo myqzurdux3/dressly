@@ -3,7 +3,7 @@ the most-worn outfit, and the most-worn clothes."""
 from fastapi import APIRouter, Depends
 
 from auth import get_current_user
-from db import get_conn
+from db import display_path, front_images, get_conn
 from images import public_url_for
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -19,21 +19,8 @@ def _cloth_thumbs(conn, cloth_ids) -> dict:
     ids = [int(c) for c in cloth_ids]
     if not ids:
         return {}
-    ph = ",".join("?" * len(ids))
-    out = {}
-    for img in conn.execute(
-        f"SELECT cloth_id, cutout_path, original_path, bg_accepted "
-        f"FROM cloth_images WHERE cloth_id IN ({ph}) "
-        f"ORDER BY CASE role WHEN 'front' THEN 0 ELSE 1 END DESC, "
-        f"sort_order DESC, id DESC",
-        ids,
-    ).fetchall():
-        # Ordered so the front photo is written last and wins, which reproduces
-        # the per-cloth "ORDER BY ... LIMIT 1" exactly.
-        path = (img["original_path"] if img["bg_accepted"] == "rejected"
-                else (img["cutout_path"] or img["original_path"]))
-        out[img["cloth_id"]] = public_url_for(path)
-    return out
+    return {cid: public_url_for(display_path(img))
+            for cid, img in front_images(conn, ids).items()}
 
 
 @router.get("/me")

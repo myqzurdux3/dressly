@@ -14,7 +14,7 @@ from audit import record as audit_record
 from auth import get_current_user
 from bfl import _tile
 from config import OUTFITS_DIR
-from db import get_conn
+from db import display_path, front_images, get_conn
 from ratelimit import generation_guard
 from routes_plan import _cloth_cards
 
@@ -230,19 +230,8 @@ def _run_turn(user: dict, thread_id: int, user_msg: int, text: str,
 
 def _cutout_paths(conn, user_id: int, ids: List[int]) -> List[str]:
     """Each garment's picture as the wardrobe shows it, in wearing order."""
-    paths = []
-    for cid in ids:
-        im = conn.execute(
-            "SELECT i.cutout_path, i.original_path, i.bg_accepted "
-            "FROM cloth_images i JOIN clothes c ON c.id = i.cloth_id "
-            "WHERE i.cloth_id = ? AND c.user_id = ? "
-            "ORDER BY CASE i.role WHEN 'front' THEN 0 ELSE 1 END, "
-            "i.sort_order, i.id LIMIT 1", (cid, user_id)).fetchone()
-        if not im:
-            continue
-        paths.append(im["original_path"] if im["bg_accepted"] == "rejected"
-                     else (im["cutout_path"] or im["original_path"]))
-    return paths
+    images = front_images(conn, ids, user_id)
+    return [display_path(images[int(c)]) for c in ids if int(c) in images]
 
 
 def make_flat_outfit(user: dict, ids: List[int]) -> int:

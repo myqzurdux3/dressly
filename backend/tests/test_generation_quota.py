@@ -1,8 +1,8 @@
 """Every paid render path must go through the per-user generation quota.
 
-/outfits/generate-from-algo used to depend on get_current_user instead of
-generation_guard, so an authenticated client could loop it without limit —
-each call a billed BFL render.
+A render route that depends on get_current_user instead of generation_guard
+lets an authenticated client loop it without limit — each call a billed BFL
+render. (That happened once, on the since-removed /outfits/generate-from-algo.)
 """
 
 import config
@@ -15,21 +15,7 @@ def _clothes(client, auth):
     return [top["id"], bottom["id"]]
 
 
-def test_generate_from_algo_is_quota_limited(client, auth, monkeypatch):
-    _clothes(client, auth)
-    monkeypatch.setattr(config, "GENERATION_RATE_LIMIT", 2)
-
-    codes = [
-        client.post("/outfits/generate-from-algo", headers=auth,
-                    json={"algo": "random"}).status_code
-        for _ in range(4)
-    ]
-    assert codes[:2] == [200, 200], codes
-    assert 429 in codes[2:], f"unbounded paid renders: {codes}"
-
-
 def test_generate_is_quota_limited(client, auth, monkeypatch):
-    # The already-guarded path, kept next to it so the two cannot drift apart.
     ids = _clothes(client, auth)
     monkeypatch.setattr(config, "GENERATION_RATE_LIMIT", 1)
 
@@ -50,7 +36,7 @@ def test_every_paid_render_route_uses_the_guard():
 
     src = inspect.getsource(routes_outfits)
     paid = [
-        "generate_outfit", "generate_from_algo", "regenerate",
+        "generate_outfit", "regenerate",
         "replace_clothes", "replace_model", "generate_back",
     ]
     for name in paid:

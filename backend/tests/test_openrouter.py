@@ -66,3 +66,51 @@ def test_enhance_errors_never_show_server_paths():
     msg = _short_reason(RuntimeError(
         "flex: HTTP 422 at /home/dressly/backend/data/a.jpg | pro: x"))
     assert "/home" not in msg and msg.startswith("flex: HTTP 422")
+
+
+def _expect_openrouter_error(fn, *args, **kwargs):
+    import pytest
+    with pytest.raises(openrouter.OpenRouterError):
+        fn(*args, **kwargs)
+
+
+def test_reply_failures_are_openrouter_errors(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    _expect_openrouter_error(openrouter.parse_reply, ["not", "a", "dict"])
+    _expect_openrouter_error(openrouter.parse_reply, {"data": ["nope"]})
+    _expect_openrouter_error(openrouter.parse_reply, {"data": [{"b64_json": "abc"}]})
+
+    def unreachable(*a, **k):
+        raise urllib.error.URLError("no route")
+    monkeypatch.setattr(urllib.request, "urlopen", unreachable)
+    _expect_openrouter_error(openrouter.parse_reply, {"data": [{"url": "http://x/i"}]})
+
+    def times_out(*a, **k):
+        raise TimeoutError("read timed out")
+    monkeypatch.setattr(urllib.request, "urlopen", times_out)
+    _expect_openrouter_error(openrouter.parse_reply, {"data": [{"url": "http://x/i"}]})
+
+
+def test_generate_wraps_unreadable_replies(monkeypatch):
+    import io
+    import urllib.request
+
+    monkeypatch.setattr(openrouter, "OPENROUTER_API_KEY", "k")
+
+    class _Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **k: _Resp(b"<html>bad gateway</html>"))
+    _expect_openrouter_error(openrouter.generate, "p", [], width=10, height=10)
+
+    def times_out(*a, **k):
+        raise TimeoutError("read timed out")
+    monkeypatch.setattr(urllib.request, "urlopen", times_out)
+    _expect_openrouter_error(openrouter.generate, "p", [], width=10, height=10)

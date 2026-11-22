@@ -14,14 +14,14 @@ sharper.
 
 Safe by default: reports and changes nothing until given --apply.
 
-    python scripts/reencode_from_backup.py --backup ../../clothes-app-backup-...
-    python scripts/reencode_from_backup.py --backup ... --apply
+    python scripts/archive/reencode_from_backup.py --backup ../../clothes-app-backup-...
+    python scripts/archive/reencode_from_backup.py --backup ... --apply
 """
 import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from PIL import Image  # noqa: E402
 

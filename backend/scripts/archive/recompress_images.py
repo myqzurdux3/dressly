@@ -10,14 +10,14 @@ Safe by default: prints what it would do and changes nothing. Pass --apply to
 actually rewrite. Background removal is NOT re-run — existing cut-outs are only
 re-encoded, so the visual result is unchanged.
 
-    python scripts/recompress_images.py             # report only
-    python scripts/recompress_images.py --apply     # rewrite
+    python scripts/archive/recompress_images.py             # report only
+    python scripts/archive/recompress_images.py --apply     # rewrite
 """
 import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from PIL import Image  # noqa: E402
 

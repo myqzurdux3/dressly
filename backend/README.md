@@ -215,10 +215,12 @@ which take one. Each photo is capped at 64 MB, 30 per request, 256 MB in total.
   `images.gc_orphan_blobs()` reclaims unreferenced blobs.
 - `/thumb/{root}/{width}/{path}` serves cached, resized copies for the grids.
   `backend/data/thumbs/` is a derived cache and safe to delete at any time.
-- `scripts/recompress_images.py` re-encodes images predating the above, and
-  `scripts/reencode_from_backup.py` rebuilds them from an untouched backup when
-  the settings change (re-encoding an already-lossy file cannot recover detail).
-  Both are dry runs unless given `--apply`.
+- `scripts/archive/` holds one-off migrations that have already run on the
+  production library, kept for reference: `recompress_images.py` re-encoded
+  images predating the above, and `reencode_from_backup.py` rebuilt them from an
+  untouched backup (re-encoding an already-lossy file cannot recover detail).
+  Both are dry runs unless given `--apply`; reach for the second again only if
+  the encoding settings change and the pristine backup is still at hand.
 
 ## Storage layout
 
