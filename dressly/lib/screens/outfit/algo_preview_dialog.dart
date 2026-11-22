@@ -108,10 +108,7 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                           style: ds.typo.headline,
                         ),
                         Text(
-                          tr(
-                            context,
-                            'algo.proposed',
-                          ).replaceFirst('{n}', '$n').toUpperCase(),
+                          trPlural(context, 'algo.proposed', n).toUpperCase(),
                           style: ds.typo.monoSmall.copyWith(color: c.textMuted),
                         ),
                       ],

@@ -290,6 +290,9 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
                           semanticLabel: tr(context, 'common.delete'),
                           onPressed: _delete,
                         ),
+                        // Mirrors the back button's own inset: 12 px from
+                        // the edge on both sides.
+                        SizedBox(width: ds.space.xs),
                       ],
                     ),
                   ),

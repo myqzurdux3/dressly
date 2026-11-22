@@ -28,6 +28,9 @@ class DsTabBar extends StatelessWidget {
   final int index;
   final ValueChanged<int> onTap;
 
+  /// Icon size inside a tab.
+  static const double _icon = 22;
+
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
@@ -35,30 +38,74 @@ class DsTabBar extends StatelessWidget {
     // icons off the pill.
     return MediaQuery.withClampedTextScaling(
       maxScaleFactor: 1.3,
-      child: Container(
-        height: height,
-        padding: EdgeInsets.all(ds.space.xs + 2),
-        decoration: BoxDecoration(
-          color: ds.colors.surface,
-          borderRadius: ds.shape.pillRadius,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (i, item) in items.indexed)
-              _Tab(item: item, active: i == index, onTap: () => onTap(i)),
-          ],
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Every active pill gets the width of the widest label, so the bar
+          // keeps one width whatever the selection and the icons never jump.
+          final scaler = MediaQuery.textScalerOf(context);
+          // Measured as the Text widget will paint it: on top of the
+          // inherited default style.
+          final style = DefaultTextStyle.of(context).style.merge(ds.typo.label);
+          var widest = 0.0;
+          for (final item in items) {
+            final tp = TextPainter(
+              text: TextSpan(text: item.label, style: style),
+              textDirection: Directionality.of(context),
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            if (tp.width > widest) widest = tp.width;
+            tp.dispose();
+          }
+          final pad = ds.space.m * 2;
+          final idle = (_icon + pad).clamp(48.0, double.infinity);
+          final inset = (ds.space.xs + 2) * 2;
+          // On a narrow screen at a large text size the widest label may not
+          // fit: the active pill then takes what is left and the label
+          // ellipsizes, rather than the bar overflowing.
+          final room = constraints.maxWidth - inset - idle * (items.length - 1);
+          final activeWidth = (_icon + ds.space.s + widest + pad)
+              .ceilToDouble()
+              .clamp(idle, room < idle ? idle : room);
+          return Container(
+            height: height,
+            padding: EdgeInsets.all(inset / 2),
+            decoration: BoxDecoration(
+              color: ds.colors.surface,
+              borderRadius: ds.shape.pillRadius,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (i, item) in items.indexed)
+                  _Tab(
+                    item: item,
+                    active: i == index,
+                    width: i == index ? activeWidth : idle,
+                    onTap: () => onTap(i),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 }
 
 class _Tab extends StatelessWidget {
-  const _Tab({required this.item, required this.active, required this.onTap});
+  const _Tab({
+    required this.item,
+    required this.active,
+    required this.width,
+    required this.onTap,
+  });
 
   final DsTabItem item;
   final bool active;
+
+  /// Fixed width: the widest label's for the active tab, the icon's otherwise.
+  final double width;
   final VoidCallback onTap;
 
   @override
@@ -77,7 +124,7 @@ class _Tab extends StatelessWidget {
         child: AnimatedContainer(
           duration: ds.motion.base,
           curve: ds.motion.standard,
-          constraints: const BoxConstraints(minWidth: 48),
+          width: width,
           height: double.infinity,
           alignment: Alignment.center,
           padding: EdgeInsets.symmetric(horizontal: ds.space.m),
@@ -85,23 +132,27 @@ class _Tab extends StatelessWidget {
             color: active ? c.accent : c.surface.withValues(alpha: 0),
             borderRadius: ds.shape.pillRadius,
           ),
-          child: AnimatedSize(
-            duration: ds.motion.base,
-            curve: ds.motion.standard,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(item.icon, size: 22, color: ink),
-                if (active) ...[
-                  SizedBox(width: ds.space.s),
-                  Text(
-                    item.label,
-                    maxLines: 1,
-                    style: ds.typo.label.copyWith(color: ink),
+          clipBehavior: Clip.hardEdge,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(item.icon, size: DsTabBar._icon, color: ink),
+              // The gap lives inside the Flexible: while the pill is still
+              // growing it may have no room, and a fixed gap would overflow.
+              if (active)
+                Flexible(
+                  child: Padding(
+                    padding: EdgeInsetsDirectional.only(start: ds.space.s),
+                    child: Text(
+                      item.label,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: ds.typo.label.copyWith(color: ink),
+                    ),
                   ),
-                ],
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),

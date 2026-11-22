@@ -4,7 +4,8 @@
 //   DISPLAY=:99 DRESSLY_WINDOW_SIZE=412x915 flutter test \
 //     integration_test/screens_test.dart -d linux \
 //     --dart-define=PERF_EMAIL=... --dart-define=PERF_PASSWORD=... \
-//     --dart-define=SHOT_DIR=/abs/path
+//     --dart-define=SHOT_DIR=/abs/path \
+//     [--dart-define=API_BASE_URL=http://127.0.0.1:8000] [--dart-define=LANG=en]
 //
 // Screenshots are taken with ImageMagick `import` on the X display, so they
 // show exactly what was rendered. Credentials only come from the command line.
@@ -21,10 +22,13 @@ import 'package:flutter/material.dart';
 import 'package:dressly/widgets/model_chip.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _email = String.fromEnvironment('PERF_EMAIL');
 const _password = String.fromEnvironment('PERF_PASSWORD');
 const _shotDir = String.fromEnvironment('SHOT_DIR', defaultValue: '/tmp');
+// The app's main language; pass LANG=en for the English strings.
+const _lang = String.fromEnvironment('LANG', defaultValue: 'fr');
 
 /// Pumps frames for [d] without waiting for animations to stop (spinners
 /// never settle).
@@ -55,14 +59,14 @@ void main() {
     if (_email.isEmpty || _password.isEmpty) {
       fail('Pass --dart-define=PERF_EMAIL=... --dart-define=PERF_PASSWORD=...');
     }
-    // The sign-in page, on its own (the tour signs in through the API).
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
-        home: const LoginScreen(),
-      ),
-    );
+    // Signed out, in the tour's language: the real app shows its own sign-in
+    // page with the user's theme. The tour then signs in through the API.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('app_language', _lang);
+    await const AuthService().clearToken();
+    await tester.pumpWidget(await bootstrap());
     await _settle(tester);
+    expect(find.byType(LoginScreen), findsOneWidget);
     await _shot(tester, '00_login');
     await const AuthService().login(_email, _password);
     await tester.pumpWidget(await bootstrap());

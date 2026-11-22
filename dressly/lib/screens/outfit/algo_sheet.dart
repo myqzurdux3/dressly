@@ -179,7 +179,7 @@ class AlgoSheetState extends State<AlgoSheet> {
               tr(context, 'algo.autoResult', {
                 'place': f.place,
                 'temp': f.shortTemp,
-                'mode': label,
+                'mode': label.toLowerCase(),
               }),
               style: muted,
             ),

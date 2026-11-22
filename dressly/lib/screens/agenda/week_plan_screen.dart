@@ -427,7 +427,7 @@ class _DayCard extends StatelessWidget {
     if (parsed == null) return day.day;
     // The platform's own formatter: localised weekday and month names for free,
     // instead of an English list hard-coded in the app.
-    final label = MaterialLocalizations.of(context).formatMediumDate(parsed);
+    final loc = MaterialLocalizations.of(context);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final diff = DateTime(
@@ -435,9 +435,16 @@ class _DayCard extends StatelessWidget {
       parsed.month,
       parsed.day,
     ).difference(today).inDays;
-    if (diff == 0) return '${tr(context, 'plan.today')} · $label';
-    if (diff == 1) return '${tr(context, 'plan.tomorrow')} · $label';
-    return label;
+    // Today and tomorrow already name the day: the short date ("Nov 22")
+    // keeps the line on one row.
+    if (diff == 0) {
+      return '${tr(context, 'plan.today')} · ${loc.formatShortMonthDay(parsed)}';
+    }
+    if (diff == 1) {
+      return '${tr(context, 'plan.tomorrow')} · '
+          '${loc.formatShortMonthDay(parsed)}';
+    }
+    return loc.formatMediumDate(parsed);
   }
 
   @override
@@ -469,6 +476,8 @@ class _DayCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   _dayLabel(context).toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: ds.typo.headline,
                 ),
               ),
@@ -531,6 +540,9 @@ class _DayCard extends StatelessWidget {
                   Expanded(
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
+                      // The card's right padding is tight for the icon
+                      // buttons; the last thumbnail still gets a margin.
+                      padding: EdgeInsets.only(right: ds.space.s),
                       itemCount: day.cloths.length,
                       separatorBuilder: (_, _) => SizedBox(width: ds.space.xs),
                       itemBuilder: (_, i) => _clothTile(
@@ -591,36 +603,28 @@ class _DayCard extends StatelessWidget {
   }) {
     final ds = context.ds;
     final c = ds.colors;
-    return SizedBox(
-      width: 72,
-      child: Column(
-        children: [
-          Expanded(
-            child: Container(
-              width: 72,
-              padding: EdgeInsets.all(ds.space.xs / 2),
-              decoration: BoxDecoration(
-                color: c.surfaceHigh,
-                borderRadius: ds.shape.smallRadius,
-                // Worn again from the day before: outlined, so a held jogging
-                // reads at a glance.
-                border: carried
-                    ? Border.all(color: c.accent.withValues(alpha: 0.6))
-                    : null,
-              ),
-              child: cloth.thumbUrl.isEmpty
-                  ? Icon(Icons.checkroom, color: c.textMuted)
-                  : AppImage.path(cloth.thumbUrl, fit: BoxFit.contain),
-            ),
+    // The picture says what it is; the name stays for screen readers (a
+    // 10 px caption truncated after a few letters helped nobody).
+    return Semantics(
+      label: cloth.name,
+      image: true,
+      child: SizedBox(
+        width: 72,
+        child: Container(
+          padding: EdgeInsets.all(ds.space.xs / 2),
+          decoration: BoxDecoration(
+            color: c.surfaceHigh,
+            borderRadius: ds.shape.smallRadius,
+            // Worn again from the day before: outlined, so a held jogging
+            // reads at a glance.
+            border: carried
+                ? Border.all(color: c.accent.withValues(alpha: 0.6))
+                : null,
           ),
-          SizedBox(height: ds.space.xs / 2),
-          Text(
-            cloth.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: ds.typo.mono.copyWith(color: c.textMuted, fontSize: 10),
-          ),
-        ],
+          child: cloth.thumbUrl.isEmpty
+              ? Icon(Icons.checkroom, color: c.textMuted)
+              : AppImage.path(cloth.thumbUrl, fit: BoxFit.contain),
+        ),
       ),
     );
   }

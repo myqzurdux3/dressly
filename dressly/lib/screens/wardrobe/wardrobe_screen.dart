@@ -232,8 +232,16 @@ class _WardrobeScreenState extends ConsumerState<WardrobeScreen> {
               slivers: [
                 SliverToBoxAdapter(child: _header(context, list, filter)),
                 ..._body(context, list, filter),
-                // Room for the floating "add" button over the last row.
-                SliverToBoxAdapter(child: SizedBox(height: ds.space.xxl * 2)),
+                // Room for the floating "add" button over the last row: the
+                // button, its margin from the edge, then a gap.
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height:
+                        DsButton.height +
+                        kFloatingActionButtonMargin +
+                        ds.space.m,
+                  ),
+                ),
               ],
             ),
           ),

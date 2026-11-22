@@ -348,9 +348,9 @@ class _EnhanceSection extends StatelessWidget {
           if (image.enhancePendingMethod == 'ai' && next != null) ...[
             gap,
             DsButton(
-              label:
-                  '${tr(context, 'detail.tryBetterModel')} '
-                  '(${enhanceTierLabel(next)})',
+              label: tr(context, 'detail.tryBetterModel', {
+                'tier': enhanceTierLabel(next),
+              }),
               icon: Icons.upgrade,
               kind: DsButtonKind.secondary,
               expand: true,

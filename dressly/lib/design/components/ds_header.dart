@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../ds.dart';
 
 /// Screen title: two giant condensed lines, the second in the accent, with
-/// mono metadata stacked on the right ("87 PIÈCES / +3 CE MOIS").
+/// mono metadata stacked on the right ("87 PIÈCES / +3 CE MOIS"). An empty
+/// [line1] leaves a single accent line, for one-word titles ("PROFIL").
 class DsHeader extends StatelessWidget {
   const DsHeader({
     super.key,
@@ -44,12 +45,12 @@ class DsHeader extends StatelessWidget {
           Expanded(
             child: Semantics(
               header: true,
-              label: '$line1 $line2',
+              label: line1.isEmpty ? line2 : '$line1 $line2',
               excludeSemantics: true,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  line(line1, ds.colors.text),
+                  if (line1.isNotEmpty) line(line1, ds.colors.text),
                   line(line2, ds.colors.accentText),
                 ],
               ),

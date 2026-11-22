@@ -288,11 +288,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          trOr(
-            context,
-            'builder.movedToAi',
-            'Clothes loaded in AI mode — pick a model and generate',
-          ),
+          tr(context, 'builder.movedToAi'),
         ),
       ),
     );
@@ -500,8 +496,8 @@ class _OutfitScreenState extends State<OutfitScreen> {
                   // AI render vs the manual (non-AI) builder.
                   DsSegment<String>(
                     options: [
-                      ('ai', trOr(context, 'builder.ai', 'AI')),
-                      ('manual', trOr(context, 'builder.manual', 'Manual')),
+                      ('ai', tr(context, 'builder.ai')),
+                      ('manual', tr(context, 'builder.manual')),
                     ],
                     value: _mode,
                     onChanged: (v) => setState(() => _mode = v),
@@ -526,16 +522,11 @@ class _OutfitScreenState extends State<OutfitScreen> {
   /// Saved manual outfits land in the shared history below.
   List<Widget> _manualSection(BuildContext context) => [
     DsSectionTitle(
-      trOr(context, 'builder.title', 'Manual builder'),
-      hint: trOr(
-        context,
-        'builder.intro',
-        'Arrange your clothes on a background you choose. No AI — you '
-            'place, move and resize each item yourself.',
-      ),
+      tr(context, 'builder.title'),
+      hint: tr(context, 'builder.intro'),
     ),
     DsButton(
-      label: trOr(context, 'builder.new', 'New manual outfit'),
+      label: tr(context, 'builder.new'),
       icon: Icons.brush,
       expand: true,
       onPressed: () => _openBuilder(),
@@ -849,7 +840,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
                 child: _history.isLoading
                     ? CircularProgressIndicator(color: ds.colors.accent)
                     : DsButton(
-                        label: trOr(context, 'create.historyMore', 'Show more'),
+                        label: tr(context, 'create.historyMore'),
                         icon: Icons.expand_more,
                         kind: DsButtonKind.secondary,
                         onPressed: _history.loadMore,

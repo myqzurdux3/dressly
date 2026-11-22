@@ -120,10 +120,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-            DsHeader(
-              line1: tr(context, 'settings.title1'),
-              line2: tr(context, 'settings.title2'),
-            ),
+            DsHeader(line1: '', line2: tr(context, 'settings.title')),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),
               child: Column(

@@ -245,9 +245,9 @@ void main() {
       for (final n in [0, 1, 2]) {
         await _plural(tester, 'fr', 'wardrobe.item', n, (s) => seen[n] = s);
       }
-      expect(seen[0], 'article', reason: 'French uses the singular for 0');
-      expect(seen[1], 'article');
-      expect(seen[2], 'articles');
+      expect(seen[0], 'pièce', reason: 'French uses the singular for 0');
+      expect(seen[1], 'pièce');
+      expect(seen[2], 'pièces');
     });
 
     testWidgets('count is available as a placeholder', (tester) async {

@@ -98,7 +98,7 @@ class OutfitHistoryCard extends StatelessWidget {
                 right: 0,
                 child: Center(
                   child: DsBadge(
-                    text: trOr(context, 'builder.manual', 'Manual'),
+                    text: tr(context, 'builder.manual'),
                   ),
                 ),
               ),

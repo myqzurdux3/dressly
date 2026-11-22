@@ -375,7 +375,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       );
       if (!mounted) return;
       if (preview.selections.isEmpty || preview.selections.first.isEmpty) {
-        _toast(trOr(context, 'builder.algoEmpty', 'No matching outfit'));
+        _toast(tr(context, 'builder.algoEmpty'));
         return;
       }
       // An algorithm proposes a COMPLETE outfit, so replace whatever is on the
@@ -406,7 +406,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
 
   Future<void> _save({bool thenAi = false}) async {
     if (_items.isEmpty) {
-      _toast(trOr(context, 'builder.empty', 'Add at least one item'));
+      _toast(tr(context, 'builder.empty'));
       return;
     }
     final svc = outfitsServiceOf(context); // resolve before any async gap
@@ -463,7 +463,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   /// model (the mirror of "open an AI outfit in the manual builder").
   void _toAi() {
     if (_items.isEmpty) {
-      _toast(trOr(context, 'builder.empty', 'Add at least one item'));
+      _toast(tr(context, 'builder.empty'));
       return;
     }
     // An existing outfit keeps one row: save the montage, then its AI
@@ -512,16 +512,8 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
                   Expanded(
                     child: Text(
                       (editing
-                              ? trOr(
-                                  context,
-                                  'builder.editTitle',
-                                  'Edit manual outfit',
-                                )
-                              : trOr(
-                                  context,
-                                  'builder.title',
-                                  'Manual builder',
-                                ))
+                              ? tr(context, 'builder.editTitle')
+                              : tr(context, 'builder.title'))
                           .toUpperCase(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -530,11 +522,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
                   ),
                   DsButton.icon(
                     icon: Icons.auto_awesome,
-                    semanticLabel: trOr(
-                      context,
-                      'builder.toAi',
-                      'Generate with AI',
-                    ),
+                    semanticLabel: tr(context, 'builder.toAi'),
                     onPressed: _saving ? null : _toAi,
                   ),
                   SizedBox(width: ds.space.xs),
@@ -576,11 +564,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           DsButton(
-                            label: trOr(
-                              context,
-                              'builder.toFront',
-                              'Bring to front',
-                            ),
+                            label: tr(context, 'builder.toFront'),
                             icon: Icons.flip_to_front,
                             kind: DsButtonKind.secondary,
                             onPressed: _bringSelectedToFront,
@@ -618,6 +602,28 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
               clipBehavior: Clip.hardEdge,
               children: [
                 const Positioned.fill(child: SizedBox()),
+                // An empty canvas says what to do next. On a pill of its own
+                // so it reads on any background colour.
+                if (_items.isEmpty)
+                  Center(
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: context.ds.space.m,
+                        vertical: context.ds.space.s,
+                      ),
+                      decoration: BoxDecoration(
+                        color: context.ds.colors.surface,
+                        borderRadius: context.ds.shape.pillRadius,
+                      ),
+                      child: Text(
+                        tr(context, 'builder.empty'),
+                        textAlign: TextAlign.center,
+                        style: context.ds.typo.label.copyWith(
+                          color: context.ds.colors.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
                 for (var i = 0; i < _items.length; i++)
                   _buildItem(i, w, h, base),
                 // Alignment guides while a garment is dragged.
@@ -730,12 +736,12 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
           children: [
             _toolBtn(
               Icons.add_photo_alternate_outlined,
-              trOr(context, 'builder.addClothes', 'Clothes'),
+              tr(context, 'builder.addClothes'),
               _addClothes,
             ),
             _toolBtn(
               Icons.grid_view_outlined,
-              trOr(context, 'builder.arrange', 'Arrange'),
+              tr(context, 'builder.arrange'),
               () => setState(() {
                 _customized = false;
                 _arrange();
@@ -743,7 +749,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             ),
             _toolBtn(
               Icons.auto_awesome_outlined,
-              trOr(context, 'builder.useAlgo', 'Algorithm'),
+              tr(context, 'builder.useAlgo'),
               _runAlgorithm,
             ),
             // Appears once an algorithm has run: one tap re-runs the same config
@@ -751,13 +757,13 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
             if (_lastPick != null)
               _toolBtn(
                 Icons.casino_outlined,
-                trOr(context, 'builder.reshuffle', 'Re-roll'),
+                tr(context, 'builder.reshuffle'),
                 _reshuffle,
                 busy: _algoRunning,
               ),
             _toolBtn(
               Icons.palette_outlined,
-              trOr(context, 'builder.background', 'Background'),
+              tr(context, 'builder.background'),
               _pickBackground,
             ),
           ],
@@ -848,7 +854,7 @@ class _BackgroundSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DsSectionTitle(trOr(context, 'builder.solid', 'Solid colour')),
+            DsSectionTitle(tr(context, 'builder.solid')),
             Wrap(
               spacing: context.ds.space.s,
               runSpacing: context.ds.space.s,
@@ -861,7 +867,7 @@ class _BackgroundSheet extends StatelessWidget {
                   ),
               ],
             ),
-            DsSectionTitle(trOr(context, 'builder.gradient', 'Gradient')),
+            DsSectionTitle(tr(context, 'builder.gradient')),
             Wrap(
               spacing: context.ds.space.s,
               runSpacing: context.ds.space.s,

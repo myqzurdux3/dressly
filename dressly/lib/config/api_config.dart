@@ -5,7 +5,12 @@
 ///  - Android emulator:          http://10.0.2.2:8000
 ///  - Physical device on the LAN: `http://<this machine's LAN IP>:8000`
 ///  - Public server:              `https://<domain>`
-const String apiBaseUrl = 'https://dressly.xyz';
+/// Overridable at build time (`--dart-define=API_BASE_URL=...`) so the screen
+/// tour can run against a local server holding a copy of the data.
+const String apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://dressly.xyz',
+);
 
 /// SHA-256 fingerprint of the server's certificate, lower-case hex, no colons.
 ///

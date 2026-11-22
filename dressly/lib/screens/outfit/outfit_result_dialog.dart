@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../app.dart';
 import '../../design/ds.dart';
@@ -16,6 +17,7 @@ import '../../widgets/app_image.dart';
 import '../../widgets/outfit_pending_image.dart';
 import '../../widgets/render_person_sheet.dart';
 import '../../state/data_bus.dart';
+import '../../state/session.dart';
 import 'manual_builder_screen.dart';
 
 class OutfitResultDialog extends StatefulWidget {
@@ -190,9 +192,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   /// up on failure). The outfit's clothes/model/prompt are untouched.
   Future<void> _retryGeneration() => _runUpdating(
     'result.retryFailed',
-    () => outfitsServiceOf(
-      context,
-    ).regenerate(
+    () => outfitsServiceOf(context).regenerate(
       _outfit.id,
       tier: _outfit.modelTier,
       cancelled: () => !mounted,
@@ -209,9 +209,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
   /// Flip "describe items to the AI" and re-render at the same tier.
   Future<void> _toggleDescribe(bool value) => _runUpdating(
     'result.failed',
-    () => outfitsServiceOf(
-      context,
-    ).regenerate(
+    () => outfitsServiceOf(context).regenerate(
       _outfit.id,
       tier: _outfit.modelTier,
       describeClothes: value,
@@ -495,9 +493,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (detail == null || detail.isEmpty || !mounted) return;
     await _runUpdating(
       'result.regenerateFailed',
-      () => outfitsServiceOf(
-        context,
-      ).regenerate(
+      () => outfitsServiceOf(context).regenerate(
         _outfit.id,
         tier: _outfit.modelTier,
         addDetail: detail,
@@ -708,6 +704,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     // it is rendered.
     final rendered = _outfit.hasRender;
     final hasNext = _outfit.nextTier != null;
+    // Null outside the app (widget tests mount the dialog without a session).
+    final isAdmin = context.watch<Session?>()?.user?.isAdmin == true;
     final nextTierLabel =
         const {
           'vto': 'Try-On',
@@ -760,7 +758,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               children: [
                 DsBadge(
                   text: _outfit.isManual
-                      ? trOr(context, 'builder.manual', 'Manual')
+                      ? tr(context, 'builder.manual')
                       : _outfit.isMock
                       ? tr(context, 'result.previewBadge')
                       : _outfit.tierLabel,
@@ -939,10 +937,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                 if (!_outfit.isManual)
                   _SmallAction(
                     icon: Icons.person_outline,
-                    label: _outfit.modelName == null
-                        ? tr(context, 'result.changeModel')
-                        : '${tr(context, 'result.changeModel')} '
-                              '(${_outfit.modelName})',
+                    label: tr(context, 'result.changeModel'),
                     onTap: _busy ? null : _changeModel,
                   ),
                 if (_outfit.clothIds.isNotEmpty)
@@ -950,11 +945,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                     icon: Icons.brush_outlined,
                     label: _outfit.hasManual
                         ? tr(context, 'result.editMontage')
-                        : trOr(
-                            context,
-                            'result.openManual',
-                            'Edit in manual builder',
-                          ),
+                        : tr(context, 'result.openManual'),
                     onTap: _busy ? null : _editMontage,
                   ),
               ],
@@ -1004,14 +995,30 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
                 subtitle: Text(tr(context, 'result.describeSub'), style: muted),
               ),
             ],
-            if (!_outfit.isManual)
-              Text(
-                _outfit.prompt.isEmpty
-                    ? tr(context, 'result.noTextPrompt')
-                    : _outfit.prompt,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-                style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+            // The raw prompt sent to the image model is a debugging aid, not
+            // something a user reads: admins only, folded away.
+            if (!_outfit.isManual && isAdmin)
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.only(bottom: ds.space.s),
+                  expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                  title: Text(
+                    tr(context, 'result.technicalDetails'),
+                    style: muted,
+                  ),
+                  children: [
+                    SelectableText(
+                      _outfit.prompt.isEmpty
+                          ? tr(context, 'result.noTextPrompt')
+                          : _outfit.prompt,
+                      style: ds.typo.monoSmall.copyWith(color: c.textMuted),
+                    ),
+                  ],
+                ),
               ),
             SizedBox(height: ds.space.m),
 
@@ -1079,8 +1086,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
             ],
             if (hasNext && rendered) ...[
               DsButton(
-                label:
-                    '${tr(context, 'result.tryBetterModel')} ($nextTierLabel)',
+                label: tr(context, 'result.tryBetterModel', {
+                  'tier': nextTierLabel,
+                }),
                 icon: Icons.upgrade,
                 kind: DsButtonKind.secondary,
                 expand: true,

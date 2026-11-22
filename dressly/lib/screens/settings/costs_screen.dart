@@ -61,8 +61,43 @@ class _CostsScreenState extends State<CostsScreen> {
     }
   }
 
-  static String usd(double v) =>
-      v < 1 ? '\$${v.toStringAsFixed(3)}' : '\$${v.toStringAsFixed(2)}';
+  bool get _fr => Localizations.localeOf(context).languageCode == 'fr';
+
+  /// [v] with [decimals] places in the active locale: thousands grouped by
+  /// the locale ("1,234.50" / "1 234,50").
+  String _num(double v, int decimals) {
+    final fixed = v.abs().toStringAsFixed(decimals);
+    final dot = fixed.indexOf('.');
+    final whole = MaterialLocalizations.of(
+      context,
+    ).formatDecimal(int.parse(dot < 0 ? fixed : fixed.substring(0, dot)));
+    final frac = dot < 0 ? '' : '${_fr ? ',' : '.'}${fixed.substring(dot + 1)}';
+    return '${v < 0 ? '-' : ''}$whole$frac';
+  }
+
+  /// A dollar amount; three decimals under a dollar so fractions of a cent
+  /// still show.
+  String usd(double v) {
+    final n = _num(v, v.abs() < 1 ? 3 : 2);
+    return _fr ? '$n \$' : '\$$n';
+  }
+
+  /// A server timestamp ("2026-11-22 14:05:00", UTC) as a localized medium
+  /// date and time. Falls back to the raw text if it does not parse.
+  String _when(String raw) {
+    final dt = DateTime.tryParse(raw);
+    if (dt == null) return raw;
+    final loc = MaterialLocalizations.of(context);
+    final time = loc.formatTimeOfDay(
+      TimeOfDay.fromDateTime(dt),
+      alwaysUse24HourFormat: true,
+    );
+    return '${loc.formatMediumDate(dt)} · $time';
+  }
+
+  /// "flex" -> "Flex"; tier ids come lowercase from the server.
+  static String _tier(String id) =>
+      id.isEmpty ? id : '${id[0].toUpperCase()}${id.substring(1)}';
 
   @override
   Widget build(BuildContext context) {
@@ -101,8 +136,8 @@ class _CostsScreenState extends State<CostsScreen> {
             : Icons.help_outline,
         title: b.providerAvailable
             ? tr(context, 'credits.balance', {
-                'credits': b.providerCredits!.toStringAsFixed(2),
-                'usd': (b.providerUsd ?? 0).toStringAsFixed(2),
+                'credits': _num(b.providerCredits!, 2),
+                'usd': _num(b.providerUsd ?? 0, 2),
               })
             : tr(context, 'credits.providerUnknown'),
         detail: b.providerAvailable
@@ -121,7 +156,7 @@ class _CostsScreenState extends State<CostsScreen> {
             ..sort((x, y) => y.value.credits.compareTo(x.value.credits))))
         DsInfoRow(
           icon: Icons.bolt_outlined,
-          title: e.key,
+          title: _tier(e.key),
           detail: tr(context, 'credits.tierCalls', {
             'calls': '${e.value.calls}',
           }),
@@ -223,7 +258,7 @@ class _CostsScreenState extends State<CostsScreen> {
                 ? Icons.forum_outlined
                 : Icons.image_outlined,
             title: _label(r.label),
-            detail: r.at,
+            detail: _when(r.at),
             trailing: Text(usd(r.usd), style: ds.typo.mono),
           ),
       ],

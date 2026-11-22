@@ -215,9 +215,11 @@ class _WeatherLocationScreenState extends State<WeatherLocationScreen> {
       detail: preview != null && preview.available
           ? tr(context, 'weather.todayIs', {
               'temp': preview.shortTemp,
-              'mode': preview.isHot
-                  ? tr(context, 'algo.hot')
-                  : tr(context, 'algo.cold'),
+              'mode':
+                  (preview.isHot
+                          ? tr(context, 'algo.hot')
+                          : tr(context, 'algo.cold'))
+                      .toLowerCase(),
             })
           : tr(context, 'weather.savedPlace'),
       trailing: IconButton(

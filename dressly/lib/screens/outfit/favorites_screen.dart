@@ -68,20 +68,22 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
-    Widget header(int _) => DsHeader(
+    Widget header({bool sortable = true}) => DsHeader(
       line1: tr(context, 'fav.title1'),
       line2: tr(context, 'fav.title2'),
       // A dot when a sort or filter is on, so it is not forgotten.
-      trailing: Badge(
-        isLabelVisible: _query.isActive,
-        backgroundColor: ds.colors.accent,
-        smallSize: 10,
-        child: DsButton.icon(
-          icon: Icons.sort,
-          semanticLabel: tr(context, 'fav.sort'),
-          onPressed: _openSort,
-        ),
-      ),
+      trailing: !sortable
+          ? null
+          : Badge(
+              isLabelVisible: _query.isActive,
+              backgroundColor: ds.colors.accent,
+              smallSize: 10,
+              child: DsButton.icon(
+                icon: Icons.sort,
+                semanticLabel: tr(context, 'fav.sort'),
+                onPressed: _openSort,
+              ),
+            ),
     );
     return Scaffold(
       body: SafeArea(
@@ -89,7 +91,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         child: PagedGrid<Outfit>(
           controller: _outfits,
           onRefresh: _reload,
-          header: header,
+          header: (_) => header(),
           padding: EdgeInsets.fromLTRB(
             ds.space.gutter,
             0,
@@ -105,7 +107,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           emptyBuilder: (context) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              header(0),
+              // Nothing to sort: no sort button. It stays while a filter is
+              // on, since that filter may be why the list is empty.
+              header(sortable: _query.isActive),
               Expanded(
                 child: DsEmpty(
                   title: tr(context, 'fav.empty'),

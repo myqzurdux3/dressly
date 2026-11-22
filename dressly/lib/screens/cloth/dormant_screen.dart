@@ -353,78 +353,92 @@ class _DormantCard extends StatelessWidget {
           color: c.surface,
           borderRadius: ds.shape.cardRadius,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 80,
-              height: 96,
-              padding: EdgeInsets.all(ds.space.xs),
-              decoration: BoxDecoration(
-                color: tone.fill,
-                borderRadius: ds.shape.smallRadius,
-              ),
-              child: url == null
-                  ? Icon(Icons.checkroom, color: tone.onFill)
-                  : AppImage.path(
-                      url,
-                      cacheKey: url,
-                      fit: BoxFit.contain,
-                      memWidth: 200,
-                    ),
-            ),
-            SizedBox(width: ds.space.s),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    cloth.name.toUpperCase(),
-                    style: ds.typo.headline,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 80,
+                  height: 96,
+                  padding: EdgeInsets.all(ds.space.xs),
+                  decoration: BoxDecoration(
+                    color: tone.fill,
+                    borderRadius: ds.shape.smallRadius,
                   ),
-                  Text(
-                    (item.neverWorn
-                            ? tr(context, 'dormant.neverWorn', {
-                                'age': _age(context),
-                              })
-                            : tr(context, 'dormant.notWornSince', {
-                                'age': _age(context),
-                                'times': '${item.timesWorn}',
-                              }))
-                        .toUpperCase(),
-                    style: ds.typo.monoSmall.copyWith(color: c.textMuted),
-                  ),
-                  SizedBox(height: ds.space.xs),
-                  Wrap(
-                    spacing: ds.space.xs,
-                    runSpacing: ds.space.xs,
+                  child: url == null
+                      ? Icon(Icons.checkroom, color: tone.onFill)
+                      : AppImage.path(
+                          url,
+                          cacheKey: url,
+                          fit: BoxFit.contain,
+                          memWidth: 200,
+                        ),
+                ),
+                SizedBox(width: ds.space.s),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Action(
-                        icon: Icons.check,
-                        label: tr(context, 'dormant.wearToday'),
-                        onTap: onWear,
+                      // Body type, not the display face: a garment name is a
+                      // sentence-case phrase that must stay readable in full.
+                      Text(
+                        cloth.name,
+                        style: ds.typo.bodyStrong,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      _Action(
-                        icon: cloth.excludeFromAlgo
-                            ? Icons.visibility_outlined
-                            : Icons.block_outlined,
-                        label: cloth.excludeFromAlgo
-                            ? tr(context, 'dormant.includeAgain')
-                            : tr(context, 'dormant.exclude'),
-                        onTap: onToggleExclude,
-                      ),
-                      _Action(
-                        icon: Icons.delete_outline,
-                        label: tr(context, 'dormant.delete'),
-                        onTap: onDelete,
-                        danger: true,
+                      Text(
+                        (item.neverWorn
+                                ? tr(context, 'dormant.neverWorn', {
+                                    'age': _age(context),
+                                  })
+                                : tr(context, 'dormant.notWornSince', {
+                                    'age': _age(context),
+                                    'times': '${item.timesWorn}',
+                                  }))
+                            .toUpperCase(),
+                        style: ds.typo.monoSmall.copyWith(color: c.textMuted),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
+            SizedBox(height: ds.space.s),
+            // One row: two labelled actions that shrink if they must,
+            // and the destructive one as an icon at the end.
+            Row(
+              children: [
+                Flexible(
+                  child: _Action(
+                    icon: Icons.check,
+                    label: tr(context, 'dormant.wearToday'),
+                    onTap: onWear,
+                  ),
+                ),
+                SizedBox(width: ds.space.xs),
+                Flexible(
+                  child: _Action(
+                    icon: cloth.excludeFromAlgo
+                        ? Icons.visibility_outlined
+                        : Icons.block_outlined,
+                    label: cloth.excludeFromAlgo
+                        ? tr(context, 'dormant.includeAgain')
+                        : tr(context, 'dormant.exclude'),
+                    onTap: onToggleExclude,
+                  ),
+                ),
+                SizedBox(width: ds.space.xs),
+                _Action(
+                  icon: Icons.delete_outline,
+                  label: tr(context, 'dormant.delete'),
+                  onTap: onDelete,
+                  danger: true,
+                  iconOnly: true,
+                ),
+              ],
             ),
           ],
         ),
@@ -440,6 +454,7 @@ class _Action extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.danger = false,
+    this.iconOnly = false,
   });
 
   final IconData icon;
@@ -447,12 +462,15 @@ class _Action extends StatelessWidget {
   final VoidCallback onTap;
   final bool danger;
 
+  /// Show only the icon; [label] becomes the tooltip and the semantic label.
+  final bool iconOnly;
+
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
     final c = ds.colors;
     final ink = danger ? c.danger : c.text;
-    return Material(
+    final pill = Material(
       color: c.surfaceHigh,
       shape: const StadiumBorder(),
       clipBehavior: Clip.antiAlias,
@@ -467,11 +485,30 @@ class _Action extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, size: 16, color: ink),
-              SizedBox(width: ds.space.xs / 2),
-              Text(label, style: ds.typo.label.copyWith(color: ink)),
+              if (!iconOnly) ...[
+                SizedBox(width: ds.space.xs / 2),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ds.typo.label.copyWith(color: ink),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+    if (!iconOnly) return pill;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        button: true,
+        excludeSemantics: true,
+        child: pill,
       ),
     );
   }
