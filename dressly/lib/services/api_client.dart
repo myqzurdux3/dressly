@@ -11,8 +11,7 @@ import 'pinned_http.dart';
 /// JSON encode/decode, and turns non-2xx responses into typed exceptions.
 class ApiClient {
   /// [httpClient] exists so tests can substitute `MockClient`. Production code
-  /// leaves it null and gets a fresh client per request, exactly as the
-  /// top-level `http.get`/`http.post` helpers did before.
+  /// leaves it null and shares the pinned API pool.
   ApiClient({required this.token, http.Client? httpClient})
       : _client = httpClient ?? _shared;
 
@@ -78,8 +77,6 @@ class ApiClient {
     };
   }
 
-  /// Run [send] against a client, disposing a per-request one when the caller
-  /// did not inject their own.
   /// Errors that mean "the connection went nowhere", as opposed to the server
   /// having answered something. Only these are worth retrying.
   static bool _isTransport(Object e) =>
@@ -94,7 +91,7 @@ class ApiClient {
     try {
       return _decode(await send(_client).timeout(timeoutFor(path)));
     } catch (e) {
-      if (!retry || !_isTransport(e)) throw _friendly(e);
+      if (!retry || !_isTransport(e)) throw friendly(e);
       // One retry, on a fresh connection. A kept-alive socket can be dropped by
       // the network without either end being told, and the request sent down it
       // then vanishes until the timeout. Reissuing takes a round trip; not
@@ -102,7 +99,7 @@ class ApiClient {
       try {
         return _decode(await send(_client).timeout(timeoutFor(path)));
       } catch (e) {
-        throw _friendly(e);
+        throw friendly(e);
       }
     }
   }
@@ -113,7 +110,7 @@ class ApiClient {
   /// 0:00:20.000000: Future not completed", which tells the user nothing about
   /// what happened or what to do. Anything else is passed through untouched —
   /// an ApiException already carries the server's own wording.
-  static Object _friendly(Object e) {
+  static Object friendly(Object e) {
     if (e is ApiException) return e;
     if (e is TimeoutException) {
       return ApiException(0, 'The server did not answer in time. '
@@ -227,11 +224,28 @@ class ApiClient {
   /// Response directly, but must use the same injected client and timeout.
   Future<dynamic> _sendMultipart(http.MultipartRequest req) async {
     // Uploads carry photos and may trigger a render: keep the long budget.
-    final streamed = await _client.send(req).timeout(_timeout);
-    return _decode(await http.Response.fromStream(streamed));
+    try {
+      final streamed = await _client.send(req).timeout(_timeout);
+      return _decode(await http.Response.fromStream(streamed));
+    } catch (e) {
+      throw friendly(e);
+    }
   }
 
+  /// Called when an authenticated request comes back 401: the token expired
+  /// or was revoked (a password change ends every other session). The app
+  /// wires it to a sign-out, so the user lands on the login screen instead of
+  /// an error on every tab.
+  static void Function()? onUnauthorized;
+
   dynamic _decode(http.Response resp) {
+    if (resp.statusCode == 401 && token != null) onUnauthorized?.call();
+    return decodeResponse(resp);
+  }
+
+  /// Shared with [AuthService]: a non-2xx answer becomes an [ApiException]
+  /// carrying the server's own `detail`.
+  static dynamic decodeResponse(http.Response resp) {
     if (resp.statusCode >= 400) {
       String detail = 'Request failed (${resp.statusCode})';
       try {

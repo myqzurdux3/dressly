@@ -24,3 +24,10 @@ def test_protected_requires_token(client):
 
 def test_health(client):
     assert client.get("/health").json() == {"ok": True}
+
+
+def test_signup_is_closed_when_disabled(client, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "ALLOW_SIGNUP", False)
+    r = client.post("/auth/signup", json={"email": "x@b.co", "password": "pw123456"})
+    assert r.status_code == 403

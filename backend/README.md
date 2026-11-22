@@ -25,6 +25,7 @@ security-relevant variables are set properly:
 | `CLOTHESAPP_SECRET` | `dev-secret-change-me` | yes — ≥32 bytes, else JWTs are forgeable |
 | `CLOTHESAPP_CORS` | `*` | yes — explicit comma-separated origins |
 | `CLOTHESAPP_DATA_DIR` | `backend/data` | optional |
+| `CLOTHESAPP_ALLOW_SIGNUP` | `1` | optional — closed (`0`) by default outside dev; every account can spend the paid APIs |
 | `BFL_API_KEY` | unset → dry-run placeholders | optional |
 | `CLOTHESAPP_GEN_RATE_LIMIT` | `600` / hour / user | optional (0 disables) |
 | `CLOTHESAPP_ENHANCE_RATE_LIMIT` | `600` / hour / user | optional (0 disables) |

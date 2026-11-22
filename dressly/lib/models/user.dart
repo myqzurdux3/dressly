@@ -27,4 +27,12 @@ class AppUser {
       isAdmin: json['is_admin'] == true || json['is_admin'] == 1,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'email': email,
+        'username': username,
+        'created_at': createdAt,
+        'is_admin': isAdmin,
+      };
 }

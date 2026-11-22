@@ -1,6 +1,8 @@
 import re
 import time
 
+import config
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 
@@ -70,6 +72,8 @@ def _public_user(row) -> dict:
 
 @router.post("/signup", dependencies=[Depends(auth_guard)])
 def signup(creds: Credentials):
+    if not config.ALLOW_SIGNUP:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Sign-up is closed")
     if len(creds.password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,

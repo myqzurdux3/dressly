@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'app.dart';
 import 'design/gallery/ds_gallery.dart';
+import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/image_cache_config.dart';
 import 'services/pinned_http.dart';
@@ -36,17 +37,34 @@ Future<Widget> bootstrap() async {
   final locale = await LocaleController.load();
   final genPrefs = await GenPrefsController.load();
 
-  // Best-effort restore: if we have a stored token, validate it via /auth/me.
-  // Failures (network down, expired token) silently fall back to the login screen.
+  // Restore the stored session. Only a refusal from the server (expired or
+  // revoked token) signs the user out; with no network the last known account
+  // is kept, and requests made once the connection is back succeed.
   final token = await auth.readToken();
   if (token != null) {
     try {
-      final user = await auth.me(token);
-      session.setSession(user, token);
+      session.setSession(await auth.me(token), token);
+    } on ApiException catch (e) {
+      if (e.statusCode == 401 || e.statusCode == 403) {
+        await auth.clearToken();
+      } else {
+        final cached = await auth.readCachedUser();
+        if (cached != null) session.setSession(cached, token);
+      }
     } catch (_) {
-      await auth.clearToken();
+      final cached = await auth.readCachedUser();
+      if (cached != null) session.setSession(cached, token);
     }
   }
+
+  // A token that stops being accepted mid-session (expired, or revoked by a
+  // password change elsewhere) signs the user out once, back to the login.
+  ApiClient.onUnauthorized = () {
+    if (!session.isLoggedIn) return;
+    auth.clearToken();
+    rootNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    session.logout();
+  };
 
   return ProviderScope(
     child: MultiProvider(

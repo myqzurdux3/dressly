@@ -395,4 +395,35 @@ void main() {
       expect(attempts, 1, reason: 'a 500 is an answer, not a lost connection');
     });
   });
+
+  group('expired session', () {
+    tearDown(() => ApiClient.onUnauthorized = null);
+
+    test('a 401 on an authenticated call signs out once per response', () async {
+      var calls = 0;
+      ApiClient.onUnauthorized = () => calls++;
+      final api = ApiClient(
+          token: 't', httpClient: _Recorder().respond(401, '{"detail":"x"}'));
+      await expectLater(api.get('/clothes'), throwsA(isA<ApiException>()));
+      expect(calls, 1);
+    });
+
+    test('a 401 without a token (wrong password) does not sign out', () async {
+      var calls = 0;
+      ApiClient.onUnauthorized = () => calls++;
+      final api = ApiClient(
+          token: null, httpClient: _Recorder().respond(401, '{"detail":"x"}'));
+      await expectLater(api.get('/clothes'), throwsA(isA<ApiException>()));
+      expect(calls, 0);
+    });
+
+    test('a 403 is a refusal, not an expired session', () async {
+      var calls = 0;
+      ApiClient.onUnauthorized = () => calls++;
+      final api = ApiClient(
+          token: 't', httpClient: _Recorder().respond(403, '{"detail":"x"}'));
+      await expectLater(api.get('/admin/costs'), throwsA(isA<ApiException>()));
+      expect(calls, 0);
+    });
+  });
 }

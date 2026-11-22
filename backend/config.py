@@ -87,6 +87,12 @@ def _check_production_config() -> None:
 
 _check_production_config()
 
+# Open sign-up. The deployment serves one owner, and every account can spend
+# the paid image and stylist APIs, so a real deployment refuses new accounts
+# unless this is set explicitly. Dev keeps it open for tests and local runs.
+ALLOW_SIGNUP = os.environ.get(
+    "CLOTHESAPP_ALLOW_SIGNUP", "1" if IS_DEV else "0").strip() not in ("", "0", "false", "no")
+
 # --- rate limits ----------------------------------------------------------
 # Outfit generation and AI enhance are billed per call by bfl.ai, so a stuck
 # client must not be able to loop on them. Counted per user, in-process.

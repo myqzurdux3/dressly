@@ -29,6 +29,7 @@ class Dressly extends StatelessWidget {
     final locale = context.watch<LocaleController>();
     return SessionApiScope(
       child: MaterialApp(
+        navigatorKey: rootNavigatorKey,
         title: 'Dressly',
         debugShowCheckedModeBanner: false,
         theme: theme.themeFor(Brightness.light),
@@ -46,6 +47,10 @@ class Dressly extends StatelessWidget {
     );
   }
 }
+
+/// Lets code outside the widget tree (the sign-out on an expired token)
+/// close pushed screens before the auth gate swaps to the login screen.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Decides which top-level screen to show based on the session.
 /// Kept as the (single, stable) `MaterialApp.home` so the Navigator doesn't
