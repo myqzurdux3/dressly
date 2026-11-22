@@ -19,6 +19,7 @@ import '../../widgets/render_person_sheet.dart';
 import '../../state/data_bus.dart';
 import '../../state/session.dart';
 import 'manual_builder_screen.dart';
+import '../../widgets/error_toast.dart';
 
 class OutfitResultDialog extends StatefulWidget {
   const OutfitResultDialog({
@@ -61,7 +62,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     // A failed render of a montage leaves the montage shown with the error.
     if (_outfit.isManual && _outfit.error.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _toast(_outfit.error),
+        (_) => toast(_outfit.error),
       );
     }
     if (_outfit.isProcessing) _waitForRender();
@@ -136,7 +137,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       setState(() => _outfit = done);
       widget.onChanged(done);
       DataBus.outfitsChanged();
-      if (done.isManual && done.error.isNotEmpty) _toast(done.error);
+      if (done.isManual && done.error.isNotEmpty) toast(done.error);
     } catch (_) {
       // The list still refreshes on its own; nothing to report here.
     }
@@ -165,7 +166,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     try {
       return await action();
     } catch (e) {
-      _toastKey(errorKey, e);
+      toastError(e, prefixKey: errorKey);
       return null;
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -300,7 +301,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
         context,
       ).generateBack(_outfit.id, cancelled: () => !mounted),
     );
-    if (back != null) _toastKey('result.backCreated');
+    if (back != null) toastKey('result.backCreated');
   }
 
   Future<void> _switchLinkedView() async {
@@ -323,7 +324,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     });
     if (ok == true && mounted) {
       setState(() => _wornToday = true);
-      _toastKey('result.markedWorn');
+      toastKey('result.markedWorn');
     }
   }
 
@@ -334,7 +335,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       wears = await outfitsServiceOf(context).wears(_outfit.id);
     } catch (e) {
       // Silently ignored before: the button simply did nothing.
-      _toastKey('result.loadFailed', e);
+      toastError(e, prefixKey: 'result.loadFailed');
       return;
     }
     if (!mounted) return;
@@ -411,7 +412,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      toastError(e);
     }
   }
 
@@ -425,7 +426,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (newVal == null || !mounted) return;
     setState(() => _outfit = _outfit.copyWith(isFavorite: newVal));
     widget.onChanged(_outfit);
-    _toastKey(newVal ? 'result.favAdded' : 'result.favRemoved');
+    toastKey(newVal ? 'result.favAdded' : 'result.favRemoved');
   }
 
   Future<void> _rate(int rating) async {
@@ -451,7 +452,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (newVal == null || !mounted) return;
     setState(() => _outfit = _outfit.copyWith(isBlacklisted: newVal));
     widget.onChanged(_outfit);
-    _toastKey(newVal ? 'result.bannedToast' : 'result.allowedAgain');
+    toastKey(newVal ? 'result.bannedToast' : 'result.allowedAgain');
   }
 
   /// Ask for an extra instruction (pose, angle, setting…) and re-render at the
@@ -521,7 +522,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       return true;
     });
     if (ok == true && mounted) {
-      _toast('${tr(context, 'result.addedAgenda')} $day ✓');
+      toast('${tr(context, 'result.addedAgenda')} $day ✓');
     }
   }
 
@@ -529,7 +530,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (_busy) return;
     final remaining = _outfit.clothIds.where((id) => id != clothId).toList();
     if (remaining.isEmpty) {
-      _toastKey('result.needOneCloth');
+      toastKey('result.needOneCloth');
       return;
     }
     await _runUpdating(
@@ -569,7 +570,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     try {
       models = await modelsServiceOf(context).list();
     } catch (e) {
-      _toastKey('result.couldNotLoadModels', e);
+      toastError(e, prefixKey: 'result.couldNotLoadModels');
       return;
     }
     if (!mounted) return;
@@ -660,9 +661,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
       await svc.delete(_outfit.id);
       if (!mounted) return;
       Navigator.pop(context, true); // tell parent to drop from history
-      _toastKey('result.outfitRemoved');
+      toastKey('result.outfitRemoved');
     } catch (e) {
-      _toastKey('result.deleteFailed', e);
+      toastError(e, prefixKey: 'result.deleteFailed');
     }
   }
 
@@ -678,19 +679,8 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     });
     if (ok == true && mounted) {
       setState(() => _reported = true);
-      _toastKey('result.reportedThanks');
+      toastKey('result.reportedThanks');
     }
-  }
-
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-  }
-
-  void _toastKey(String key, [Object? err]) {
-    if (!mounted) return;
-    final msg = tr(context, key);
-    _toast(err == null ? msg : '$msg: $err');
   }
 
   @override

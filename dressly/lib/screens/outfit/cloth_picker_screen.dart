@@ -9,6 +9,7 @@ import '../../widgets/app_image.dart';
 import '../../widgets/filter_sheet.dart';
 import '../../design/ds.dart';
 import '../wardrobe/wardrobe_card.dart' show swatchColorOf;
+import '../../widgets/error_toast.dart';
 
 /// Full-screen multi-select cloth picker, opened from the outfit screen.
 /// Mirrors the collection screen's search + sort/filter, but each tile has a
@@ -42,6 +43,24 @@ class _ClothPickerScreenState extends State<ClothPickerScreen> {
     _selected = {...widget.initialSelected};
     _searchCtrl.text = _filter.search ?? '';
     _refresh();
+    _loadSuggestions();
+  }
+
+  /// Brand and tag suggestions for the filter sheet. They do not depend on the
+  /// active filter, so they are fetched once rather than on every refresh.
+  void _loadSuggestions() {
+    _service
+        .autocompleteBrands()
+        .then((b) {
+          if (mounted) setState(() => _brands = b);
+        })
+        .catchError((_) {});
+    _service
+        .autocompleteTags()
+        .then((t) {
+          if (mounted) setState(() => _tags = t);
+        })
+        .catchError((_) {});
   }
 
   @override
@@ -62,26 +81,9 @@ class _ClothPickerScreenState extends State<ClothPickerScreen> {
 
   Future<List<Cloth>> _fetch() async {
     try {
-      final clothes = await _service.list(filter: _filter);
-      _service
-          .autocompleteBrands()
-          .then((b) {
-            if (mounted) setState(() => _brands = b);
-          })
-          .catchError((_) {});
-      _service
-          .autocompleteTags()
-          .then((t) {
-            if (mounted) setState(() => _tags = t);
-          })
-          .catchError((_) {});
-      return clothes;
+      return await _service.list(filter: _filter);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${tr(context, 'wardrobe.loadFailed')}: $e')),
-        );
-      }
+      toastError(e, prefixKey: 'wardrobe.loadFailed');
       return <Cloth>[];
     }
   }

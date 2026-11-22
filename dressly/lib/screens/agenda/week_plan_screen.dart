@@ -9,6 +9,7 @@ import '../../models/plan.dart';
 import '../../widgets/app_image.dart';
 import '../../widgets/outfit_pick_grid.dart';
 import 'week_options_sheet.dart';
+import '../../widgets/error_toast.dart';
 
 /// A week of outfits, one card per day.
 ///
@@ -79,7 +80,6 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
 
   /// Put one of the user's outfits on [day], then redraw around it.
   Future<void> _pickOutfit(PlanDay day) async {
-    final messenger = ScaffoldMessenger.of(context);
     final title = tr(context, 'plan.pickOutfit');
     var outfits = _outfits;
     if (outfits == null) {
@@ -89,7 +89,7 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
             .toList();
         _outfits = outfits;
       } catch (e) {
-        messenger.showSnackBar(SnackBar(content: Text('$e')));
+        toastError(e);
         return;
       }
     }
@@ -184,7 +184,7 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      toastError(e);
     }
   }
 

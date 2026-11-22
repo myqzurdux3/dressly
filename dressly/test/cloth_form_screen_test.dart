@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/state/session_scope.dart';
 
-import 'package:dressly/screens/cloth/add_cloth_screen.dart';
+import 'package:dressly/screens/cloth/cloth_form_screen.dart';
 import 'package:dressly/screens/cloth/cloth_detail_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
 import 'package:dressly/state/session.dart';

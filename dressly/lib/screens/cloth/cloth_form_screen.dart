@@ -1,10 +1,8 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
@@ -17,6 +15,8 @@ import 'detail/detail_image_panel.dart' show roleLabel;
 import 'form/color_editor.dart';
 import 'form/form_photos.dart';
 import 'photo_edit_screen.dart';
+import '../../widgets/error_toast.dart';
+import '../../widgets/photo_source_sheet.dart';
 
 /// Reused for both adding a new cloth and editing an existing one. When
 /// [initial] is non-null the form is pre-populated and saving PUTs instead of
@@ -108,7 +108,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
   }
 
   Future<void> _pickImage() async {
-    final path = await _pickFilePath();
+    final path = await pickPhotoPath(context);
     if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _newImages.add(path));
     _autoDetectColors();
@@ -124,46 +124,6 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
 
   // ---- Edit-mode live image management (server-backed) ----
 
-  /// Lets the user take a photo with the camera or pick a file, then returns
-  /// its local path (or null if cancelled).
-  Future<String?> _pickFilePath() async {
-    final source = await showDsSheet<String>(
-      context,
-      title: tr(context, 'form.pictures'),
-      child: Builder(
-        builder: (ctx) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (value, icon, key) in [
-              ('camera', Icons.photo_camera_outlined, 'form.takePhoto'),
-              ('gallery', Icons.photo_library_outlined, 'form.chooseGallery'),
-            ])
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(icon, color: ctx.ds.colors.accent),
-                title: Text(tr(context, key), style: ctx.ds.typo.bodyStrong),
-                onTap: () => Navigator.pop(ctx, value),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return null;
-    try {
-      if (source == 'camera') {
-        final x = await ImagePicker().pickImage(
-          source: ImageSource.camera,
-          imageQuality: 92,
-        );
-        return x?.path;
-      }
-      final result = await FilePicker.platform.pickFiles(type: FileType.image);
-      return result?.files.single.path;
-    } catch (e) {
-      _toastKey('form.photoError', e);
-      return null;
-    }
-  }
 
   /// Open the crop & rotate editor for an existing photo (edit mode).
   Future<void> _editPhoto(ClothImage img) async {
@@ -185,7 +145,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
   Future<void> _replaceExistingImage(int imageId) async {
     if (_imgBusy) return;
     final svc = _svc;
-    final path = await _pickFilePath();
+    final path = await pickPhotoPath(context);
     if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _imgBusy = true);
     try {
@@ -198,7 +158,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
       setState(() => _existingImages = [...updated.images]);
       await _reviewNewImage(imageId);
     } catch (e) {
-      _toastKey('form.updateFailed', e);
+      toastError(e, prefixKey: 'form.updateFailed');
     } finally {
       if (mounted) setState(() => _imgBusy = false);
     }
@@ -207,7 +167,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
   Future<void> _addImageNow() async {
     if (_imgBusy) return;
     final svc = _svc;
-    final path = await _pickFilePath();
+    final path = await pickPhotoPath(context);
     if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _imgBusy = true);
     try {
@@ -219,7 +179,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
         await _reviewNewImage(updated.images.last.id);
       }
     } catch (e) {
-      _toastKey('form.addFailed', e);
+      toastError(e, prefixKey: 'form.addFailed');
     } finally {
       if (mounted) setState(() => _imgBusy = false);
     }
@@ -263,7 +223,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
       final refreshed = await svc.get(widget.initial!.id);
       if (mounted) setState(() => _existingImages = [...refreshed.images]);
     } catch (e) {
-      _toastKey('form.bgChoiceFailed', e);
+      toastError(e, prefixKey: 'form.bgChoiceFailed');
     }
   }
 
@@ -302,7 +262,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
         final img = _imgById(c.images, imageId);
         if (img == null) return;
         if (img.enhanceStatus == 'failed' || img.enhancedUrl.isEmpty) {
-          _toastKey('form.enhanceFailedShort');
+          toastKey('form.enhanceFailedShort');
           return;
         }
         if (!mounted) return;
@@ -328,7 +288,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
         return;
       }
     } catch (e) {
-      _toastKey('form.enhanceFailed', e);
+      toastError(e, prefixKey: 'form.enhanceFailed');
     } finally {
       if (mounted) setState(() => _imgBusy = false);
     }
@@ -341,9 +301,9 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
       final updated = await _svc.deleteImage(widget.initial!.id, imageId);
       if (!mounted) return;
       setState(() => _existingImages = [...updated.images]);
-      _toastKey('form.pictureRemoved');
+      toastKey('form.pictureRemoved');
     } catch (e) {
-      _toastKey('form.removeFailed', e);
+      toastError(e, prefixKey: 'form.removeFailed');
     } finally {
       if (mounted) setState(() => _imgBusy = false);
     }
@@ -387,12 +347,12 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
               ..clear()
               ..addAll(detected),
           );
-          _toastKey('form.colorsSuggested');
+          toastKey('form.colorsSuggested');
         }
         return;
       }
       if (detected.isEmpty) {
-        _toastKey('form.noColors');
+        toastKey('form.noColors');
         return;
       }
       final existing = _colors.map((c) => c.color.toLowerCase()).toSet();
@@ -400,13 +360,13 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
           .where((d) => !existing.contains(d.color.toLowerCase()))
           .toList();
       setState(() => _colors.addAll(added));
-      _toast(
+      toast(
         added.isEmpty
             ? tr(context, 'form.colorsAlready')
             : tr(context, 'form.colorsAdded'),
       );
     } catch (e) {
-      if (!auto) _toastKey('form.detectFailed', e);
+      if (!auto) toastError(e, prefixKey: 'form.detectFailed');
     } finally {
       _autoDetecting = false;
       if (mounted && !auto) setState(() => _detectingColors = false);
@@ -442,16 +402,16 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
-      _toastKey('form.nameRequired');
+      toastKey('form.nameRequired');
       return;
     }
     if (_category == null) {
-      _toastKey('form.categoryRequired');
+      toastKey('form.categoryRequired');
       return;
     }
     final minImages = _multiAngle ? 1 : 2;
     if (!widget.isEdit && _newImages.length < minImages) {
-      _toast(
+      toast(
         _multiAngle
             ? tr(context, 'form.minOnePicture')
             : tr(context, 'form.frontBackRequired'),
@@ -498,13 +458,13 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
         } catch (e) {
           // The cloth itself is saved; only the rating was lost. Say so, then
           // carry on as usual.
-          _toastKey('detail.ratingFailed', e);
+          toastError(e, prefixKey: 'detail.ratingFailed');
         }
       }
       if (!mounted) return;
       if (widget.isEdit) {
         // Edit: just pop back to the detail screen, which will refetch.
-        _toastKey('form.clothUpdated');
+        toastKey('form.clothUpdated');
         Navigator.pop(context, true);
       } else {
         Navigator.pushReplacement(
@@ -515,23 +475,10 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
         );
       }
     } catch (e) {
-      _toastKey('form.saveFailed', e);
+      toastError(e, prefixKey: 'form.saveFailed');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  /// Translated toast by key (+ optional error). Keeps `context` out of the
-  /// async call sites, so no use-after-await lint.
-  void _toastKey(String key, [Object? err]) {
-    if (!mounted) return;
-    final msg = tr(context, key);
-    _toast(err == null ? msg : '$msg: $err');
   }
 
   /// Called on every keystroke in the name field: recognise a brand and a
@@ -561,7 +508,7 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
   }
 
   Future<void> _replaceImage(int index) async {
-    final path = await _pickFilePath();
+    final path = await pickPhotoPath(context);
     if (!mounted || path == null) return; // the picker outlives this screen
     setState(() => _newImages[index] = path);
     _autoDetectColors();
@@ -888,10 +835,6 @@ class _ClothFormScreenState extends ConsumerState<ClothFormScreen> {
     ),
   ];
 }
-
-/// Legacy alias kept so any existing call-site that referenced the old name
-/// still works (e.g. the Collection grid's "Add cloth" button).
-typedef AddClothScreen = ClothFormScreen;
 
 /// Uppercases text as it's typed — used for the brand field so brands are
 /// stored/displayed consistently (nike → NIKE).

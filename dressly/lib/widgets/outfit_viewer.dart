@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../design/ds.dart';
 import '../l10n/app_text.dart';
 import 'app_image.dart';
+import 'error_toast.dart';
 
 /// Download the generated outfit image to a user-chosen file.
 /// Returns the saved path, or null if the user cancelled.
@@ -47,9 +48,7 @@ Future<String?> saveOutfitImage(BuildContext context, String displayUrl) async {
     return path;
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${tr(context, 'viewer.downloadFailed')}: $e')),
-      );
+      showErrorToast(context, e, prefixKey: 'viewer.downloadFailed');
     }
     return null;
   }

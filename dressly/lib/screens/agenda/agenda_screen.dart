@@ -12,6 +12,7 @@ import '../../widgets/app_image.dart';
 import '../../widgets/outfit_pick_grid.dart';
 import '../outfit/outfit_result_dialog.dart';
 import 'week_plan_screen.dart';
+import '../../widgets/error_toast.dart';
 
 /// Plan which outfit to wear on which day. Each entry can reference a generated
 /// outfit; marking it worn stamps last_worn_at on that outfit's clothes (which
@@ -56,17 +57,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
         return entries;
       });
     });
-  }
-
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-  }
-
-  void _toastKey(String key, [Object? err]) {
-    if (!mounted) return;
-    final msg = tr(context, key);
-    _toast(err == null ? msg : '$msg: $err');
   }
 
   /// Same treatment as the week planner (week_plan_screen._dayLabel): the
@@ -133,10 +123,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
         outfitId: result.outfitId,
         title: result.title,
       );
-      _toastKey('agenda.added');
+      toastKey('agenda.added');
       _reload();
     } catch (e) {
-      _toastKey('agenda.failed', e);
+      toastError(e, prefixKey: 'agenda.failed');
     }
   }
 
@@ -145,7 +135,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
       await agendaServiceOf(context).markWorn(e.id, worn: !e.worn);
       _reload();
     } catch (err) {
-      _toastKey('agenda.failed', err);
+      toastError(err, prefixKey: 'agenda.failed');
     }
   }
 
@@ -154,7 +144,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
       await agendaServiceOf(context).delete(e.id);
       _reload();
     } catch (err) {
-      _toastKey('agenda.deleteFailed', err);
+      toastError(err, prefixKey: 'agenda.deleteFailed');
     }
   }
 

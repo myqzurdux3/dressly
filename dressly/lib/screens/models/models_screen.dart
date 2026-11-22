@@ -8,6 +8,7 @@ import '../../models/model.dart';
 import '../../widgets/app_image.dart';
 import 'add_model_screen.dart';
 import 'model_review_screen.dart';
+import '../../widgets/error_toast.dart';
 
 class ModelsScreen extends StatefulWidget {
   const ModelsScreen({super.key});
@@ -70,13 +71,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         await svc.delete(m.id);
         _reload();
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${tr(context, 'models.deleteFailed')}: $e'),
-            ),
-          );
-        }
+        toastError(e, prefixKey: 'models.deleteFailed');
       }
     }
   }

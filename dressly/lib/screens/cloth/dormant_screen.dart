@@ -8,6 +8,7 @@ import '../../models/cloth.dart';
 import '../../models/dormant.dart';
 import '../../widgets/app_image.dart';
 import 'cloth_detail_screen.dart';
+import '../../widgets/error_toast.dart';
 
 /// What you own and never reach for.
 ///
@@ -99,7 +100,7 @@ class _DormantScreenState extends State<DormantScreen> {
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      toastError(e);
     }
   }
 
@@ -147,7 +148,7 @@ class _DormantScreenState extends State<DormantScreen> {
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      toastError(e);
     }
   }
 
@@ -180,7 +181,7 @@ class _DormantScreenState extends State<DormantScreen> {
         SnackBar(content: Text(tr(context, 'dormant.deleted'))),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      toastError(e);
     }
   }
 

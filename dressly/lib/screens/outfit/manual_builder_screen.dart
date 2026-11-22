@@ -15,6 +15,7 @@ import '../../models/outfit.dart';
 import 'algo_sheet.dart';
 import 'cloth_picker_screen.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/error_toast.dart';
 
 /// What the builder hands back to the Outfits screen when it closes: either a
 /// saved/updated manual outfit, or a request to continue this outfit's clothes
@@ -375,7 +376,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       );
       if (!mounted) return;
       if (preview.selections.isEmpty || preview.selections.first.isEmpty) {
-        _toast(tr(context, 'builder.algoEmpty'));
+        toastKey('builder.algoEmpty');
         return;
       }
       // An algorithm proposes a COMPLETE outfit, so replace whatever is on the
@@ -389,7 +390,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
         _arrange();
       });
     } catch (e) {
-      if (mounted) _toast('$e');
+      if (mounted) toastError(e);
     } finally {
       if (mounted) setState(() => _algoRunning = false);
     }
@@ -406,7 +407,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
 
   Future<void> _save({bool thenAi = false}) async {
     if (_items.isEmpty) {
-      _toast(tr(context, 'builder.empty'));
+      toastKey('builder.empty');
       return;
     }
     final svc = outfitsServiceOf(context); // resolve before any async gap
@@ -449,11 +450,11 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       if (!mounted) return;
       // Raw exception text ("Exception: capture failed") used to reach the
       // user untranslated.
-      _toast(
-        e is _CaptureFailed
-            ? tr(context, 'builder.captureFailed')
-            : '${tr(context, 'form.saveFailed')}: $e',
-      );
+      if (e is _CaptureFailed) {
+        toastKey('builder.captureFailed');
+      } else {
+        toastError(e, prefixKey: 'form.saveFailed');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -463,7 +464,7 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
   /// model (the mirror of "open an AI outfit in the manual builder").
   void _toAi() {
     if (_items.isEmpty) {
-      _toast(tr(context, 'builder.empty'));
+      toastKey('builder.empty');
       return;
     }
     // An existing outfit keeps one row: save the montage, then its AI
@@ -476,11 +477,6 @@ class _ManualBuilderScreenState extends State<ManualBuilderScreen> {
       context,
       ManualBuilderResult.toAi(_items.map((e) => e.clothId).toList()),
     );
-  }
-
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override

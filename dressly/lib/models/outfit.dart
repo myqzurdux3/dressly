@@ -266,15 +266,19 @@ class Outfit {
     hasManual: hasManual,
   );
 
-  String get tierLabel =>
-      const {
-        'vto': 'Try-On',
-        'flex': 'Flex',
-        'pro': 'Pro',
-        'max': 'Max',
-        'openrouter': 'OpenRouter',
-        'klein': 'Flex', // legacy rows
-        'flux': 'Pro', // legacy rows
-      }[modelTier] ??
-      modelTier;
+  String get tierLabel => modelTierLabel(modelTier);
 }
+
+/// Display name of a render tier id ('flex' -> 'Flex'). The single source for
+/// outfit renders and photo enhancement alike; an unknown id shows as is.
+String modelTierLabel(String tier) =>
+    const {
+      'vto': 'Try-On',
+      'flex': 'Flex',
+      'pro': 'Pro',
+      'max': 'Max',
+      'openrouter': 'OpenRouter',
+      'klein': 'Flex', // legacy rows
+      'flux': 'Pro', // legacy rows
+    }[tier] ??
+    tier;

@@ -114,12 +114,14 @@ class ApiClient {
     if (e is ApiException) return e;
     if (e is TimeoutException) {
       return ApiException(0, 'The server did not answer in time. '
-          'Check your connection and try again.');
+          'Check your connection and try again.',
+          kind: ApiErrorKind.timeout);
     }
     if (e is SocketException || e is HandshakeException ||
         e is http.ClientException) {
       return ApiException(0, 'Could not reach the server. '
-          'Check your connection and try again.');
+          'Check your connection and try again.',
+          kind: ApiErrorKind.network);
     }
     return e;
   }
@@ -261,10 +263,17 @@ class ApiClient {
   }
 }
 
+/// Why a request failed before the server could answer. Only meaningful when
+/// [ApiException.statusCode] is 0; the UI uses it to pick a translated text.
+enum ApiErrorKind { network, timeout }
+
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message);
+  ApiException(this.statusCode, this.message, {this.kind});
   final int statusCode;
   final String message;
+
+  /// Set on transport failures (statusCode 0); null when the server answered.
+  final ApiErrorKind? kind;
 
   @override
   String toString() => message;

@@ -4,9 +4,10 @@ import '../../../config/api_config.dart';
 import '../../../design/ds.dart';
 import '../../../l10n/app_text.dart';
 import '../../../models/cloth.dart';
+import '../../../models/outfit.dart' show modelTierLabel;
 import '../../../widgets/app_image.dart';
 import '../photo_review.dart'
-    show enhanceTierLabel, showCropDecision, showImageFullscreen;
+    show showCropDecision, showImageFullscreen;
 
 /// Draws one network image. Injected so tests need no network.
 typedef DetailImageBuilder =
@@ -349,7 +350,7 @@ class _EnhanceSection extends StatelessWidget {
             gap,
             DsButton(
               label: tr(context, 'detail.tryBetterModel', {
-                'tier': enhanceTierLabel(next),
+                'tier': modelTierLabel(next),
               }),
               icon: Icons.upgrade,
               kind: DsButtonKind.secondary,
@@ -410,7 +411,7 @@ class _EnhanceSection extends StatelessWidget {
               if (next != null)
                 DsButton(
                   label: tr(context, 'detail.enhanceRetryStronger', {
-                    'tier': enhanceTierLabel(next),
+                    'tier': modelTierLabel(next),
                   }),
                   icon: Icons.upgrade,
                   onPressed: () => panel.onEnhance('ai', next),

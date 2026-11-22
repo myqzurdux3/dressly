@@ -5,6 +5,7 @@ import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
 import '../../state/session.dart';
+import '../../widgets/error_toast.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -40,7 +41,7 @@ class _SignupScreenState extends State<SignupScreen> {
       // Without this, the pushed SignupScreen sits on top and "nothing happens".
       Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = errorText(context, e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

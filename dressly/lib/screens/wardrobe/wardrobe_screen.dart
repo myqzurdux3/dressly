@@ -13,7 +13,7 @@ import '../../services/clothes_service.dart';
 import '../../state/paged_list.dart';
 import '../../state/providers.dart';
 import '../../widgets/filter_sheet.dart';
-import '../cloth/add_cloth_screen.dart';
+import '../cloth/cloth_form_screen.dart';
 import '../cloth/cloth_detail_screen.dart';
 import '../settings/settings_screen.dart';
 import 'wardrobe_card.dart';
@@ -202,7 +202,7 @@ class _WardrobeScreenState extends ConsumerState<WardrobeScreen> {
     final list = _list;
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AddClothScreen()),
+      MaterialPageRoute(builder: (_) => const ClothFormScreen()),
     );
     await list.refresh();
   }

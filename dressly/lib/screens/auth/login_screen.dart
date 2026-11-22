@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../state/session.dart';
 import '../../widgets/brand_logo.dart';
 import 'signup_screen.dart';
+import '../../widgets/error_toast.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // and must be popped to reveal the now-Collection home).
       Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = errorText(context, e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

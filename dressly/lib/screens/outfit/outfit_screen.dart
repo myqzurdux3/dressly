@@ -25,6 +25,7 @@ import 'manual_builder_screen.dart';
 import 'outfit_collage.dart';
 import 'outfit_result_dialog.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/error_toast.dart';
 
 class OutfitScreen extends StatefulWidget {
   const OutfitScreen({super.key});
@@ -146,7 +147,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
         _clothes = clothes;
       });
     } catch (e) {
-      if (mounted) _toastKey('result.loadFailed', e);
+      if (mounted) toastError(e, prefixKey: 'result.loadFailed');
     }
     // Outside the try: the history does not depend on models or clothes, and
     // skipping it left the list showing "empty" whenever those failed.
@@ -159,13 +160,13 @@ class _OutfitScreenState extends State<OutfitScreen> {
     setState(() => _outfitQuery = result);
     await _history.refresh();
     if (mounted && _history.error != null) {
-      _toastKey('result.loadFailed', _history.error);
+      toastError(_history.error!, prefixKey: 'result.loadFailed');
     }
   }
 
   Future<void> _generate() async {
     if (_selectedClothIds.isEmpty) {
-      _toastKey('result.pickAtLeastOne');
+      toastKey('result.pickAtLeastOne');
       return;
     }
     setState(() => _generating = true);
@@ -187,7 +188,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
       _history.prepend(outfit);
       _showResult(outfit);
     } catch (e) {
-      _toastKey('result.generationFailed', e);
+      toastError(e, prefixKey: 'result.generationFailed');
     } finally {
       if (mounted) setState(() => _generating = false);
     }
@@ -285,13 +286,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
         ..clear()
         ..addAll(clothIds);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          tr(context, 'builder.movedToAi'),
-        ),
-      ),
-    );
+    toastKey('builder.movedToAi');
   }
 
   Future<void> _showAlgoPreview(AlgoPick pick) async {
@@ -315,7 +310,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
         fillGaps: pick.fillGaps,
       );
     } catch (e) {
-      _toastKey('result.selectionFailed', e);
+      toastError(e, prefixKey: 'result.selectionFailed');
       return;
     }
     if (!mounted) return;
@@ -375,7 +370,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
     try {
       await Future.wait(futures);
     } catch (e) {
-      _toastKey('result.someFailed', e);
+      toastError(e, prefixKey: 'result.someFailed');
     } finally {
       if (mounted) setState(() => _generating = false);
     }
@@ -412,23 +407,12 @@ class _OutfitScreenState extends State<OutfitScreen> {
     return _selectedClothIds.where((id) => !hidden.contains(id)).toList();
   }
 
-  void _toast(String m) {
-    if (!mounted) return; // the screen may be gone by the time an async op ends
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-  }
-
-  void _toastKey(String key, [Object? err]) {
-    if (!mounted) return;
-    final msg = tr(context, key);
-    _toast(err == null ? msg : '$msg: $err');
-  }
-
   Future<void> _deleteOutfit(Outfit o) async {
     try {
       await outfitsServiceOf(context).delete(o.id);
       _history.removeItem((x) => x.id == o.id);
     } catch (e) {
-      _toastKey('result.deleteFailed', e);
+      toastError(e, prefixKey: 'result.deleteFailed');
     }
   }
 
@@ -460,7 +444,7 @@ class _OutfitScreenState extends State<OutfitScreen> {
       ).toggleFavorite(o.id, isFavorite: !o.isFavorite);
       _history.replaceItem((x) => x.id == o.id, _replaceFavorite(o, newVal));
     } catch (e) {
-      _toastKey('result.favoriteFailed', e);
+      toastError(e, prefixKey: 'result.favoriteFailed');
     }
   }
 

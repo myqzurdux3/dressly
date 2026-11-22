@@ -7,10 +7,11 @@ import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../services/clothes_service.dart' show ClothWears;
 import '../wardrobe/wardrobe_card.dart' show swatchColorOf;
-import 'add_cloth_screen.dart'; // ClothFormScreen
+import 'cloth_form_screen.dart';
 import 'detail/cloth_detail_state.dart';
 import 'detail/detail_image_panel.dart';
 import 'photo_edit_screen.dart';
+import '../../widgets/error_toast.dart';
 
 /// One garment: a hero on its own colour, the facts (rating, wear, colours,
 /// tags), then every photo with its tools. Pops `true` when deleted.
@@ -38,14 +39,6 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
   ClothDetail get _ctrl =>
       ref.read(clothDetailProvider(widget.clothId).notifier);
 
-  void _toast(String key, [Object? err]) {
-    if (!mounted) return;
-    final msg = tr(context, key);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(err == null ? msg : '$msg: $err')));
-  }
-
   /// Runs [action]; on failure says [failKey] with the error.
   Future<void> _run(
     Future<void> Function() action, {
@@ -54,9 +47,9 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
   }) async {
     try {
       await action();
-      if (doneKey != null) _toast(doneKey);
+      if (doneKey != null) toastKey(doneKey);
     } catch (e) {
-      _toast(failKey, e);
+      toastError(e, prefixKey: failKey);
     }
   }
 
@@ -109,7 +102,7 @@ class _ClothDetailScreenState extends ConsumerState<ClothDetailScreen> {
       await _ctrl.delete();
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      _toast('detail.deleteFailed', e);
+      toastError(e, prefixKey: 'detail.deleteFailed');
     }
   }
 

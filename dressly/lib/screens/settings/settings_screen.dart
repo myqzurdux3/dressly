@@ -12,7 +12,9 @@ import '../../state/session.dart';
 import '../../state/theme_controller.dart';
 import 'change_password_screen.dart';
 import 'costs_screen.dart';
+import 'reports_screen.dart';
 import 'weather_location_screen.dart';
+import '../../widgets/error_toast.dart';
 
 /// Appearance customization + account. Keeps "Sign out" here, away from the
 /// Models management (which lives on the Create screen).
@@ -83,7 +85,7 @@ class SettingsScreen extends StatelessWidget {
       session.setSession(user, token);
       messenger.showSnackBar(SnackBar(content: Text(savedText)));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      if (context.mounted) showErrorToast(context, e);
     }
   }
 
@@ -204,6 +206,12 @@ class SettingsScreen extends StatelessWidget {
                       title: tr(context, 'costs.title'),
                       detail: tr(context, 'costs.hint'),
                       onTap: () => push(const CostsScreen()),
+                    ),
+                    DsInfoRow(
+                      icon: Icons.flag_outlined,
+                      title: tr(context, 'reports.title'),
+                      detail: tr(context, 'reports.hint'),
+                      onTap: () => push(const ReportsScreen()),
                     ),
                   ],
                   DsSectionTitle(tr(context, 'settings.account')),

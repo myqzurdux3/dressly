@@ -12,6 +12,7 @@ import '../../widgets/outfit_history_card.dart';
 import '../../widgets/outfit_sort_sheet.dart';
 import '../../widgets/paged_grid.dart';
 import 'outfit_result_dialog.dart';
+import '../../widgets/error_toast.dart';
 
 /// Grid of outfits the user has favorited. Tap one to open the full outfit
 /// dialog — the same one used right after generating — so a saved outfit can
@@ -133,14 +134,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               } catch (e) {
                 // Silently ignored before: the heart stayed filled and the
                 // user had no idea the removal had failed.
-                if (!mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '${tr(this.context, 'result.favoriteFailed')}: $e',
-                    ),
-                  ),
-                );
+                toastError(e, prefixKey: 'result.favoriteFailed');
               }
             },
           ),

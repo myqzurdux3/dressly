@@ -12,6 +12,7 @@ import '../../services/stylist_service.dart';
 import '../../widgets/app_image.dart';
 import '../../widgets/render_person_sheet.dart';
 import '../outfit/outfit_result_dialog.dart';
+import '../../widgets/error_toast.dart';
 
 /// The personal stylist: a conversation with an assistant that sees the
 /// wardrobe, the ratings, the agenda and the forecast, and proposes outfits
@@ -69,11 +70,6 @@ class _StylistScreenState extends State<StylistScreen> {
     }
   }
 
-  void _toast(String text) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-  }
-
   Future<void> _send([String? preset]) async {
     final text = (preset ?? _input.text).trim();
     if (text.isEmpty || _sending != null) return;
@@ -109,13 +105,13 @@ class _StylistScreenState extends State<StylistScreen> {
       if (thread.error.isNotEmpty) {
         // The server dropped the question: give it back to edit or resend.
         _input.text = text;
-        _toast(thread.error);
+        toast(thread.error);
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = null);
       _input.text = text;
-      _toast('$e');
+      toastError(e);
     }
   }
 
@@ -134,7 +130,7 @@ class _StylistScreenState extends State<StylistScreen> {
     try {
       threads = await svc.threads();
     } catch (e) {
-      _toast('$e');
+      toastError(e);
       return;
     }
     if (!mounted) return;
@@ -156,7 +152,7 @@ class _StylistScreenState extends State<StylistScreen> {
       });
     } catch (e) {
       if (mounted) setState(() => _loadingThread = false);
-      _toast('$e');
+      toastError(e);
     }
   }
 
@@ -191,10 +187,10 @@ class _StylistScreenState extends State<StylistScreen> {
         _replace(m, p.id, (q) => q.saved(outfitId));
       });
       DataBus.outfitsChanged();
-      _toast(saved);
+      toast(saved);
     } catch (e) {
       if (mounted) setState(() => _saving.remove(p.id));
-      _toast('$e');
+      toastError(e);
     }
   }
 
@@ -214,10 +210,10 @@ class _StylistScreenState extends State<StylistScreen> {
         _replace(m, p.id, (q) => q.rendered(rid));
       });
       DataBus.outfitsChanged();
-      _toast(started);
+      toast(started);
     } catch (e) {
       if (mounted) setState(() => _saving.remove(p.id));
-      _toast('$e');
+      toastError(e);
     }
   }
 
@@ -230,7 +226,7 @@ class _StylistScreenState extends State<StylistScreen> {
         builder: (_) => OutfitResultDialog(outfit: o, onChanged: (_) {}),
       );
     } catch (e) {
-      _toast('$e');
+      toastError(e);
     }
   }
 
@@ -722,11 +718,7 @@ class _HistorySheetState extends State<_HistorySheet> {
       await widget.service.deleteThread(t.id);
       if (mounted) setState(() => _threads.removeWhere((x) => x.id == t.id));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$e')));
-      }
+      toastError(e);
     }
   }
 

@@ -1,13 +1,13 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 
 import '../../app.dart';
+import '../../widgets/error_toast.dart';
+import '../../widgets/photo_source_sheet.dart';
 
 /// Add a new model (a person/avatar) with a front + back picture. Mirrors the
 /// add-cloth flow: background removal runs on upload, and the user reviews it
@@ -25,64 +25,25 @@ class _AddModelScreenState extends State<AddModelScreen> {
   String _gender = ''; // '' unspecified | 'male' | 'female'
   bool _saving = false;
 
-  /// Let the user take a photo with the camera or pick a file from the gallery,
-  /// then return its path (or null if cancelled).
-  Future<String?> _pickFilePath() async {
-    final source = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera),
-              title: Text(tr(context, 'form.takePhoto')),
-              onTap: () => Navigator.pop(ctx, 'camera'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: Text(tr(context, 'form.chooseGallery')),
-              onTap: () => Navigator.pop(ctx, 'gallery'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return null;
-    try {
-      if (source == 'camera') {
-        final x = await ImagePicker().pickImage(
-          source: ImageSource.camera,
-          imageQuality: 92,
-        );
-        return x?.path;
-      }
-      final r = await FilePicker.platform.pickFiles(type: FileType.image);
-      return r?.files.single.path;
-    } catch (e) {
-      if (mounted) _toast('${tr(context, 'form.photoError')}: $e');
-      return null;
-    }
-  }
 
   Future<void> _pickImage() async {
-    final path = await _pickFilePath();
+    final path = await pickPhotoPath(context);
     // The picker can outlive the screen (back pressed while it was open).
     if (path != null && mounted) setState(() => _images.add(path));
   }
 
   Future<void> _replace(int i) async {
-    final path = await _pickFilePath();
+    final path = await pickPhotoPath(context);
     if (path != null && mounted) setState(() => _images[i] = path);
   }
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
-      _toast(tr(context, 'form.nameRequired'));
+      toastKey('form.nameRequired');
       return;
     }
     if (_images.length < 2) {
-      _toast(tr(context, 'form.frontBackRequired'));
+      toastKey('form.frontBackRequired');
       return;
     }
     setState(() => _saving = true);
@@ -96,14 +57,11 @@ class _AddModelScreenState extends State<AddModelScreen> {
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) _toast('${tr(context, 'form.saveFailed')}: $e');
+      toastError(e, prefixKey: 'form.saveFailed');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
-
-  void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   @override
   Widget build(BuildContext context) {

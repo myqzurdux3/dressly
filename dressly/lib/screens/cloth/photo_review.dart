@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../config/api_config.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
+import '../../models/outfit.dart' show modelTierLabel;
 import '../../widgets/app_image.dart';
 
 /// Review steps for a garment photo, shared by the form and the detail
@@ -256,16 +257,6 @@ Future<String?> showEnhanceChoice(BuildContext context) {
   );
 }
 
-String enhanceTierLabel(String tier) =>
-    const {
-      'flex': 'Flex',
-      'pro': 'Pro',
-      'max': 'Max',
-      'klein': 'Flex', // legacy
-      'flux': 'Pro', // legacy
-    }[tier] ??
-    tier;
-
 /// The current photo next to the enhanced candidate. Returns 'keep',
 /// 'discard', 'upgrade' (when a better AI model is offered) or null.
 Future<String?> showEnhancePreview(
@@ -332,7 +323,7 @@ Future<String?> showEnhancePreview(
           ),
           if (nextTier != null)
             DsButton(
-              label: '${tr(ctx, 'review.try')} ${enhanceTierLabel(nextTier)}',
+              label: '${tr(ctx, 'review.try')} ${modelTierLabel(nextTier)}',
               icon: Icons.upgrade,
               kind: DsButtonKind.secondary,
               onPressed: () => Navigator.pop(ctx, 'upgrade'),

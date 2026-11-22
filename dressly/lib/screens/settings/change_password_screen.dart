@@ -5,6 +5,7 @@ import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
 import '../../state/session.dart';
+import '../../widgets/error_toast.dart';
 
 /// Change the signed-in user's password.
 ///
@@ -56,8 +57,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
       navigator.pop();
     } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      toastError(e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

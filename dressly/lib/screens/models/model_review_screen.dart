@@ -7,6 +7,7 @@ import '../../app.dart';
 import '../../config/api_config.dart';
 import '../../models/model.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/error_toast.dart';
 
 /// View-only gallery of a model's pictures. Models keep their background as-is,
 /// so there is no accept/reject step — just show what the user uploaded.
@@ -40,10 +41,7 @@ class _ModelReviewScreenState extends State<ModelReviewScreen> {
       if (!mounted) return;
       _reload();
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${tr(context, 'form.updateFailed')}: $e')),
-      );
+      toastError(e, prefixKey: 'form.updateFailed');
     }
   }
 

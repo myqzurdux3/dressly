@@ -7,6 +7,7 @@ import '../../l10n/app_text.dart';
 import '../../models/cloth.dart';
 import '../../state/providers.dart';
 import '../../widgets/app_image.dart';
+import '../../widgets/error_toast.dart';
 
 /// Manual photo editor: rotate in 90° steps (instant, client-side) and drag a
 /// crop rectangle. On "Done" the rotation + crop are applied server-side in a
@@ -84,11 +85,6 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
     stream.addListener(l);
   }
 
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-  }
-
   /// Pops at most once, even if the back button and a button race.
   void _safePop(Cloth? result) {
     if (_popped || !mounted) return;
@@ -144,7 +140,7 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
       if (!mounted) return;
       _safePop(result);
     } catch (e) {
-      _toast(tr(context, 'photo.applyFailed'));
+      toastError(e, prefixKey: 'photo.applyFailed');
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -185,9 +181,9 @@ class _PhotoEditScreenState extends ConsumerState<PhotoEditScreen> {
       final tolLabel = _tolKeys[tolerance] != null
           ? tr(context, _tolKeys[tolerance]!)
           : tolerance;
-      _toast(tr(context, 'photo.cutoutUpdated', {'level': tolLabel}));
+      toastKey('photo.cutoutUpdated', {'level': tolLabel});
     } catch (e) {
-      _toast(tr(context, 'photo.bgFailed'));
+      toastError(e, prefixKey: 'photo.bgFailed');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
