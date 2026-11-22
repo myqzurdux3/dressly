@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/cloth.dart';
@@ -53,20 +54,36 @@ final wardrobeFilterProvider = NotifierProvider<WardrobeFilter, ClothFilter>(
   WardrobeFilter.new,
 );
 
+/// Number of clothes matching the current filter, all pages included; null
+/// while unknown.
+final wardrobeTotalProvider = Provider.autoDispose<ValueNotifier<int?>>((ref) {
+  final total = ValueNotifier<int?>(null);
+  ref.onDispose(total.dispose);
+  return total;
+});
+
 /// The wardrobe's pages. Reloads from the first page whenever the filter
 /// changes; the filter is read at fetch time, so a refresh is all a new query
 /// needs.
 final wardrobeListProvider = Provider.autoDispose<PagedList<Cloth>>((ref) {
   final service = ref.watch(clothesServiceProvider);
+  final total = ref.watch(wardrobeTotalProvider);
   final list = PagedList<Cloth>(
-    fetchPage: ({required limit, required offset}) => service.list(
-      filter: ref.read(wardrobeFilterProvider),
-      limit: limit,
-      offset: offset,
-    ),
+    fetchPage: ({required limit, required offset}) {
+      final filter = ref.read(wardrobeFilterProvider);
+      if (offset == 0) {
+        // The header's count: the grid only holds the pages loaded so far.
+        // Best effort; without it the header falls back to "60+".
+        total.value = null;
+        service.count(filter: filter).then((n) {
+          total.value = n;
+        }).catchError((_) {});
+      }
+      return service.list(filter: filter, limit: limit, offset: offset);
+    },
   );
   ref.listen(wardrobeFilterProvider, (_, _) => list.refresh());
   ref.onDispose(list.dispose);
   list.refresh();
   return list;
-}, dependencies: [clothesServiceProvider]);
+}, dependencies: [clothesServiceProvider, wardrobeTotalProvider]);

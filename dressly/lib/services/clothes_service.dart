@@ -26,6 +26,14 @@ class ClothesService {
     return data.map((e) => Cloth.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// How many clothes match [filter], all pages included.
+  Future<int> count({ClothFilter? filter}) async {
+    final q = filter?.toQuery() ?? '';
+    final data = await _api.get('/clothes/count${q.isEmpty ? '' : '?$q'}')
+        as Map<String, dynamic>;
+    return data['count'] as int;
+  }
+
   Future<Cloth> get(int id) async {
     final data = await _api.get('/clothes/$id') as Map<String, dynamic>;
     return Cloth.fromJson(data);

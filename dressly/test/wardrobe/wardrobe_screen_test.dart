@@ -36,6 +36,7 @@ class _Server {
     _json(3, 'Runners crème'),
   ];
   int listStatus = 200;
+  int? total;
   int favoriteStatus = 200;
   final listQueries = <Map<String, String>>[];
   final deleted = <String>[];
@@ -47,6 +48,11 @@ class _Server {
       return listStatus == 200
           ? _ok(clothes)
           : http.Response('{"detail":"boom"}', listStatus);
+    }
+    if (p.endsWith('/clothes/count')) {
+      return total == null
+          ? http.Response('not found', 404)
+          : _ok({'count': total});
     }
     if (p.contains('/autocomplete/')) return _ok(<String>[]);
     if (req.method == 'POST' && p.endsWith('/favorite')) {
@@ -99,6 +105,23 @@ void main() {
     await _pump(t);
     expect(find.byType(WardrobeCard), findsNWidgets(3));
     expect(find.text('3 ITEMS'), findsOneWidget);
+  });
+
+  testWidgets('a full first page shows the server total, not "30+"', (t) async {
+    final s = _Server()
+      ..clothes = [for (var i = 1; i <= 30; i++) _json(i, 'Pièce $i')]
+      ..total = 174;
+    await _pump(t, server: s);
+    await t.pump();
+    expect(find.text('174 ITEMS'), findsOneWidget);
+  });
+
+  testWidgets('without the total, a full page reads "30+"', (t) async {
+    final s = _Server()
+      ..clothes = [for (var i = 1; i <= 30; i++) _json(i, 'Pièce $i')];
+    await _pump(t, server: s);
+    await t.pump();
+    expect(find.text('30+ ITEMS'), findsOneWidget);
   });
 
   testWidgets('typing in search sends one request with the last text', (

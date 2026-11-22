@@ -512,6 +512,31 @@ def list_clothes(
         return _hydrate_many(conn, rows)
 
 
+@router.get("/count")
+def count_clothes(
+    user=Depends(get_current_user),
+    search: Optional[str] = None,
+    brand: Optional[str] = None,
+    color: Optional[str] = None,
+    cut: Optional[str] = None,
+    category: Optional[str] = None,
+    tag: Optional[str] = None,
+    min_score: Optional[int] = None,
+    favorite: Optional[bool] = None,
+):
+    """How many clothes match the same filters as GET /clothes. The grid loads
+    page by page, so its header cannot count what it has not loaded yet."""
+    sql, args = _build_query(
+        user["id"],
+        {"search": search, "brand": brand, "color": color, "cut": cut,
+         "category": category, "tag": tag, "sort": None, "min_score": min_score,
+         "favorite": favorite},
+    )
+    with get_conn() as conn:
+        n = conn.execute(f"SELECT COUNT(*) FROM ({sql})", args).fetchone()[0]
+    return {"count": n}
+
+
 # Clamped so a caller cannot ask for "dormant since 0 months ago", which would
 # return the whole wardrobe under a name that means the opposite.
 _DORMANT_MIN_MONTHS = 1

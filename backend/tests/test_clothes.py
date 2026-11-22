@@ -190,3 +190,15 @@ def test_delete_cloth(client, auth):
     c = create_cloth(client, auth)
     assert client.delete(f"/clothes/{c['id']}", headers=auth).status_code == 200
     assert client.get(f"/clothes/{c['id']}", headers=auth).status_code == 404
+
+
+def test_count_matches_the_filters_beyond_one_page(client, auth):
+    for i in range(3):
+        create_cloth(client, auth, name=f"Tee {i}", category="tshirt")
+    create_cloth(client, auth, name="Jeans", category="jeans")
+
+    assert client.get("/clothes/count", headers=auth).json() == {"count": 4}
+    assert client.get("/clothes/count?category=tshirt",
+                      headers=auth).json() == {"count": 3}
+    # The page is smaller than the total; the count is not.
+    assert len(client.get("/clothes?limit=2", headers=auth).json()) == 2

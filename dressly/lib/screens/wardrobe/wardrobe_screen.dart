@@ -230,7 +230,12 @@ class _WardrobeScreenState extends ConsumerState<WardrobeScreen> {
               controller: _scroll,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverToBoxAdapter(child: _header(context, list, filter)),
+                SliverToBoxAdapter(
+                  child: ListenableBuilder(
+                    listenable: ref.watch(wardrobeTotalProvider),
+                    builder: (context, _) => _header(context, list, filter),
+                  ),
+                ),
                 ..._body(context, list, filter),
                 // Room for the floating "add" button over the last row: the
                 // button, its margin from the edge, then a gap.
@@ -252,11 +257,13 @@ class _WardrobeScreenState extends ConsumerState<WardrobeScreen> {
 
   Widget _header(BuildContext context, PagedList<Cloth> list, ClothFilter f) {
     final ds = context.ds;
-    final count = list.items.length;
+    final total = ref.read(wardrobeTotalProvider).value;
+    final loaded = list.items.length;
+    // The server's total when it has answered; until then "60+" rather than a
+    // number that is wrong.
+    final count = list.hasMore ? (total ?? loaded) : loaded;
     final countLine =
-        // The total is unknown until the last page lands: "60+" rather than a
-        // number that is wrong.
-        '$count${list.hasMore ? '+' : ''} '
+        '$count${list.hasMore && total == null ? '+' : ''} '
         '${trPlural(context, 'wardrobe.item', count)}';
     final sheetActive =
         (f.brand?.isNotEmpty ?? false) ||
