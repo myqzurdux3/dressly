@@ -1,4 +1,4 @@
-package com.example.dressly
+package com.dressly.app
 
 import io.flutter.embedding.android.FlutterActivity
 

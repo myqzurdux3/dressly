@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.dressly"
+    namespace = "com.dressly.app"
     // A plugin (flutter_plugin_android_lifecycle) requires API 36; override the
     // Flutter default (34) so the release build's AAR metadata check passes.
     compileSdk = 36

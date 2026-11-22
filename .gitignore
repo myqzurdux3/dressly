@@ -62,14 +62,18 @@ Private-Key.txt
 # Deployment archive produced by scripts/export_for_server.sh (~430 MB).
 dressly-backend.tar*
 
-# --- notes personnelles et sauvegardes locales (hors dépôt) ---------------
+# --- personal notes, local backups, API keys kept on disk ----------------
 backup-do-not-read/
 do-not-read.txt
 usefull-commands.txt
 install.log
-backend/certs/
-
-.superpowers/
 open-router.txt
 anthropic.txt
 claude-api-key.txt
+
+# --- tool output ---------------------------------------------------------
+.superpowers/
+graphify-out/
+*.log
+# Golden-test diffs written by a failing run; never source.
+dressly/test/design/failures/
