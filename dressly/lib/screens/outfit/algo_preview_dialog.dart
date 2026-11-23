@@ -77,6 +77,14 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
     );
   }
 
+  /// The server's label ("Same brand · Nike") with the algorithm's own name
+  /// translated; the part after the dot (a brand, a colour) stays as is.
+  String _title(BuildContext context) {
+    final parts = _preview.algoLabel.split(' · ');
+    parts[0] = trOr(context, 'algoName.${_preview.algo}', parts[0]);
+    return parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
@@ -104,7 +112,7 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _preview.algoLabel.toUpperCase(),
+                          _title(context).toUpperCase(),
                           style: ds.typo.headline,
                         ),
                         Text(
@@ -156,9 +164,9 @@ class _AlgoPreviewDialogState extends State<AlgoPreviewDialog> {
                   SizedBox(width: ds.space.xs),
                   Expanded(
                     child: DsButton(
-                      label:
-                          '${tr(context, 'result.generate')} $k '
-                          '${trPlural(context, 'result.outfit', k)}',
+                      // "Generate (3)": the full "Generate 3 outfits" did not
+                      // fit next to Reshuffle on a phone.
+                      label: '${tr(context, 'result.generate')} ($k)',
                       icon: Icons.auto_awesome,
                       expand: true,
                       onPressed: (_reshuffling || k == 0) ? null : _confirm,
@@ -234,7 +242,7 @@ class _AlgoSelectionCard extends StatelessWidget {
                 for (final p in ordered)
                   DsLayerRow(
                     index: p.role.isNotEmpty
-                        ? p.role
+                        ? trOr(context, 'role.${p.role}', p.role)
                         : outfitSlotLabel(context, p.category),
                     image: p.thumbUrl.isEmpty
                         ? Icon(Icons.checkroom, color: c.textMuted)

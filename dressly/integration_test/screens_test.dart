@@ -141,7 +141,11 @@ void main() {
       await _shot(tester, '11_result');
       // A manual outfit opens in the editor, which does not scroll.
       if (find.byType(Scrollable).evaluate().isNotEmpty) {
-        await tester.drag(find.byType(Scrollable).last, const Offset(0, -700));
+        // The last Scrollable can be a horizontal chip row; scroll the page.
+        final vertical = find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        );
+        await tester.drag(vertical.last, const Offset(0, -700));
         await _settle(tester);
         await _shot(tester, '12_result_bottom');
       }
@@ -209,8 +213,11 @@ void main() {
     for (final icon in const [
       Icons.wb_sunny_outlined,
       Icons.receipt_long_outlined,
+      Icons.flag_outlined,
       Icons.lock_outline,
     ]) {
+      // Costs and Reports are admin-only: absent for a regular account.
+      if (find.byIcon(icon).evaluate().isEmpty) continue;
       await tester.ensureVisible(find.byIcon(icon).first);
       await _settle(tester);
       await tester.tap(find.byIcon(icon).first);
