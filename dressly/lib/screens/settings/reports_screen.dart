@@ -242,10 +242,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   Text(meta, style: muted),
                   SizedBox(height: ds.space.xs),
                   Text(
-                    r.message.trim().isEmpty
+                    _comment(r).isEmpty
                         ? tr(context, 'reports.noComment')
-                        : r.message.trim(),
-                    style: r.message.trim().isEmpty ? muted : ds.typo.body,
+                        : _comment(r),
+                    style: _comment(r).isEmpty ? muted : ds.typo.body,
                   ),
                   if (r.canResolve) ...[
                     SizedBox(height: ds.space.s),
@@ -265,4 +265,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
     );
   }
+}
+
+/// Placeholders the server stores when the user wrote no comment (they also
+/// head the admin alert). Shown as "no comment" rather than as English text.
+const _serverPlaceholders = {
+  'User reported background removal looks wrong — please review.',
+  'User reported a cut-out problem.',
+  'User reported a bad/failed generation.',
+};
+
+String _comment(UserReport r) {
+  final m = r.message.trim();
+  return _serverPlaceholders.contains(m) ? '' : m;
 }

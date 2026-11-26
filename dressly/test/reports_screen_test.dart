@@ -86,7 +86,7 @@ void main() {
           'outfit_id': 40,
           'tier': 'pro',
           'slug': '',
-          'message': '',
+          'message': 'User reported a bad/failed generation.',
           'resolved': 0,
           'created_at': '2026-11-21 08:30:00',
           'reporter_email': 'a@b.co',

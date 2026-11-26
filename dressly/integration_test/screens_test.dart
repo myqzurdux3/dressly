@@ -69,6 +69,9 @@ void main() {
     expect(find.byType(LoginScreen), findsOneWidget);
     await _shot(tester, '00_login');
     await const AuthService().login(_email, _password);
+    // Unmount first: a ProviderScope keeps the overrides it was built with,
+    // so the signed-out session from the first bootstrap would stay.
+    await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(await bootstrap());
     await _settle(tester, const Duration(seconds: 6));
     expect(find.byType(HomeShell), findsOneWidget);
@@ -242,7 +245,7 @@ void main() {
     );
     await _settle(tester);
     // The chip row is a lazy horizontal list: swipe it until "Manage" exists.
-    final manage = find.text('Manage');
+    final manage = find.text(_lang == 'fr' ? 'Gérer' : 'Manage');
     final chips = find
         .ancestor(
           of: find.byType(ModelChip).first,
