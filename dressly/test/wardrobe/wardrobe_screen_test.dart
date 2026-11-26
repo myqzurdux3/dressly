@@ -82,14 +82,11 @@ Future<_Server> _pump(WidgetTester t, {_Server? server}) async {
   addTearDown(() => t.binding.setSurfaceSize(null));
   await t.pumpWidget(
     ProviderScope(
-      child: ProviderScope(
-        // Same nesting as HomeShell: the authenticated client is scoped.
-        overrides: [apiClientProvider.overrideWithValue(ApiClient(token: 't'))],
-        child: MaterialApp(
-          locale: const Locale('en'),
-          theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
-          home: const WardrobeScreen(imageBuilder: _noImage),
-        ),
+      overrides: [apiClientProvider.overrideWithValue(ApiClient(token: 't'))],
+      child: MaterialApp(
+        locale: const Locale('en'),
+        theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
+        home: const WardrobeScreen(imageBuilder: _noImage),
       ),
     ),
   );

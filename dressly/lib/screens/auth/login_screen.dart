@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
-import '../../state/session.dart';
+import '../../state/providers.dart';
 import '../../widgets/brand_logo.dart';
 import 'signup_screen.dart';
 import '../../widgets/error_toast.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
@@ -33,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _password.text,
       );
       if (!mounted) return;
-      context.read<Session>().setSession(result.user, result.token);
+      ref.read(sessionProvider).setSession(result.user, result.token);
       // LoginScreen is the home route, but popUntil(isFirst) is a safe no-op
       // here and keeps this logic identical to SignupScreen (which IS pushed
       // and must be popped to reveal the now-Collection home).

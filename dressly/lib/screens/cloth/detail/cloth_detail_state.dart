@@ -152,7 +152,4 @@ class ClothDetail extends AsyncNotifier<Cloth> {
 }
 
 final clothDetailProvider = AsyncNotifierProvider.autoDispose
-    .family<ClothDetail, Cloth, int>(
-      ClothDetail.new,
-      dependencies: [clothesServiceProvider],
-    );
+    .family<ClothDetail, Cloth, int>(ClothDetail.new);

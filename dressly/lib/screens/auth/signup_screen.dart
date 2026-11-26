@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
-import '../../state/session.dart';
+import '../../state/providers.dart';
 import '../../widgets/error_toast.dart';
 
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
@@ -35,7 +35,7 @@ class _SignupScreenState extends State<SignupScreen> {
         _password.text,
       );
       if (!mounted) return;
-      context.read<Session>().setSession(result.user, result.token);
+      ref.read(sessionProvider).setSession(result.user, result.token);
       // SignupScreen is a pushed route. After auth, pop it (and anything above)
       // so the home gate — which has now switched to the home shell — is shown.
       // Without this, the pushed SignupScreen sits on top and "nothing happens".

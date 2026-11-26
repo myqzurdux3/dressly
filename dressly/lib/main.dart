@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
-import 'package:provider/provider.dart';
 
 import 'app.dart';
 import 'design/gallery/ds_gallery.dart';
@@ -10,6 +9,7 @@ import 'services/image_cache_config.dart';
 import 'services/pinned_http.dart';
 import 'state/gen_prefs_controller.dart';
 import 'state/locale_controller.dart';
+import 'state/providers.dart';
 import 'state/session.dart';
 import 'state/theme_controller.dart';
 
@@ -66,15 +66,15 @@ Future<Widget> bootstrap() async {
     session.logout();
   };
 
+  // The objects built above are the app's state: the root scope hands them
+  // to Riverpod as they are (it never disposes them).
   return ProviderScope(
-    child: MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: session),
-        ChangeNotifierProvider.value(value: theme),
-        ChangeNotifierProvider.value(value: locale),
-        ChangeNotifierProvider.value(value: genPrefs),
-      ],
-      child: const Dressly(),
-    ),
+    overrides: [
+      sessionProvider.overrideWith((_) => session),
+      themeControllerProvider.overrideWith((_) => theme),
+      localeControllerProvider.overrideWith((_) => locale),
+      genPrefsProvider.overrideWith((_) => genPrefs),
+    ],
+    child: const Dressly(),
   );
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app.dart';
 import '../../design/ds.dart';
@@ -17,11 +17,11 @@ import '../../widgets/app_image.dart';
 import '../../widgets/outfit_pending_image.dart';
 import '../../widgets/render_person_sheet.dart';
 import '../../state/data_bus.dart';
-import '../../state/session.dart';
+import '../../state/providers.dart';
 import 'manual_builder_screen.dart';
 import '../../widgets/error_toast.dart';
 
-class OutfitResultDialog extends StatefulWidget {
+class OutfitResultDialog extends ConsumerStatefulWidget {
   const OutfitResultDialog({
     super.key,
     required this.outfit,
@@ -40,10 +40,10 @@ class OutfitResultDialog extends StatefulWidget {
   final ValueChanged<Outfit>? onOpenManual;
 
   @override
-  State<OutfitResultDialog> createState() => _OutfitResultDialogState();
+  ConsumerState<OutfitResultDialog> createState() => _OutfitResultDialogState();
 }
 
-class _OutfitResultDialogState extends State<OutfitResultDialog> {
+class _OutfitResultDialogState extends ConsumerState<OutfitResultDialog> {
   late Outfit _outfit;
   bool _busy = false;
   bool _wornToday = false;
@@ -807,8 +807,9 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     // it is rendered.
     final rendered = _outfit.hasRender;
     final hasNext = _outfit.nextTier != null;
-    // Null outside the app (widget tests mount the dialog without a session).
-    final isAdmin = context.watch<Session?>()?.user?.isAdmin == true;
+    final isAdmin = ref.watch(
+      sessionProvider.select((s) => s.user?.isAdmin == true),
+    );
     final nextTierLabel =
         const {
           'vto': 'Try-On',

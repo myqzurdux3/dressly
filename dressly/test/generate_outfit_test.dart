@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:provider/provider.dart';
 
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/models/user.dart';
@@ -13,6 +13,7 @@ import 'package:dressly/screens/outfit/outfit_result_dialog.dart';
 import 'package:dressly/screens/outfit/outfit_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
 import 'package:dressly/state/gen_prefs_controller.dart';
+import 'package:dressly/state/providers.dart';
 import 'package:dressly/state/session.dart';
 
 /// Generating an outfit: pick a garment, press generate, wait, see the result.
@@ -102,10 +103,10 @@ void main() {
   Future<void> pump(WidgetTester tester) async {
     final session = Session()
       ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: session),
-        ChangeNotifierProvider(create: (_) => GenPrefsController()),
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        sessionProvider.overrideWith((_) => session),
+        genPrefsProvider.overrideWith((_) => GenPrefsController()),
       ],
       child: MaterialApp(
         locale: const Locale('en'),
@@ -217,10 +218,10 @@ void main() {
     Future<void> pumpRaw(WidgetTester tester) async {
       final session = Session()
         ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: session),
-          ChangeNotifierProvider(create: (_) => GenPrefsController()),
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith((_) => session),
+          genPrefsProvider.overrideWith((_) => GenPrefsController()),
         ],
         child: MaterialApp(
           locale: const Locale('en'),

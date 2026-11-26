@@ -2,15 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/screens/auth/login_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
+import 'package:dressly/state/providers.dart';
 import 'package:dressly/state/session.dart';
 
 /// The login screen, driven the way a person drives it: type, tap, look.
@@ -31,16 +32,17 @@ const _user = {
   'created_at': '2026-08-18T10:00:00',
 };
 
-Widget _app(Session session) => ChangeNotifierProvider.value(
-  value: session,
+Widget _app(Session session) => ProviderScope(
+      overrides: [sessionProvider.overrideWith((_) => session)],
   child: MaterialApp(
     locale: const Locale('en'),
     theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
     // The gate the real app uses, reduced to what this test can assert on:
     // the login screen must be replaced once the session holds a token.
-    home: Consumer<Session>(
-      builder: (_, s, _) =>
-          s.isLoggedIn ? const Text('HOME') : const LoginScreen(),
+    home: Consumer(
+      builder: (_, ref, _) => ref.watch(sessionProvider).isLoggedIn
+          ? const Text('HOME')
+          : const LoginScreen(),
     ),
   ),
 );

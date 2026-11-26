@@ -32,7 +32,7 @@ void main() {
     expect(auth, ['Bearer t1']);
   });
 
-  test('reading apiClientProvider without override throws', () {
+  test('reading apiClientProvider without a session throws', () {
     final c = ProviderContainer();
     addTearDown(c.dispose);
     expect(() => c.read(apiClientProvider), throwsA(anything));

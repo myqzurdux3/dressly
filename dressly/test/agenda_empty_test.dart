@@ -1,15 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:provider/provider.dart';
 
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/models/user.dart';
 import 'package:dressly/screens/agenda/agenda_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
+import 'package:dressly/state/providers.dart';
 import 'package:dressly/state/session.dart';
 
 /// The agenda's empty state used to say: tap "Schedule outfit" — under a button
@@ -31,8 +32,8 @@ Future<void> _pump(WidgetTester tester, {required bool empty}) async {
       http.Response(jsonEncode(empty ? [] : [_entry()]), 200)));
   final session = Session()
     ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
-  await tester.pumpWidget(ChangeNotifierProvider.value(
-    value: session,
+  await tester.pumpWidget(ProviderScope(
+      overrides: [sessionProvider.overrideWith((_) => session)],
     child: MaterialApp(
       locale: const Locale('en'),
       theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),
@@ -77,8 +78,8 @@ void main() {
     }));
     final session = Session()
       ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
-    await tester.pumpWidget(ChangeNotifierProvider.value(
-      value: session,
+    await tester.pumpWidget(ProviderScope(
+      overrides: [sessionProvider.overrideWith((_) => session)],
       child: MaterialApp(
         locale: const Locale('en'),
         theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),

@@ -75,9 +75,12 @@ final wardrobeListProvider = Provider.autoDispose<PagedList<Cloth>>((ref) {
         // The header's count: the grid only holds the pages loaded so far.
         // Best effort; without it the header falls back to "60+".
         total.value = null;
-        service.count(filter: filter).then((n) {
-          total.value = n;
-        }).catchError((_) {});
+        service
+            .count(filter: filter)
+            .then((n) {
+              total.value = n;
+            })
+            .catchError((_) {});
       }
       return service.list(filter: filter, limit: limit, offset: offset);
     },
@@ -86,4 +89,4 @@ final wardrobeListProvider = Provider.autoDispose<PagedList<Cloth>>((ref) {
   ref.onDispose(list.dispose);
   list.refresh();
   return list;
-}, dependencies: [clothesServiceProvider, wardrobeTotalProvider]);
+});

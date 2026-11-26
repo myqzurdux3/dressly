@@ -1,15 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:provider/provider.dart';
 
 import 'package:dressly/design/ds.dart';
 import 'package:dressly/models/user.dart';
 import 'package:dressly/screens/stylist/stylist_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
+import 'package:dressly/state/providers.dart';
 import 'package:dressly/state/session.dart';
 
 /// The stylist: a suggestion sends a question, the reply and its outfit card
@@ -82,8 +83,8 @@ Future<List<String>> _pump(WidgetTester tester, {bool available = true}) async {
   final session = Session()
     ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: false), 'tok');
   await tester.pumpWidget(
-    ChangeNotifierProvider.value(
-      value: session,
+    ProviderScope(
+      overrides: [sessionProvider.overrideWith((_) => session)],
       child: MaterialApp(
         locale: const Locale('en'),
         theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),

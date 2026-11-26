@@ -5,12 +5,13 @@ import 'package:dressly/models/report.dart';
 import 'package:dressly/models/user.dart';
 import 'package:dressly/screens/settings/reports_screen.dart';
 import 'package:dressly/services/pinned_http.dart';
+import 'package:dressly/state/providers.dart';
 import 'package:dressly/state/session.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:provider/provider.dart';
 
 /// Fake `/notifications` router: the two lists and the resolve route.
 class _Server {
@@ -44,8 +45,8 @@ Future<_Server> _pump(WidgetTester t, _Server s) async {
   final session = Session()
     ..setSession(AppUser(id: 1, email: 'a@b.co', isAdmin: true), 'tok');
   await t.pumpWidget(
-    ChangeNotifierProvider.value(
-      value: session,
+    ProviderScope(
+      overrides: [sessionProvider.overrideWith((_) => session)],
       child: MaterialApp(
         locale: const Locale('en'),
         theme: const ThemeF().themeData(Brightness.dark, DsAccent.orange),

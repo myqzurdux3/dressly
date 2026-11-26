@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../app.dart';
 import '../../design/ds.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
-import '../../state/gen_prefs_controller.dart';
 import '../../state/locale_controller.dart';
-import '../../state/session.dart';
-import '../../state/theme_controller.dart';
+import '../../state/providers.dart';
 import 'change_password_screen.dart';
 import 'costs_screen.dart';
 import 'reports_screen.dart';
@@ -18,26 +16,26 @@ import '../../widgets/error_toast.dart';
 
 /// Appearance customization + account. Keeps "Sign out" here, away from the
 /// Models management (which lives on the Create screen).
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
-  Future<void> _logout(BuildContext context) async {
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
     await const AuthService().clearToken();
     if (!context.mounted) return;
     // Pop back to the shell first, then flip the session so the auth gate
     // rebuilds the login screen at the root.
     Navigator.of(context).popUntil((r) => r.isFirst);
-    context.read<Session>().logout();
+    ref.read(sessionProvider).logout();
   }
 
-  String _usernameDetail(BuildContext context) {
-    final name = context.watch<Session>().user?.username ?? '';
+  String _usernameDetail(BuildContext context, WidgetRef ref) {
+    final name = ref.watch(sessionProvider).user?.username ?? '';
     return name.isEmpty ? tr(context, 'settings.usernameNone') : name;
   }
 
   /// Ask for a new user name and save it. Empty clears it.
-  Future<void> _editUsername(BuildContext context) async {
-    final session = context.read<Session>();
+  Future<void> _editUsername(BuildContext context, WidgetRef ref) async {
+    final session = ref.read(sessionProvider);
     final messenger = ScaffoldMessenger.of(context);
     final savedText = tr(context, 'settings.usernameSaved');
     final field = TextEditingController(text: session.user?.username ?? '');
@@ -90,10 +88,10 @@ class SettingsScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = context.watch<ThemeController>();
-    final locale = context.watch<LocaleController>();
-    final genPrefs = context.watch<GenPrefsController>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = ref.watch(themeControllerProvider);
+    final locale = ref.watch(localeControllerProvider);
+    final genPrefs = ref.watch(genPrefsProvider);
     final ds = context.ds;
     final c = ds.colors;
     final muted = ds.typo.label.copyWith(color: c.textMuted);
@@ -116,7 +114,7 @@ class SettingsScreen extends StatelessWidget {
                     color: a.base,
                     label: tr(context, 'accent.${a.name}'),
                     selected: a == theme.accent,
-                    onTap: () => context.read<ThemeController>().setAccent(a),
+                    onTap: () => ref.read(themeControllerProvider).setAccent(a),
                   ),
               ],
             ),
@@ -128,7 +126,7 @@ class SettingsScreen extends StatelessWidget {
                 (ThemeMode.system, tr(context, 'settings.themeSystem')),
               ],
               value: theme.mode,
-              onChanged: (m) => context.read<ThemeController>().setMode(m),
+              onChanged: (m) => ref.read(themeControllerProvider).setMode(m),
             ),
             DsSectionTitle(tr(context, 'settings.language')),
             Wrap(
@@ -143,9 +141,9 @@ class SettingsScreen extends StatelessWidget {
                   DsChip(
                     label: name,
                     selected: locale.languageCode == code,
-                    onTap: () => context.read<LocaleController>().setLanguage(
-                      code.isEmpty ? null : code,
-                    ),
+                    onTap: () => ref
+                        .read(localeControllerProvider)
+                        .setLanguage(code.isEmpty ? null : code),
                   ),
               ],
             ),
@@ -154,7 +152,7 @@ class SettingsScreen extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               value: genPrefs.highQualityOnly,
               onChanged: (v) =>
-                  context.read<GenPrefsController>().setHighQualityOnly(v),
+                  ref.read(genPrefsProvider).setHighQualityOnly(v),
               title: Text(
                 tr(context, 'settings.hqOnly'),
                 style: ds.typo.bodyStrong,
@@ -170,7 +168,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             // Admin-only, and hidden rather than disabled: a screen you
             // cannot open is noise on everybody else's settings page.
-            if (context.watch<Session>().user?.isAdmin == true) ...[
+            if (ref.watch(sessionProvider).user?.isAdmin == true) ...[
               DsSectionTitle(tr(context, 'settings.admin')),
               DsInfoRow(
                 icon: Icons.receipt_long_outlined,
@@ -189,8 +187,8 @@ class SettingsScreen extends StatelessWidget {
             DsInfoRow(
               icon: Icons.alternate_email,
               title: tr(context, 'settings.username'),
-              detail: _usernameDetail(context),
-              onTap: () => _editUsername(context),
+              detail: _usernameDetail(context, ref),
+              onTap: () => _editUsername(context, ref),
             ),
             DsInfoRow(
               icon: Icons.lock_outline,
@@ -201,7 +199,7 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.logout,
               title: tr(context, 'settings.logout'),
               danger: true,
-              onTap: () => _logout(context),
+              onTap: () => _logout(context, ref),
             ),
             SizedBox(height: ds.space.xl),
             Text(
@@ -217,14 +215,14 @@ class SettingsScreen extends StatelessWidget {
 }
 
 /// "Use OpenRouter" — offered only when the server has a key for it.
-class _OpenRouterSwitch extends StatefulWidget {
+class _OpenRouterSwitch extends ConsumerStatefulWidget {
   const _OpenRouterSwitch();
 
   @override
-  State<_OpenRouterSwitch> createState() => _OpenRouterSwitchState();
+  ConsumerState<_OpenRouterSwitch> createState() => _OpenRouterSwitchState();
 }
 
-class _OpenRouterSwitchState extends State<_OpenRouterSwitch> {
+class _OpenRouterSwitchState extends ConsumerState<_OpenRouterSwitch> {
   late final Future<({bool available, String model})> _info = outfitsServiceOf(
     context,
   ).openRouterInfo();
@@ -232,7 +230,7 @@ class _OpenRouterSwitchState extends State<_OpenRouterSwitch> {
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
-    final prefs = context.watch<GenPrefsController>();
+    final prefs = ref.watch(genPrefsProvider);
     final muted = ds.typo.label.copyWith(color: ds.colors.textMuted);
     return FutureBuilder<({bool available, String model})>(
       future: _info,
@@ -243,7 +241,7 @@ class _OpenRouterSwitchState extends State<_OpenRouterSwitch> {
           contentPadding: EdgeInsets.zero,
           value: available && prefs.useOpenRouter,
           onChanged: available
-              ? (v) => context.read<GenPrefsController>().setUseOpenRouter(v)
+              ? (v) => ref.read(genPrefsProvider).setUseOpenRouter(v)
               : null,
           title: Text(
             tr(context, 'settings.openRouter'),

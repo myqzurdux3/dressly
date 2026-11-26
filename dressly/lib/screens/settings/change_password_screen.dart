@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
 import '../../services/auth_service.dart';
-import '../../state/session.dart';
+import '../../state/providers.dart';
 import '../../widgets/error_toast.dart';
 
 /// Change the signed-in user's password.
@@ -12,14 +12,15 @@ import '../../widgets/error_toast.dart';
 /// The current password is asked for even though the user is already signed in:
 /// a token is enough to browse, but it should not be enough to lock the owner
 /// out of their own account.
-class ChangePasswordScreen extends StatefulWidget {
+class ChangePasswordScreen extends ConsumerStatefulWidget {
   const ChangePasswordScreen({super.key});
 
   @override
-  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+  ConsumerState<ChangePasswordScreen> createState() =>
+      _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   final _form = GlobalKey<FormState>();
   final _current = TextEditingController();
   final _next = TextEditingController();
@@ -39,7 +40,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     if (!(_form.currentState?.validate() ?? false) || _busy) return;
     setState(() => _busy = true);
 
-    final session = context.read<Session>();
+    final session = ref.read(sessionProvider);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {

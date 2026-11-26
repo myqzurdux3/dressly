@@ -2,11 +2,12 @@ import 'package:dressly/design/ds.dart';
 import 'package:dressly/screens/settings/settings_screen.dart';
 import 'package:dressly/state/gen_prefs_controller.dart';
 import 'package:dressly/state/locale_controller.dart';
+import 'package:dressly/state/providers.dart';
 import 'package:dressly/state/session.dart';
 import 'package:dressly/state/theme_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -47,12 +48,12 @@ void main() {
     final locale = await LocaleController.load();
     final genPrefs = await GenPrefsController.load();
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: Session()),
-          ChangeNotifierProvider.value(value: theme),
-          ChangeNotifierProvider.value(value: locale),
-          ChangeNotifierProvider.value(value: genPrefs),
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith((_) => Session()),
+          themeControllerProvider.overrideWith((_) => theme),
+          localeControllerProvider.overrideWith((_) => locale),
+          genPrefsProvider.overrideWith((_) => genPrefs),
         ],
         child: MaterialApp(
           theme: theme.themeFor(Brightness.light),

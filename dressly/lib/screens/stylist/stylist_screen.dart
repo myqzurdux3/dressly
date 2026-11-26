@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../design/ds.dart';
 import '../../l10n/app_text.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/stylist.dart';
 import '../../state/data_bus.dart';
 import '../../state/gen_prefs_controller.dart';
+import '../../state/providers.dart';
 import '../../services/stylist_service.dart';
 import '../../widgets/app_image.dart';
 import '../../widgets/render_person_sheet.dart';
@@ -17,14 +18,14 @@ import '../../widgets/error_toast.dart';
 /// The personal stylist: a conversation with an assistant that sees the
 /// wardrobe, the ratings, the agenda and the forecast, and proposes outfits
 /// the user can add to their outfits with one tap.
-class StylistScreen extends StatefulWidget {
+class StylistScreen extends ConsumerStatefulWidget {
   const StylistScreen({super.key});
 
   @override
-  State<StylistScreen> createState() => _StylistScreenState();
+  ConsumerState<StylistScreen> createState() => _StylistScreenState();
 }
 
-class _StylistScreenState extends State<StylistScreen> {
+class _StylistScreenState extends ConsumerState<StylistScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
 
@@ -39,7 +40,7 @@ class _StylistScreenState extends State<StylistScreen> {
   /// Where the chosen speed is kept; absent in tests that provide no prefs.
   GenPrefsController? get _prefs {
     try {
-      return context.read<GenPrefsController>();
+      return ref.read(genPrefsProvider);
     } catch (_) {
       return null;
     }
