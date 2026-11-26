@@ -359,13 +359,32 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     final plan = _plan!;
     return ListView(
       children: [
-        DsHeader(
-          line1: tr(context, 'plan.title1'),
-          line2: tr(context, 'plan.title2'),
-          meta: [
-            if (!plan.isEmpty)
-              '${plan.days.where((d) => !d.isEmpty).length}/${plan.days.length}',
-          ],
+        // Sub-page title, same style as DsSubPage (this screen keeps its own
+        // scaffold for the progress bar and the pinned save button).
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            ds.space.gutter,
+            ds.space.m,
+            ds.space.gutter,
+            ds.space.s,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  '${tr(context, 'plan.title1')} ${tr(context, 'plan.title2')}'
+                      .toUpperCase(),
+                  style: ds.typo.display,
+                ),
+              ),
+              if (!plan.isEmpty)
+                Text(
+                  '${plan.days.where((d) => !d.isEmpty).length}/${plan.days.length}',
+                  style: ds.typo.mono,
+                ),
+            ],
+          ),
         ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),

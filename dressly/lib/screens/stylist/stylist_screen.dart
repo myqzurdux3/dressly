@@ -240,21 +240,12 @@ class _StylistScreenState extends State<StylistScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                ds.space.gutter,
-                ds.space.s,
-                ds.space.gutter,
-                ds.space.xs,
-              ),
-              child: Row(
+            DsHeader(
+              line1: tr(context, 'stylist.title1'),
+              line2: tr(context, 'stylist.title2'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Text(
-                      tr(context, 'stylist.title').toUpperCase(),
-                      style: ds.typo.headline,
-                    ),
-                  ),
                   DsButton.icon(
                     icon: Icons.history,
                     semanticLabel: tr(context, 'stylist.history'),

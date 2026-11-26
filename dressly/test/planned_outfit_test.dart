@@ -95,4 +95,41 @@ void main() {
         findsNothing);
     expect(find.text('Download'), findsOneWidget);
   });
+
+  testWidgets('secondary actions live in one "More actions" sheet', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pump(tester, _outfit(generatedUrl: '/o/42.webp', kind: 'ai'));
+
+    // Main actions stay in the dialog; the secondary ones are not loose.
+    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('Add to agenda'), findsNothing);
+
+    await tester.tap(find.widgetWithText(DsButton, 'More actions'));
+    // Pumped by hand: the image placeholder keeps a spinner going.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final sheet = find.byType(BottomSheet);
+    expect(sheet, findsOneWidget);
+    for (final label in [
+      'Wear history',
+      'Generate back view',
+      'Add to agenda',
+      'Report problem to support',
+      'Delete from history',
+    ]) {
+      expect(
+        find.descendant(of: sheet, matching: find.text(label)),
+        findsOneWidget,
+        reason: label,
+      );
+    }
+    expect(
+      find.descendant(of: sheet, matching: find.byType(ListTile)),
+      findsNWidgets(7),
+    );
+  });
 }

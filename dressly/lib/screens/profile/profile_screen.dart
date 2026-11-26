@@ -52,8 +52,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           future: _future,
           builder: (context, snap) {
             final header = DsHeader(
-              line1: '',
-              line2: tr(context, 'profile.title'),
+              line1: tr(context, 'profile.title1'),
+              line2: tr(context, 'profile.title2'),
               trailing: DsButton.icon(
                 icon: Icons.settings_outlined,
                 semanticLabel: tr(context, 'profile.settings'),

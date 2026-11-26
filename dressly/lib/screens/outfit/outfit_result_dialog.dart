@@ -61,9 +61,7 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     if (!_outfit.hasRender && _outfit.status != 'failed') _loadPieces();
     // A failed render of a montage leaves the montage shown with the error.
     if (_outfit.isManual && _outfit.error.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => toast(_outfit.error),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => toast(_outfit.error));
     }
     if (_outfit.isProcessing) _waitForRender();
     if (widget.startWithAi) {
@@ -683,6 +681,121 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
     }
   }
 
+  /// Secondary actions, one row each (icon + label) in a DS sheet. The sheet
+  /// closes before the action runs, so dialogs it opens sit on the result.
+  Future<void> _openMoreActions(bool failed, bool rendered) async {
+    final actions =
+        <({IconData icon, String label, VoidCallback? run, bool danger})>[
+          if (!failed)
+            (
+              icon: Icons.history,
+              label: tr(context, 'result.wearHistory'),
+              run: _showWearHistory,
+              danger: false,
+            ),
+          if (!failed &&
+              rendered &&
+              !_outfit.isManual &&
+              _outfit.view == 'front' &&
+              _outfit.linkedId == null)
+            (
+              icon: Icons.flip,
+              label: tr(context, 'result.generateBackView'),
+              run: _generateBack,
+              danger: false,
+            ),
+          if (!failed && rendered) ...[
+            // Re-render with an extra instruction (pose, angle…).
+            if (!_outfit.isManual)
+              (
+                icon: Icons.tune,
+                label: tr(context, 'result.addDetailTitle'),
+                run: _regenerateWithDetail,
+                danger: false,
+              ),
+            (
+              icon: Icons.event,
+              label: tr(context, 'result.addToAgenda'),
+              run: _addToAgenda,
+              danger: false,
+            ),
+          ],
+          // Ban this exact combination from the generator.
+          (
+            icon: _outfit.isBlacklisted ? Icons.block_flipped : Icons.block,
+            label: tr(
+              context,
+              _outfit.isBlacklisted
+                  ? 'result.bannedTapAllow'
+                  : 'result.neverAutoGen',
+            ),
+            run: _toggleBlacklist,
+            danger: false,
+          ),
+          (
+            icon: Icons.support_agent,
+            label: tr(
+              context,
+              _reported ? 'result.reportedShort' : 'result.reportProblem',
+            ),
+            run: _reported ? null : _report,
+            danger: false,
+          ),
+          (
+            icon: Icons.delete_outline,
+            label: tr(context, 'result.deleteFromHistory'),
+            run: _deleteOutfit,
+            danger: true,
+          ),
+        ];
+    final picked = await showDsSheet<VoidCallback>(
+      context,
+      title: tr(context, 'result.moreActions'),
+      child: Builder(
+        builder: (ctx) {
+          final c = ctx.ds.colors;
+          return Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final a in actions)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      enabled: a.run != null,
+                      leading: Icon(
+                        a.icon,
+                        color: a.run == null
+                            ? c.textMuted
+                            : a.danger
+                            ? c.danger
+                            : c.accent,
+                      ),
+                      title: Text(
+                        a.label,
+                        style: ctx.ds.typo.bodyStrong.copyWith(
+                          color: a.run == null
+                              ? c.textMuted
+                              : a.danger
+                              ? c.danger
+                              : c.text,
+                        ),
+                      ),
+                      onTap: a.run == null
+                          ? null
+                          : () => Navigator.pop(ctx, a.run),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (!mounted || _busy) return;
+    picked?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
@@ -1091,70 +1204,15 @@ class _OutfitResultDialogState extends State<OutfitResultDialog> {
               gap,
             ],
 
-            // ----- Everything else -----
-            DsSectionTitle(tr(context, 'result.more')),
-            Wrap(
-              spacing: ds.space.xs,
-              runSpacing: ds.space.xs,
-              children: [
-                if (!failed)
-                  _SmallAction(
-                    icon: Icons.history,
-                    label: tr(context, 'result.wearHistory'),
-                    onTap: _busy ? null : _showWearHistory,
-                  ),
-                if (!failed &&
-                    rendered &&
-                    !_outfit.isManual &&
-                    _outfit.view == 'front' &&
-                    _outfit.linkedId == null)
-                  _SmallAction(
-                    icon: Icons.flip,
-                    label: tr(context, 'result.generateBackView'),
-                    onTap: _busy ? null : _generateBack,
-                  ),
-                if (!failed && rendered) ...[
-                  // Re-render with an extra instruction (pose, angle…).
-                  if (!_outfit.isManual)
-                    _SmallAction(
-                      icon: Icons.tune,
-                      label: tr(context, 'result.addDetailTitle'),
-                      onTap: _busy ? null : _regenerateWithDetail,
-                    ),
-                  _SmallAction(
-                    icon: Icons.event,
-                    label: tr(context, 'result.addToAgenda'),
-                    onTap: _busy ? null : _addToAgenda,
-                  ),
-                ],
-                // Ban this exact combination from the generator.
-                _SmallAction(
-                  icon: _outfit.isBlacklisted
-                      ? Icons.block_flipped
-                      : Icons.block,
-                  label: tr(
-                    context,
-                    _outfit.isBlacklisted
-                        ? 'result.bannedTapAllow'
-                        : 'result.neverAutoGen',
-                  ),
-                  onTap: _busy ? null : _toggleBlacklist,
-                ),
-                _SmallAction(
-                  icon: Icons.support_agent,
-                  label: tr(
-                    context,
-                    _reported ? 'result.reportedShort' : 'result.reportProblem',
-                  ),
-                  onTap: _busy || _reported ? null : _report,
-                ),
-                _SmallAction(
-                  icon: Icons.delete_outline,
-                  label: tr(context, 'result.deleteFromHistory'),
-                  danger: true,
-                  onTap: _busy ? null : _deleteOutfit,
-                ),
-              ],
+            // ----- Everything else: one button, the list in a sheet -----
+            DsButton(
+              label: tr(context, 'result.moreActions'),
+              icon: Icons.more_horiz,
+              kind: DsButtonKind.secondary,
+              expand: true,
+              onPressed: _busy
+                  ? null
+                  : () => _openMoreActions(failed, rendered),
             ),
           ],
         ),
@@ -1194,23 +1252,17 @@ class _SmallAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.danger = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final bool danger;
 
   @override
   Widget build(BuildContext context) {
     final ds = context.ds;
     final c = ds.colors;
-    final fg = onTap == null
-        ? c.textMuted
-        : danger
-        ? c.danger
-        : c.text;
+    final fg = onTap == null ? c.textMuted : c.text;
     return Semantics(
       button: true,
       enabled: onTap != null,

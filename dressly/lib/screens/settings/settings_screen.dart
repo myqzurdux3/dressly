@@ -99,151 +99,119 @@ class SettingsScreen extends StatelessWidget {
     final muted = ds.typo.label.copyWith(color: c.textMuted);
     void push(Widget page) =>
         Navigator.push(context, MaterialPageRoute(builder: (_) => page));
-    return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.only(bottom: ds.space.xl),
+    return DsSubPage(
+      title: tr(context, 'settings.title'),
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                ds.space.gutter,
-                ds.space.s,
-                ds.space.gutter,
-                0,
-              ),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: DsButton.icon(
-                  icon: Icons.arrow_back,
-                  semanticLabel: MaterialLocalizations.of(
-                    context,
-                  ).backButtonTooltip,
-                  onPressed: () => Navigator.maybePop(context),
-                ),
-              ),
+            DsSectionTitle(tr(context, 'settings.accentColor')),
+            Wrap(
+              spacing: ds.space.s,
+              runSpacing: ds.space.s,
+              children: [
+                for (final a in DsAccent.values)
+                  _ColorSwatch(
+                    key: ValueKey('accent-${a.name}'),
+                    color: a.base,
+                    label: tr(context, 'accent.${a.name}'),
+                    selected: a == theme.accent,
+                    onTap: () => context.read<ThemeController>().setAccent(a),
+                  ),
+              ],
             ),
-            DsHeader(line1: '', line2: tr(context, 'settings.title')),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: ds.space.gutter),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  DsSectionTitle(tr(context, 'settings.accentColor')),
-                  Wrap(
-                    spacing: ds.space.s,
-                    runSpacing: ds.space.s,
-                    children: [
-                      for (final a in DsAccent.values)
-                        _ColorSwatch(
-                          key: ValueKey('accent-${a.name}'),
-                          color: a.base,
-                          label: tr(context, 'accent.${a.name}'),
-                          selected: a == theme.accent,
-                          onTap: () =>
-                              context.read<ThemeController>().setAccent(a),
-                        ),
-                    ],
-                  ),
-                  DsSectionTitle(tr(context, 'settings.theme')),
-                  DsSegment<ThemeMode>(
-                    options: [
-                      (ThemeMode.light, tr(context, 'settings.themeLight')),
-                      (ThemeMode.dark, tr(context, 'settings.themeDark')),
-                      (ThemeMode.system, tr(context, 'settings.themeSystem')),
-                    ],
-                    value: theme.mode,
-                    onChanged: (m) =>
-                        context.read<ThemeController>().setMode(m),
-                  ),
-                  DsSectionTitle(tr(context, 'settings.language')),
-                  Wrap(
-                    spacing: ds.space.xs,
-                    runSpacing: ds.space.xs,
-                    children: [
-                      for (final (code, name) in [
-                        ('', tr(context, 'settings.languageSystem')),
-                        for (final e in LocaleController.languages.entries)
-                          (e.key, e.value),
-                      ])
-                        DsChip(
-                          label: name,
-                          selected: locale.languageCode == code,
-                          onTap: () => context
-                              .read<LocaleController>()
-                              .setLanguage(code.isEmpty ? null : code),
-                        ),
-                    ],
-                  ),
-                  DsSectionTitle(tr(context, 'settings.generation')),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: genPrefs.highQualityOnly,
-                    onChanged: (v) => context
-                        .read<GenPrefsController>()
-                        .setHighQualityOnly(v),
-                    title: Text(
-                      tr(context, 'settings.hqOnly'),
-                      style: ds.typo.bodyStrong,
-                    ),
-                    subtitle: Text(
-                      tr(context, 'settings.hqOnlyHint'),
-                      style: muted,
+            DsSectionTitle(tr(context, 'settings.theme')),
+            DsSegment<ThemeMode>(
+              options: [
+                (ThemeMode.light, tr(context, 'settings.themeLight')),
+                (ThemeMode.dark, tr(context, 'settings.themeDark')),
+                (ThemeMode.system, tr(context, 'settings.themeSystem')),
+              ],
+              value: theme.mode,
+              onChanged: (m) => context.read<ThemeController>().setMode(m),
+            ),
+            DsSectionTitle(tr(context, 'settings.language')),
+            Wrap(
+              spacing: ds.space.xs,
+              runSpacing: ds.space.xs,
+              children: [
+                for (final (code, name) in [
+                  ('', tr(context, 'settings.languageSystem')),
+                  for (final e in LocaleController.languages.entries)
+                    (e.key, e.value),
+                ])
+                  DsChip(
+                    label: name,
+                    selected: locale.languageCode == code,
+                    onTap: () => context.read<LocaleController>().setLanguage(
+                      code.isEmpty ? null : code,
                     ),
                   ),
-                  const _OpenRouterSwitch(),
-                  DsInfoRow(
-                    icon: Icons.wb_sunny_outlined,
-                    title: tr(context, 'settings.weatherPlace'),
-                    detail: tr(context, 'settings.weatherPlaceHint'),
-                    onTap: () => push(const WeatherLocationScreen()),
-                  ),
-                  // Admin-only, and hidden rather than disabled: a screen you
-                  // cannot open is noise on everybody else's settings page.
-                  if (context.watch<Session>().user?.isAdmin == true) ...[
-                    DsSectionTitle(tr(context, 'settings.admin')),
-                    DsInfoRow(
-                      icon: Icons.receipt_long_outlined,
-                      title: tr(context, 'costs.title'),
-                      detail: tr(context, 'costs.hint'),
-                      onTap: () => push(const CostsScreen()),
-                    ),
-                    DsInfoRow(
-                      icon: Icons.flag_outlined,
-                      title: tr(context, 'reports.title'),
-                      detail: tr(context, 'reports.hint'),
-                      onTap: () => push(const ReportsScreen()),
-                    ),
-                  ],
-                  DsSectionTitle(tr(context, 'settings.account')),
-                  DsInfoRow(
-                    icon: Icons.alternate_email,
-                    title: tr(context, 'settings.username'),
-                    detail: _usernameDetail(context),
-                    onTap: () => _editUsername(context),
-                  ),
-                  DsInfoRow(
-                    icon: Icons.lock_outline,
-                    title: tr(context, 'settings.changePassword'),
-                    onTap: () => push(const ChangePasswordScreen()),
-                  ),
-                  DsInfoRow(
-                    icon: Icons.logout,
-                    title: tr(context, 'settings.logout'),
-                    danger: true,
-                    onTap: () => _logout(context),
-                  ),
-                  SizedBox(height: ds.space.xl),
-                  Text(
-                    'DRESSLY · VERSION 1.0.0 · © 2026',
-                    textAlign: TextAlign.center,
-                    style: ds.typo.monoSmall.copyWith(color: c.textMuted),
-                  ),
-                ],
+              ],
+            ),
+            DsSectionTitle(tr(context, 'settings.generation')),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: genPrefs.highQualityOnly,
+              onChanged: (v) =>
+                  context.read<GenPrefsController>().setHighQualityOnly(v),
+              title: Text(
+                tr(context, 'settings.hqOnly'),
+                style: ds.typo.bodyStrong,
               ),
+              subtitle: Text(tr(context, 'settings.hqOnlyHint'), style: muted),
+            ),
+            const _OpenRouterSwitch(),
+            DsInfoRow(
+              icon: Icons.wb_sunny_outlined,
+              title: tr(context, 'settings.weatherPlace'),
+              detail: tr(context, 'settings.weatherPlaceHint'),
+              onTap: () => push(const WeatherLocationScreen()),
+            ),
+            // Admin-only, and hidden rather than disabled: a screen you
+            // cannot open is noise on everybody else's settings page.
+            if (context.watch<Session>().user?.isAdmin == true) ...[
+              DsSectionTitle(tr(context, 'settings.admin')),
+              DsInfoRow(
+                icon: Icons.receipt_long_outlined,
+                title: tr(context, 'costs.title'),
+                detail: tr(context, 'costs.hint'),
+                onTap: () => push(const CostsScreen()),
+              ),
+              DsInfoRow(
+                icon: Icons.flag_outlined,
+                title: tr(context, 'reports.title'),
+                detail: tr(context, 'reports.hint'),
+                onTap: () => push(const ReportsScreen()),
+              ),
+            ],
+            DsSectionTitle(tr(context, 'settings.account')),
+            DsInfoRow(
+              icon: Icons.alternate_email,
+              title: tr(context, 'settings.username'),
+              detail: _usernameDetail(context),
+              onTap: () => _editUsername(context),
+            ),
+            DsInfoRow(
+              icon: Icons.lock_outline,
+              title: tr(context, 'settings.changePassword'),
+              onTap: () => push(const ChangePasswordScreen()),
+            ),
+            DsInfoRow(
+              icon: Icons.logout,
+              title: tr(context, 'settings.logout'),
+              danger: true,
+              onTap: () => _logout(context),
+            ),
+            SizedBox(height: ds.space.xl),
+            Text(
+              'DRESSLY · VERSION 1.0.0 · © 2026',
+              textAlign: TextAlign.center,
+              style: ds.typo.monoSmall.copyWith(color: c.textMuted),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
