@@ -77,7 +77,7 @@ void main() {
         'just a string',
       ]) {
         final text = errorText(fr, e);
-        expect(text, 'Une erreur est survenue. Veuillez réessayer.');
+        expect(text, 'Une erreur est survenue. Réessaie.');
         expect(text, isNot(contains('Exception')));
         expect(text, isNot(contains('Error')));
       }
