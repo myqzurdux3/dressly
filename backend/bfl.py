@@ -260,10 +260,12 @@ def generate(
             payload = _submit(slug, prompt, prepared, width=width, height=height)
             url = _resolve_image_url(payload, slug)
             return _download(url), tier, slug
-        except BflModerated:
-            # Every tier moderates the same picture the same way. Advancing the
-            # cascade here is three refusals billed instead of one.
-            raise
+        except BflModerated as e:
+            # Every BFL tier moderates the same picture the same way, so the
+            # rest of the cascade is skipped; another provider may accept it.
+            got = _after_refusal(e, use_openrouter, prompt, prepared,
+                                 width, height, errors)
+            return got
         except BflError as e:
             errors.append(f"{tier}({slug}): {e}")
         except Exception as e:
@@ -383,10 +385,11 @@ def generate_outfit(
             payload = _submit(slug, prompt, prepared, width=width, height=height)
             url = _resolve_image_url(payload, slug)
             return _download(url), tier, slug
-        except BflModerated:
-            # Same reasoning as the enhancement cascade: a refusal is a verdict
-            # on the picture, and the next tier will bill for the same verdict.
-            raise
+        except BflModerated as e:
+            # Same reasoning as the enhancement cascade: no other BFL tier,
+            # but another provider if one is configured.
+            return _after_refusal(e, start_tier == OPENROUTER_TIER, prompt,
+                                  prepared, width, height, errors)
         except BflError as e:
             errors.append(f"{tier}: {e}")
         except Exception as e:
@@ -530,6 +533,22 @@ def _record_usage(slug: str, ok: bool, payload: Optional[dict] = None) -> None:
     except Exception:  # noqa: BLE001 - metering must never break a render
         pass
 
+
+
+def _after_refusal(refusal: "BflModerated", openrouter_tried: bool,
+                   prompt: str, prepared: List[str], width: int, height: int,
+                   errors: List[str]) -> tuple:
+    """BFL declined the picture. Its other tiers would decline it too, but
+    OpenRouter runs a different model with its own moderation: try it once,
+    unless it already ran first. Raises the refusal when nothing else works."""
+    import openrouter
+    if openrouter_tried or not openrouter.available():
+        raise refusal
+    got = _try_openrouter(prompt, prepared, width, height, errors)
+    if got is not None:
+        return got
+    raise BflModerated(f"{refusal} OpenRouter also failed: {errors[-1]}") \
+        from refusal
 
 
 def _try_openrouter(prompt: str, prepared: List[str], width: int, height: int,
@@ -756,8 +775,8 @@ def _poll(polling_url: str, slug: str) -> str:
             # https://docs.bfl.ml/api-reference/utility/get-result
             raise BflModerated(
                 f"{slug}: the provider declined this image ({status}). "
-                f"Trying a different model will not change that — a clearer, "
-                f"plainer photo of the garment might.")
+                f"Other FLUX models refuse it the same way — a clearer, "
+                f"plainer photo of the garment might pass.")
         if status in ("Error", "Failed"):
             raise BflError(f"{slug} task failed: {payload}")
         time.sleep(BFL_POLL_INTERVAL_S)

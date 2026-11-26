@@ -458,6 +458,8 @@ def test_a_refusal_does_not_walk_the_rest_of_the_cascade(monkeypatch):
         attempts.append(slug)
         return {"id": "x", "polling_url": "http://poll"}
 
+    import openrouter
+    monkeypatch.setattr(openrouter, "available", lambda: False)
     monkeypatch.setattr(bfl, "api_key", lambda: "k")
     monkeypatch.setattr(bfl, "_prepare_image", lambda p: "data")
     monkeypatch.setattr(bfl, "_submit", submit)
@@ -513,3 +515,58 @@ def test_the_user_is_told_it_was_refused_not_that_it_timed_out(
     reason = (got["enhance_error"] or "").lower()
     assert "declined this image" in reason, reason
     assert "did not finish" not in reason, "still reported as a timeout"
+
+
+def _refusing_bfl(monkeypatch, attempts):
+    def submit(slug, prompt, prepared, width=None, height=None):
+        attempts.append(slug)
+        return {"id": "x", "polling_url": "http://poll"}
+
+    monkeypatch.setattr(bfl, "api_key", lambda: "k")
+    monkeypatch.setattr(bfl, "_prepare_image", lambda p: "data")
+    monkeypatch.setattr(bfl, "_submit", submit)
+    monkeypatch.setattr(bfl, "_resolve_image_url",
+                        lambda payload, slug: (_ for _ in ()).throw(
+                            bfl.BflModerated("declined this image")))
+
+
+def test_a_refusal_falls_back_to_openrouter_when_configured(monkeypatch):
+    """Klein declining a photo is BFL's verdict, not every model's."""
+    import openrouter
+    attempts = []
+    _refusing_bfl(monkeypatch, attempts)
+    monkeypatch.setattr(openrouter, "available", lambda: True)
+    monkeypatch.setattr(openrouter, "model", lambda: "img-model")
+    monkeypatch.setattr(openrouter, "generate",
+                        lambda *a, **k: (b"png", "img-model", 0.01))
+
+    raw, tier, slug = bfl.generate("prompt", [], start_tier="flex")
+    assert (raw, tier, slug) == (b"png", bfl.OPENROUTER_TIER,
+                                 "openrouter:img-model")
+    assert attempts == [bfl.TIER_SLUGS["flex"]], "no other BFL tier is billed"
+
+
+def test_a_refusal_is_final_without_openrouter(monkeypatch):
+    import openrouter
+    attempts = []
+    _refusing_bfl(monkeypatch, attempts)
+    monkeypatch.setattr(openrouter, "available", lambda: False)
+    with pytest.raises(bfl.BflModerated):
+        bfl.generate("prompt", [], start_tier="flex")
+    assert attempts == [bfl.TIER_SLUGS["flex"]]
+
+
+def test_openrouter_failing_after_a_refusal_reports_both(monkeypatch):
+    import openrouter
+    attempts = []
+    _refusing_bfl(monkeypatch, attempts)
+    monkeypatch.setattr(openrouter, "available", lambda: True)
+    monkeypatch.setattr(openrouter, "model", lambda: "img-model")
+
+    def boom(*a, **k):
+        raise openrouter.OpenRouterError("no image in reply")
+    monkeypatch.setattr(openrouter, "generate", boom)
+    with pytest.raises(bfl.BflModerated) as exc:
+        bfl.generate("prompt", [], start_tier="flex")
+    assert "declined this image" in str(exc.value)
+    assert "OpenRouter also failed" in str(exc.value)
